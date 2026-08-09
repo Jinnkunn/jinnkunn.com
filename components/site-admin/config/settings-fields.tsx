@@ -48,6 +48,34 @@ export function SiteAdminTextFieldRow({
   );
 }
 
+export function SiteAdminSelectFieldRow({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  options: readonly { value: string; label: string }[];
+}) {
+  return (
+    <SiteAdminFormRow label={label}>
+      <select
+        className="site-admin-form__select ds-field"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </SiteAdminFormRow>
+  );
+}
+
 type TextAreaRowProps = {
   label: string;
   value: string;

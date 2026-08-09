@@ -12,6 +12,7 @@ import {
 import {
   SiteAdminDepthGridRow,
   SiteAdminFormRow,
+  SiteAdminSelectFieldRow,
   SiteAdminSwitchRow,
   SiteAdminTextAreaRow,
   SiteAdminTextFieldRow,
@@ -22,6 +23,7 @@ import type { SiteSettings } from "./types";
 type SiteAdminSettingsFormProps = {
   draftSettings: SiteSettings | null;
   busy: boolean;
+  dirty: boolean;
   setDraftSettings: Dispatch<SetStateAction<SiteSettings | null>>;
   onSaveSettings: () => void;
 };
@@ -49,6 +51,7 @@ function SettingsGroup({
 export function SiteAdminSettingsForm({
   draftSettings,
   busy,
+  dirty,
   setDraftSettings,
   onSaveSettings,
 }: SiteAdminSettingsFormProps) {
@@ -86,12 +89,15 @@ export function SiteAdminSettingsForm({
           onChange={(next) => updateField("siteName", next)}
           placeholder="Jinkun Chen."
         />
-        <SiteAdminTextFieldRow
+        <SiteAdminSelectFieldRow
           label="Language"
           value={draftSettings.lang}
           onChange={(next) => updateField("lang", next)}
-          placeholder="en"
-          mono
+          options={[
+            { value: "en", label: "English" },
+            { value: "zh", label: "Chinese" },
+            { value: "en-CA", label: "English (Canada)" },
+          ]}
         />
         <SiteAdminTextFieldRow
           label="Favicon"
@@ -130,6 +136,12 @@ export function SiteAdminSettingsForm({
           placeholder="G-XXXXXXXXXX"
           mono
         />
+        <div className="site-admin-form__search-preview" aria-label="Search result preview">
+          <small>Search preview</small>
+          <strong>{draftSettings.seoTitle || draftSettings.siteName || "Site title"}</strong>
+          <span>jinkunchen.com</span>
+          <p>{draftSettings.seoDescription || "Add a description for search results."}</p>
+        </div>
       </SettingsGroup>
 
       <details className="site-admin-form__advanced">
@@ -217,13 +229,16 @@ export function SiteAdminSettingsForm({
       </details>
 
       <div className="site-admin-form__actions">
+        <span>{busy ? "Saving…" : dirty ? "Changes are ready to save" : "No changes"}</span>
         <Button
           type="button"
           className="site-admin-form__btn"
-          disabled={busy}
+          variant={dirty ? "solid" : "subtle"}
+          tone={dirty ? "accent" : "neutral"}
+          disabled={busy || !dirty}
           onClick={onSaveSettings}
         >
-          Save settings
+          {busy ? "Saving" : "Save settings"}
         </Button>
       </div>
     </div>

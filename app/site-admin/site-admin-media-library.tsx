@@ -86,6 +86,12 @@ function formatBytes(value: number): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function assetDisplayName(asset: SiteAdminAsset): string {
+  const stem = asset.filename.replace(/\.[^.]+$/, "");
+  if (/^[a-f0-9]{16,64}$/i.test(stem)) return "Uploaded image";
+  return asset.filename;
+}
+
 export function SiteAdminMediaLibrary({
   mode = "manage",
   onSelect,
@@ -101,7 +107,7 @@ export function SiteAdminMediaLibrary({
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [uploadProgress, setUploadProgress] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">("list");
   const [brokenAssets, setBrokenAssets] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -173,6 +179,27 @@ export function SiteAdminMediaLibrary({
     } finally {
       setBusyKey("");
     }
+  }
+
+  function renderAssetPreview(asset: SiteAdminAsset) {
+    if (asset.contentType.startsWith("image/") && !brokenAssets.has(asset.key)) {
+      return (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={asset.url}
+            alt=""
+            onError={() => setBrokenAssets((current) => new Set(current).add(asset.key))}
+          />
+          {asset.size <= 100 ? (
+            <span className={styles.assetPreviewBadge}>Transparent or empty image</span>
+          ) : null}
+        </>
+      );
+    }
+    return (
+      <span>{brokenAssets.has(asset.key) ? "Preview unavailable" : asset.contentType}</span>
+    );
   }
 
   return (
@@ -254,28 +281,28 @@ export function SiteAdminMediaLibrary({
       <div className={styles.assetGrid} data-view={view}>
         {visibleAssets.map((asset) => (
           <article key={asset.key} className={styles.assetItem}>
-            <button
-              type="button"
-              className={styles.assetPreview}
-              onClick={() => onSelect?.(asset)}
-              disabled={!onSelect}
-              aria-label={onSelect ? `Use ${asset.filename}` : asset.filename}
-            >
-              {asset.contentType.startsWith("image/") && !brokenAssets.has(asset.key) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={asset.url}
-                  alt=""
-                  onError={() =>
-                    setBrokenAssets((current) => new Set(current).add(asset.key))
-                  }
-                />
-              ) : (
-                <span>{brokenAssets.has(asset.key) ? "Preview unavailable" : asset.contentType}</span>
-              )}
-            </button>
+            {onSelect ? (
+              <button
+                type="button"
+                className={styles.assetPreview}
+                onClick={() => onSelect(asset)}
+                aria-label={`Use ${asset.filename}`}
+              >
+                {renderAssetPreview(asset)}
+              </button>
+            ) : (
+              <a
+                className={styles.assetPreview}
+                href={asset.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${asset.filename}`}
+              >
+                {renderAssetPreview(asset)}
+              </a>
+            )}
             <div className={styles.assetMeta}>
-              <strong title={asset.filename}>{asset.filename}</strong>
+              <strong title={asset.filename}>{assetDisplayName(asset)}</strong>
               <small>
                 {asset.contentType.replace("image/", "").toUpperCase()} · {formatBytes(asset.size)}
               </small>
@@ -297,7 +324,7 @@ export function SiteAdminMediaLibrary({
                   variant="subtle"
                   size="sm"
                 >
-                  Copy URL
+                  Copy link
                 </Button>
               )}
               <Button

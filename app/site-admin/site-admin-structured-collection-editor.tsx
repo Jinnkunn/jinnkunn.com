@@ -377,7 +377,8 @@ export function StructuredCollectionEntry({
             <button
               type="button"
               className={styles.collectionEntryScrim}
-              aria-label={`Close ${title}`}
+              aria-hidden="true"
+              tabIndex={-1}
               onClick={onToggle}
             />
             <aside
@@ -400,21 +401,25 @@ export function StructuredCollectionEntry({
                 </Button>
               </header>
               <div className={styles.collectionEntryDrawerBody}>
-                <CollectionEntryActions
-                  index={index}
-                  count={count}
-                  reorderDisabled={dragDisabled}
-                  onMove={onMove}
-                  onDuplicate={onDuplicate}
-                />
+                <details className={styles.collectionEntryActionsMenu}>
+                  <summary>Entry actions</summary>
+                  <CollectionEntryActions
+                    index={index}
+                    count={count}
+                    reorderDisabled={dragDisabled}
+                    onMove={onMove}
+                    onDuplicate={onDuplicate}
+                  />
+                </details>
                 {children}
               </div>
               <footer className={styles.collectionEntryDrawerFooter}>
                 <Button onClick={onDelete} variant="subtle" tone="danger" size="sm">
                   Delete
                 </Button>
+                <small>Changes remain in this draft until you use Save.</small>
                 <Button onClick={onToggle} tone="accent" size="sm">
-                  Done
+                  Done editing
                 </Button>
               </footer>
             </aside>

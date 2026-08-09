@@ -52,6 +52,54 @@
   grid-column: 1 / -1;
 }
 
+.host :global(.site-admin-form__select) {
+  width: 100%;
+  appearance: auto;
+}
+
+.host :global(.site-admin-form__search-preview) {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 3px;
+  padding: 14px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.host :global(.site-admin-form__search-preview small),
+.host :global(.site-admin-form__search-preview strong),
+.host :global(.site-admin-form__search-preview span),
+.host :global(.site-admin-form__search-preview p) {
+  margin: 0;
+}
+
+.host :global(.site-admin-form__search-preview small) {
+  color: var(--ds-text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.host :global(.site-admin-form__search-preview strong) {
+  margin-top: 4px;
+  color: var(--ds-text-primary);
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.host :global(.site-admin-form__search-preview span) {
+  color: var(--ds-success-text);
+  font-size: 12px;
+}
+
+.host :global(.site-admin-form__search-preview p) {
+  max-width: 68ch;
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .host :global(.site-admin-form__advanced) {
   overflow: hidden;
   border: 1px solid var(--ds-border-subtle);
@@ -128,6 +176,13 @@
   border-radius: var(--ds-radius-md);
   background: color-mix(in srgb, var(--ds-surface-elevated) 94%, transparent);
   backdrop-filter: blur(14px);
+}
+
+.host :global(.site-admin-form__actions > span) {
+  margin-right: auto;
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .host :global(.site-admin-form__textarea) {

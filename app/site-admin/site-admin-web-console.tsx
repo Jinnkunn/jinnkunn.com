@@ -413,13 +413,12 @@ function findManagedComponentForPage(
   );
 }
 
-function managedComponentMeta(
-  definition: ComponentDefinition,
-  summary: ComponentSummary | undefined,
-) {
-  return `Managed · ${summary?.count ?? 0} ${
-    summary?.entryLabel || definition.entryLabel || "entries"
-  }`;
+function managedComponentMeta(summary: ComponentSummary | undefined) {
+  return `Managed · ${formatEntryCount(summary?.count ?? 0)}`;
+}
+
+function formatEntryCount(count: number) {
+  return `${count} ${count === 1 ? "entry" : "entries"}`;
 }
 
 function sourceForNewContent(input: {
@@ -646,7 +645,7 @@ function toEditableDetail(
     (kind === "posts" ? `/blog/${id}` : kind === "pages" ? `/${id}` : "");
   const meta =
     kind === "components"
-      ? `${payload.summary?.count ?? 0} ${payload.summary?.entryLabel || "entries"}`
+      ? formatEntryCount(payload.summary?.count ?? 0)
       : payload.dateText || formatWhen(payload.updatedIso);
   return {
     kind,
@@ -674,7 +673,7 @@ function contentItems(input: {
       meta: (() => {
         const managed = findManagedComponentForPage(item, definitions);
         if (managed) {
-          return managedComponentMeta(managed, componentSummaryFor(input.components, managed.name));
+          return managedComponentMeta(componentSummaryFor(input.components, managed.name));
         }
         return item.updatedIso ? formatWhen(item.updatedIso) : `${item.wordCount ?? 0} words`;
       })(),
@@ -698,7 +697,7 @@ function contentItems(input: {
       id: item.name,
       title: item.label || item.name,
       href: item.primaryRoute || "",
-      meta: `${summary?.count ?? 0} ${summary?.entryLabel || item.entryLabel || "entries"}`,
+      meta: formatEntryCount(summary?.count ?? 0),
       version: "",
     };
   });
@@ -856,6 +855,16 @@ export function SiteAdminWebConsole({
       window.requestAnimationFrame(() => trigger?.focus());
     };
   }, [inspectorOpen]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("site-admin-editor-panel")?.scrollIntoView({
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selected?.id, selected?.kind]);
 
   const currentItems = useMemo(
     () => contentItems({ kind: documentKind, pages, posts, components }),
@@ -2902,21 +2911,59 @@ export function SiteAdminWebConsole({
     setComponentReturnTarget(null);
   }
 
+  function changeContentPicker(value: string) {
+    if (value === "home" || value === "now") {
+      changeArea(value);
+      return;
+    }
+    if (value === "posts" || value === "pages") {
+      openDocumentKind(value);
+      return;
+    }
+    const componentName = value.replace(/^component:/, "");
+    const definition = componentDefinitions.find((item) => item.name === componentName);
+    if (definition) void selectManagedComponent(definition);
+  }
+
   function renderContentLibrary() {
+    const pickerValue =
+      area === "home" || area === "now"
+        ? area
+        : selected?.kind === "components"
+          ? `component:${selected.id}`
+          : documentKind;
     return (
       <Card className={styles.sidePanel}>
         <div className={styles.panelHeader}>
           <div>
             <h2 className={styles.panelTitle}>Content</h2>
           </div>
-          <Button
-            onClick={() => beginCreate(documentKind)}
-            variant="subtle"
-            size="sm"
-          >
-            New
-          </Button>
         </div>
+
+        <label className={styles.mobileContentPicker}>
+          <span>Browse content</span>
+          <select
+            className={styles.textField}
+            value={pickerValue}
+            onChange={(event) => changeContentPicker(event.target.value)}
+          >
+            <optgroup label="Site">
+              <option value="home">Home</option>
+              <option value="now">Now</option>
+            </optgroup>
+            <optgroup label="Documents">
+              <option value="posts">Posts</option>
+              <option value="pages">Pages</option>
+            </optgroup>
+            <optgroup label="Collections">
+              {componentDefinitions.map((definition) => (
+                <option key={definition.name} value={`component:${definition.name}`}>
+                  {definition.label}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </label>
 
         <div className={styles.contentNavSection}>
           <p className={styles.inspectorLabel}>Site</p>
@@ -2975,7 +3022,7 @@ export function SiteAdminWebConsole({
                 onClick={() => void selectManagedComponent(definition)}
               >
                 <span>{definition.label}</span>
-                <small>{summary?.count ?? 0} {summary?.entryLabel || definition.entryLabel || "entries"}</small>
+                <small>{formatEntryCount(summary?.count ?? 0)}</small>
               </button>
             );
           })}
@@ -3016,18 +3063,6 @@ export function SiteAdminWebConsole({
         </div>
 
         <div className={styles.contentIndexToolbar}>
-          <div className={styles.segmented} role="group" aria-label="Document type">
-            {(["posts", "pages"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                data-active={!searching && documentKind === value}
-                onClick={() => openDocumentKind(value)}
-              >
-                {titleForKind(value)}
-              </button>
-            ))}
-          </div>
           <label className={styles.contentIndexSearch}>
             <span className={styles.visuallyHidden}>Search posts and pages</span>
             <input
@@ -3058,7 +3093,7 @@ export function SiteAdminWebConsole({
                 >
                   <span className={styles.contentIndexPrimary}>
                     <strong>{item.title}</strong>
-                    <small>/{item.id}</small>
+                    {searching ? <small>/{item.id}</small> : null}
                   </span>
                   <span className={styles.contentIndexMeta}>
                     {searching ? <small>{titleForKind(itemKind)}</small> : null}
@@ -3144,7 +3179,7 @@ export function SiteAdminWebConsole({
           {renderContentLibrary()}
 
           {selected ? (
-            <Card className={styles.editorPanel}>
+            <Card id="site-admin-editor-panel" className={styles.editorPanel}>
               <div className={styles.editorChrome}>
                 <div className={styles.panelHeader}>
                   <div>
@@ -3297,12 +3332,7 @@ export function SiteAdminWebConsole({
                             </p>
                           </div>
                           <div className={styles.managedPageMeta}>
-                            <span>
-                              {selectedManagedSummary?.count ?? 0}{" "}
-                              {selectedManagedSummary?.entryLabel ||
-                                selectedManagedComponent.entryLabel ||
-                                "entries"}
-                            </span>
+                            <span>{formatEntryCount(selectedManagedSummary?.count ?? 0)}</span>
                             <Button
                               onClick={() => editManagedComponent(selectedManagedComponent)}
                               tone="accent"
@@ -3401,7 +3431,8 @@ export function SiteAdminWebConsole({
             <button
               type="button"
               className={styles.inspectorScrim}
-              aria-label="Close inspector"
+              aria-hidden="true"
+              tabIndex={-1}
               onClick={() => setInspectorOpen(false)}
             />
           ) : null}
@@ -3612,12 +3643,7 @@ export function SiteAdminWebConsole({
                     <p className={styles.inspectorLabel}>Managed collection</p>
                     <div className={styles.inspectorStat}>
                       <span>{selectedManagedComponent.label}</span>
-                      <strong>
-                        {selectedManagedSummary?.count ?? 0}{" "}
-                        {selectedManagedSummary?.entryLabel ||
-                          selectedManagedComponent.entryLabel ||
-                          "entries"}
-                      </strong>
+                      <strong>{formatEntryCount(selectedManagedSummary?.count ?? 0)}</strong>
                     </div>
                     <Button
                       onClick={() => editManagedComponent(selectedManagedComponent)}
@@ -3836,9 +3862,11 @@ export function SiteAdminWebConsole({
                           : release?.headline || "Refresh release status"}
                 </h2>
               </div>
-              <span className={styles.statusPill} data-state={documentStatus.tone}>
-                {documentStatus.label}
-              </span>
+              {releaseIsRunning || liveSync.state !== "live" ? (
+                <span className={styles.statusPill} data-state={documentStatus.tone}>
+                  {documentStatus.label}
+                </span>
+              ) : null}
             </div>
             <p className={styles.cardText}>
               {releaseIsRunning

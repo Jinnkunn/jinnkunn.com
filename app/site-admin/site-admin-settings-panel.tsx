@@ -29,7 +29,6 @@ export function SiteAdminSettingsPanel({
     setDraftSettings,
     saveSettings,
     updateNavDraftField,
-    saveNavRow,
     saveAllNavRows,
     addNavRow,
   } = useSiteAdminConfigData();
@@ -43,6 +42,15 @@ export function SiteAdminSettingsPanel({
 
   function navValue<K extends keyof NavItemRow>(row: NavItemRow, key: K): NavItemRow[K] {
     return (navDraft[row.rowId]?.[key] as NavItemRow[K] | undefined) ?? row[key];
+  }
+
+  function moveNavRow(rows: NavItemRow[], index: number, direction: -1 | 1) {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= rows.length) return;
+    const reordered = [...rows];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(nextIndex, 0, moved);
+    reordered.forEach((row, order) => updateNavDraftField(row.rowId, { order }));
   }
 
   return (
@@ -90,7 +98,8 @@ export function SiteAdminSettingsPanel({
                 <div className={formStyles.host}>
                   <SiteAdminSettingsForm
                     draftSettings={draftSettings}
-                    busy={busy || !settingsDirty}
+                    busy={busy}
+                    dirty={settingsDirty}
                     setDraftSettings={setDraftSettings}
                     onSaveSettings={() => void saveSettings()}
                   />
@@ -137,7 +146,9 @@ export function SiteAdminSettingsPanel({
                 </div>
               </div>
               {(["top", "more"] as const).map((group) => {
-                const rows = navByGroup[group];
+                const rows = [...navByGroup[group]].sort(
+                  (left, right) => Number(navValue(left, "order")) - Number(navValue(right, "order")),
+                );
                 return (
                   <div className={styles.settingsNavGroup} key={group}>
                     <div className={styles.settingsNavGroupHeader}>
@@ -145,7 +156,7 @@ export function SiteAdminSettingsPanel({
                       <small>{rows.length} links</small>
                     </div>
                     <div className={styles.settingsNavList}>
-                      {rows.map((row) => (
+                      {rows.map((row, index) => (
                         <div key={row.rowId} className={styles.settingsNavRow}>
                           <input
                             className={styles.textField}
@@ -163,17 +174,6 @@ export function SiteAdminSettingsPanel({
                               updateNavDraftField(row.rowId, { href: event.target.value })
                             }
                           />
-                          <input
-                            className={styles.textField}
-                            aria-label="Navigation order"
-                            type="number"
-                            value={Number(navValue(row, "order"))}
-                            onChange={(event) =>
-                              updateNavDraftField(row.rowId, {
-                                order: Number(event.target.value),
-                              })
-                            }
-                          />
                           <label className={styles.checkField}>
                             <input
                               type="checkbox"
@@ -186,14 +186,35 @@ export function SiteAdminSettingsPanel({
                             />
                             Visible
                           </label>
-                          <Button
-                            onClick={() => void saveNavRow(row)}
-                            variant="subtle"
-                            size="sm"
-                            disabled={busy || !navDraft[row.rowId]}
-                          >
-                            Save row
-                          </Button>
+                          <span className={styles.navRowState}>
+                            {navDraft[row.rowId] ? (
+                              <span className={styles.contentStateBadge}>Edited</span>
+                            ) : !navValue(row, "enabled") ? (
+                              <span className={styles.contentStateBadge}>Hidden</span>
+                            ) : null}
+                          </span>
+                          <div className={styles.navMoveControls} aria-label={`Move ${navValue(row, "label")}`}>
+                            <Button
+                              onClick={() => moveNavRow(rows, index, -1)}
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Move ${navValue(row, "label")} up`}
+                              title="Move up"
+                              disabled={busy || index === 0}
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              onClick={() => moveNavRow(rows, index, 1)}
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Move ${navValue(row, "label")} down`}
+                              title="Move down"
+                              disabled={busy || index === rows.length - 1}
+                            >
+                              ↓
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>

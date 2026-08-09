@@ -63,6 +63,13 @@ function editorStats(value: string) {
   return { words, components };
 }
 
+function editorHeadings(value: string) {
+  return Array.from(value.matchAll(/^(#{1,3})\s+(.+)$/gm)).map((match) => ({
+    level: match[1].length,
+    label: match[2].replace(/\s+#+\s*$/, "").trim(),
+  }));
+}
+
 export function SiteAdminMarkdownEditor({
   label = "MDX editor",
   value,
@@ -78,6 +85,7 @@ export function SiteAdminMarkdownEditor({
   visualEditing = true,
   onEditComponent,
 }: MarkdownEditorProps) {
+  const editorRootRef = useRef<HTMLDivElement | null>(null);
   const previewRequestIdRef = useRef(0);
   const readOnly = disabled || blocking;
   const [mode, setMode] = useState<EditorMode>(
@@ -89,6 +97,7 @@ export function SiteAdminMarkdownEditor({
   const [previewRenderer, setPreviewRenderer] = useState("");
   const [visualError, setVisualError] = useState("");
   const stats = useMemo(() => editorStats(value), [value]);
+  const headings = useMemo(() => editorHeadings(value), [value]);
   const visualCompatibility = useMemo(
     () => analyzeVisualMdxCompatibility(value),
     [value],
@@ -147,6 +156,13 @@ export function SiteAdminMarkdownEditor({
     if (nextMode === "preview") void renderPreview();
   }
 
+  function jumpToHeading(index: number) {
+    const heading = editorRootRef.current?.querySelectorAll<HTMLElement>(
+      ".milkdown .ProseMirror h1, .milkdown .ProseMirror h2, .milkdown .ProseMirror h3",
+    )[index];
+    heading?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   function renderPreviewPane() {
     return (
       <div className={styles.markdownPreviewShell} style={{ minHeight }}>
@@ -187,7 +203,12 @@ export function SiteAdminMarkdownEditor({
   );
 
   return (
-    <div className={styles.markdownEditor} data-size={size} data-layout={previewLayout}>
+    <div
+      ref={editorRootRef}
+      className={styles.markdownEditor}
+      data-size={size}
+      data-layout={previewLayout}
+    >
       <div className={styles.editorModeBar}>
         <div className={styles.editorModeTabs} role="tablist" aria-label={`${label} view`}>
           {visualEditing ? (
@@ -230,6 +251,23 @@ export function SiteAdminMarkdownEditor({
           </button>
         </div>
         <div className={styles.editorModeMeta}>
+          {activeMode === "visual" && headings.length > 0 ? (
+            <details className={styles.editorOutline}>
+              <summary>Outline · {headings.length}</summary>
+              <div>
+                {headings.map((heading, index) => (
+                  <button
+                    key={`${heading.level}-${heading.label}-${index}`}
+                    type="button"
+                    data-level={heading.level}
+                    onClick={() => jumpToHeading(index)}
+                  >
+                    {heading.label}
+                  </button>
+                ))}
+              </div>
+            </details>
+          ) : null}
           {activeMode === "visual" ? <span>Type / for blocks</span> : null}
           {activeMode === "preview" && previewRenderer === "runtime-mdx-preview" ? (
             <span>Published renderer</span>
