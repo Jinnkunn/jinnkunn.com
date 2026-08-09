@@ -3,10 +3,12 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 
-import { logWarn } from "@/lib/server/error-log";
+import { logError, logWarn } from "@/lib/server/error-log";
 
 type SiteAdminAuditResult = "success" | "source_conflict" | "not_found" | "error";
 type SiteAdminAuditAction =
+  | "auth.denied"
+  | "app-auth.token.issue"
   | "config.save"
   | "routes.override.save"
   | "routes.protected.save"
@@ -169,23 +171,77 @@ function writeToLocalFile(event: ReturnType<typeof normalizeEvent>): void {
   fs.appendFileSync(file, `${JSON.stringify(event)}\n`, "utf8");
 }
 
-let d1FallbackWarned = false;
+type GlobalScopeLike = {
+  navigator?: { userAgent?: unknown };
+  WebSocketPair?: unknown;
+  caches?: { default?: unknown };
+};
 
-export function hasSiteAdminAuditD1Fallback(): boolean {
-  return d1FallbackWarned;
+/**
+ * Detect workerd. There is no writable filesystem there, so the local
+ * file sink is not a fallback at all — `appendFileSync` throws and the
+ * event would be discarded behind a warning. Exported for tests, which
+ * pass a synthetic global instead of faking the real runtime.
+ */
+export function isWorkersRuntimeLike(scope: unknown = globalThis): boolean {
+  const g = (scope || {}) as GlobalScopeLike;
+  const userAgent = g.navigator?.userAgent;
+  if (typeof userAgent === "string" && userAgent.includes("Cloudflare-Workers")) return true;
+  if (typeof g.WebSocketPair === "function") return true;
+  return Boolean(g.caches && typeof g.caches === "object" && "default" in g.caches);
 }
 
-export async function writeSiteAdminAuditLog(input: SiteAdminAuditEvent): Promise<void> {
+export type SiteAdminAuditWriteResult =
+  | { ok: true; sink: "d1" | "file" }
+  | { ok: false; reason: "d1-write-failed" | "d1-unconfigured" | "file-write-failed" };
+
+let d1WriteFailed = false;
+
+/**
+ * True when audit events are NOT reaching D1 — either because D1 is not
+ * configured at all, or because the last write to it failed. The old
+ * flag only flipped after a failure, so a completely unconfigured
+ * deployment reported "no fallback in use" forever.
+ */
+export function hasSiteAdminAuditD1Fallback(): boolean {
+  return !readD1Config() || d1WriteFailed;
+}
+
+function reportLostEvent(
+  event: ReturnType<typeof normalizeEvent>,
+  message: string,
+  detail?: unknown,
+): void {
+  logError({
+    source: "site-admin-audit",
+    message,
+    detail,
+    meta: {
+      at: event.at,
+      action: event.action,
+      result: event.result,
+      actor: event.actor,
+      endpoint: event.endpoint,
+      method: event.method,
+      status: event.status,
+      code: event.code,
+    },
+  });
+}
+
+export async function writeSiteAdminAuditLog(
+  input: SiteAdminAuditEvent,
+): Promise<SiteAdminAuditWriteResult> {
   const event = normalizeEvent(input);
   const d1 = readD1Config();
   if (d1) {
     try {
       await writeToD1(d1, event);
-      if (d1FallbackWarned) d1FallbackWarned = false;
-      return;
+      d1WriteFailed = false;
+      return { ok: true, sink: "d1" };
     } catch (error: unknown) {
-      if (!d1FallbackWarned) {
-        d1FallbackWarned = true;
+      if (!d1WriteFailed) {
+        d1WriteFailed = true;
         logWarn({
           source: "site-admin-audit",
           message: "D1 write failed, falling back to local file sink",
@@ -193,15 +249,21 @@ export async function writeSiteAdminAuditLog(input: SiteAdminAuditEvent): Promis
           meta: { action: event.action, result: event.result },
         });
       }
+      if (isWorkersRuntimeLike()) {
+        reportLostEvent(event, "audit event dropped: D1 write failed and workerd has no file sink", error);
+        return { ok: false, reason: "d1-write-failed" };
+      }
     }
+  } else if (isWorkersRuntimeLike()) {
+    reportLostEvent(event, "audit event dropped: D1 is not configured and workerd has no file sink");
+    return { ok: false, reason: "d1-unconfigured" };
   }
+
   try {
     writeToLocalFile(event);
+    return { ok: true, sink: "file" };
   } catch (error: unknown) {
-    logWarn({
-      source: "site-admin-audit",
-      message: "local file sink failed",
-      detail: error,
-    });
+    reportLostEvent(event, "audit event dropped: local file sink failed", error);
+    return { ok: false, reason: "file-write-failed" };
   }
 }

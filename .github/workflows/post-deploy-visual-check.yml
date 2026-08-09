@@ -18,7 +18,11 @@ name: Post-deploy visual regression
 
 on:
   workflow_run:
-    workflows: ["Release on dispatch (db mode)"]
+    # Must match release-from-dispatch.yml's `name:` exactly — GitHub matches
+    # workflow_run by display name, and a rename silently disables this hook
+    # (it did, from 1c8ffa6 until 2026-08). tests/release/github-workflow-graph
+    # now fails when the two drift.
+    workflows: ["Release on dispatch (fallback)"]
     types: [completed]
   workflow_dispatch:
 

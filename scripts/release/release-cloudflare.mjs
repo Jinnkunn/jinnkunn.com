@@ -37,11 +37,20 @@ const RELEASE_HISTORY_PATH = path.join(
   "release-history.jsonl",
 );
 
+// The Tauri workspace has its own package.json/tsconfig, so neither
+// `next build` nor the root test run ever typechecks it. Its CI job
+// (ci.yml: workspace-quality) was unreachable for months, which means the
+// release gate was the only thing standing between a broken Site Admin
+// surface and a deploy — and it wasn't checking. Run those two checks here.
+const WORKSPACE_DIR = "apps/workspace";
+
 const CHECKS = [
   ["public web contracts", "npm", ["run", "check:public-web"]],
   ["tests", "npm", ["run", "test"]],
   ["lint", "npm", ["run", "lint"]],
   ["script syntax", "npm", ["run", "check:scripts"]],
+  ["workspace types", "npm", ["run", "typecheck"], { cwd: WORKSPACE_DIR }],
+  ["workspace tests", "npm", ["run", "test"], { cwd: WORKSPACE_DIR }],
 ];
 
 function parseArgs(argv = process.argv.slice(2)) {
@@ -258,10 +267,14 @@ function prepareCleanReleaseSnapshot({ repoRoot, sha }) {
     cwd: repoRoot,
   });
   fs.rmSync(archivePath, { force: true });
-  const nodeModules = path.join(repoRoot, "node_modules");
-  const snapshotNodeModules = path.join(snapshotRoot, "node_modules");
-  if (fs.existsSync(nodeModules) && !fs.existsSync(snapshotNodeModules)) {
-    fs.symlinkSync(nodeModules, snapshotNodeModules, "dir");
+  // Root deps plus every sub-project the release CHECKS run in — `git archive`
+  // ships sources only, so an un-linked sub-project fails at `tsc: not found`.
+  for (const relative of ["", WORKSPACE_DIR]) {
+    const source = path.join(repoRoot, relative, "node_modules");
+    const target = path.join(snapshotRoot, relative, "node_modules");
+    if (fs.existsSync(source) && fs.existsSync(path.dirname(target)) && !fs.existsSync(target)) {
+      fs.symlinkSync(source, target, "dir");
+    }
   }
   return snapshotRoot;
 }
@@ -592,7 +605,7 @@ async function main() {
   const checksRun = [];
   let checksCached = false;
   if (!args.skipChecks) {
-    const cached = args.noCache
+    const marker = args.noCache
       ? null
       : readMarker({
           repoRoot: ROOT,
@@ -600,6 +613,12 @@ async function main() {
           sha: git.sha,
           maxAgeMs: CHECKS_CACHE_TTL_MS,
         });
+    // A marker written before a check was added to CHECKS proves nothing
+    // about that check, so treat a narrower cached set as a miss.
+    const cached =
+      marker && CHECKS.every(([name]) => (marker.checks || []).includes(name))
+        ? marker
+        : null;
     if (cached) {
       const ageMin = Math.round((Date.now() - cached._writtenAtMs) / 60000);
       console.log(
@@ -607,9 +626,24 @@ async function main() {
       );
       checksCached = true;
     } else {
-      for (const [name, command, commandArgs] of CHECKS) {
+      // A sub-project check is only meaningful with its own deps present, so
+      // fail loudly rather than skip — a silent skip is how the workspace went
+      // unchecked in the first place. Preflight all of them before the first
+      // check runs; discovering a missing install after ~10 minutes of root
+      // lint/test costs the operator the whole gate.
+      for (const [name, , , options] of CHECKS) {
+        if (!options?.cwd) continue;
+        if (fs.existsSync(path.join(releaseRoot, options.cwd, "node_modules"))) continue;
+        throw new Error(
+          `${name} cannot run: ${options.cwd}/node_modules is missing. Run \`npm ci --prefix ${options.cwd}\` first.`,
+        );
+      }
+      for (const [name, command, commandArgs, options] of CHECKS) {
+        const checkCwd = options?.cwd
+          ? path.join(releaseRoot, options.cwd)
+          : releaseRoot;
         console.log(`[release-cloudflare] running ${name}`);
-        run(command, commandArgs, { label: name, cwd: releaseRoot });
+        run(command, commandArgs, { label: name, cwd: checkCwd });
         checksRun.push(name);
       }
       // Only write the marker when we successfully ran the *full* CHECKS

@@ -12,26 +12,11 @@ import {
   saveSiteAdminPublicCalendarData,
 } from "@/lib/server/site-admin-calendar-public-service";
 import { isSiteAdminSourceConflictError } from "@/lib/server/site-admin-source-store";
-import { normalizePublicCalendarData } from "@/lib/shared/public-calendar";
-import type { ParseResult } from "@/lib/site-admin/request-types";
+import { parseSiteAdminCalendarPublicSaveCommand } from "@/lib/site-admin/calendar-public-commands";
 
 export const runtime = "nodejs";
 
 const RATE_LIMIT = { namespace: "site-admin-calendar-public" };
-
-type SaveCalendarCommand = {
-  data: ReturnType<typeof normalizePublicCalendarData>;
-  expectedFileSha?: string;
-};
-
-function parseSaveCommand(
-  raw: Record<string, unknown>,
-): ParseResult<SaveCalendarCommand> {
-  const data = normalizePublicCalendarData(raw.data ?? raw);
-  const expectedFileSha =
-    typeof raw.expectedFileSha === "string" ? raw.expectedFileSha : undefined;
-  return { ok: true, value: { data, expectedFileSha } };
-}
 
 export async function GET(req: NextRequest) {
   return withSiteAdminContext(
@@ -53,7 +38,10 @@ export async function POST(req: NextRequest) {
   return withSiteAdminContext(
     req,
     async (ctx) => {
-      const parsed = await readSiteAdminJsonCommand(req, parseSaveCommand);
+      const parsed = await readSiteAdminJsonCommand(
+        req,
+        parseSiteAdminCalendarPublicSaveCommand,
+      );
       if (!parsed.ok) return parsed.res;
       try {
         const saved = await saveSiteAdminPublicCalendarData(parsed.value);
@@ -75,7 +63,13 @@ export async function POST(req: NextRequest) {
         return apiPayloadOk({ sourceVersion, dbStatus });
       } catch (err: unknown) {
         if (isSiteAdminSourceConflictError(err)) {
-          return apiError(err.message, { status: 409, code: err.code });
+          // Hand back both shas (as /versions and /live already do) so the
+          // caller can re-read, merge and retry without a second round-trip.
+          return apiError(err.message, {
+            status: 409,
+            code: err.code,
+            extras: { expectedSha: err.expectedSha, currentSha: err.currentSha },
+          });
         }
         const msg = err instanceof Error ? err.message : String(err);
         return apiError(msg, { status: 400, code: "CALENDAR_PUBLIC_SAVE_FAILED" });

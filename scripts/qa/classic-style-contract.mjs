@@ -86,7 +86,7 @@ const CLASSIC_ROUTES = [
 const BLOG_RSS_LINK_BASELINE = {
   path: "/blog",
   name: "Blog RSS",
-  selector: 'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link',
+  selector: 'span[data-link-style="icon"] > a[href="/rss.xml"].notion-link.link',
   icon: true,
 };
 

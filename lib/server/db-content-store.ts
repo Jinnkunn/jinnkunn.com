@@ -188,6 +188,11 @@ export function createDbContentStore(config: DbContentStoreConfig): ContentStore
       }
     }
 
+    // Binary uploads (images, PDFs) are never diffed or restored from history,
+    // so keeping a full second copy of every version only grows D1 without
+    // buying anything. Text bodies still get their timeline.
+    if (isBinary) return { sha };
+
     // Append a row to content_files_history *after* the main upsert lands
     // so a failed upsert doesn't pollute the history timeline. Failures
     // here are non-fatal — the user-visible write already succeeded; we

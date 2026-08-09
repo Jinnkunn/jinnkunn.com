@@ -157,3 +157,27 @@ test("db-content-store: getActor stamps updated_by on writes", async () => {
   });
   assert.equal(result.rows[0]?.updated_by, "test-user");
 });
+
+// P2-32: history is a text-only timeline (listTextFileHistory /
+// readTextFileAtCommit). Mirroring binary uploads into it doubled the D1 cost
+// of every image save and nothing ever read the copy back.
+test("db-content-store: text writes are versioned, binary uploads are not", async () => {
+  const { client, store } = await makeStore();
+  await store.writeFile("posts/foo.mdx", "v1", { ifMatch: null });
+  await store.writeFile("posts/foo.mdx", "v2", { ifMatch: undefined });
+  await store.writeBinary("assets/logo.png", new Uint8Array([1, 2, 3, 4]), {
+    ifMatch: null,
+  });
+
+  const history = await client.execute({
+    sql: "SELECT rel_path FROM content_files_history ORDER BY id",
+  });
+  assert.deepEqual(
+    history.rows.map((row) => String(row.rel_path)),
+    ["posts/foo.mdx", "posts/foo.mdx"],
+  );
+
+  // The upload itself still lands in content_files.
+  const stored = await store.readBinary("assets/logo.png");
+  assert.deepEqual([...stored.data], [1, 2, 3, 4]);
+});

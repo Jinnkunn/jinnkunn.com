@@ -17,11 +17,13 @@
 //   node scripts/content/dump-content-from-db.mjs --remote --env=staging
 //   node scripts/content/dump-content-from-db.mjs --remote --env=production
 //   node scripts/content/dump-content-from-db.mjs --local --target=/tmp/dump-out
+//   node scripts/content/dump-content-from-db.mjs --remote --env=staging --prune
 
 import { spawn } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const ROOT = process.cwd();
 const BINDING = "SITE_ADMIN_DB";
@@ -44,18 +46,27 @@ function parseArgs() {
     // decide whether a sync PR is worth opening, instead of grepping
     // human-formatted lines that may shift over time.
     json: false,
+    // Delete content files that D1 no longer has a row for. Off by default:
+    // a bare dump is additive and safe to run against any tree, while a
+    // publish needs the target to *equal* D1 or deleted posts come back
+    // from whatever .mdx the checkout still carries.
+    prune: false,
+    // Report the prune plan without touching the filesystem.
+    dryRun: false,
   };
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith("--target=")) out.target = path.resolve(arg.slice(9));
     else if (arg === "--quiet") out.quiet = true;
     else if (arg === "--diff-only") out.diffOnly = true;
     else if (arg === "--json") out.json = true;
+    else if (arg === "--prune") out.prune = true;
+    else if (arg === "--dry-run") out.dryRun = true;
     else if (arg.startsWith("--env=")) out.passthrough.push(arg);
     else if (ALLOWED_PASSTHROUGH.has(arg)) out.passthrough.push(arg);
     else {
       console.error(`unknown arg: ${arg}`);
       console.error(
-        "usage: node scripts/content/dump-content-from-db.mjs [--local|--remote] [--env=staging|production] [--target=PATH] [--quiet] [--diff-only] [--json]",
+        "usage: node scripts/content/dump-content-from-db.mjs [--local|--remote] [--env=staging|production] [--target=PATH] [--quiet] [--diff-only] [--json] [--prune] [--dry-run]",
       );
       process.exit(2);
     }
@@ -121,8 +132,10 @@ async function main() {
 
   let written = 0;
   let skipped = 0;
+  const seenInDb = new Set();
   for (const row of rows) {
     const relPath = String(row.rel_path);
+    seenInDb.add(relPath);
     const bytes = Buffer.from(String(row.hex), "hex");
     const fullPath = path.join(args.target, relPath);
 
@@ -145,9 +158,87 @@ async function main() {
     written += 1;
     if (!args.quiet) console.log(`wrote ${relPath} (${bytes.byteLength}B)`);
   }
+
+  const pruned = args.prune
+    ? await pruneOrphanContentFiles({
+        dryRun: args.dryRun,
+        seenInDb,
+        target: args.target,
+      })
+    : [];
   console.log(
-    `dump done: written=${written} skipped=${skipped} total=${rows.length}`,
+    `dump done: written=${written} skipped=${skipped} pruned=${pruned.length}${
+      args.prune && args.dryRun ? " (dry-run)" : ""
+    } total=${rows.length}`,
   );
+}
+
+// `content/generated/*` is build-time output (scripts/build/prebuild.mjs) and
+// `content/local/*` is machine-local config; neither is ever in D1, so both
+// would be permanent false-positive orphans. Dot-entries are editor/OS junk
+// (.DS_Store) that the dump never owns either.
+function isPrunableContentRel(relPath) {
+  const rel = String(relPath || "");
+  if (!rel) return false;
+  const parts = rel.split("/");
+  if (parts.some((part) => part.startsWith("."))) return false;
+  return parts[0] !== "generated" && parts[0] !== "local";
+}
+
+async function walkContentFiles(target, relDir = "") {
+  const out = [];
+  let entries = [];
+  try {
+    entries = await readdir(path.join(target, relDir), { withFileTypes: true });
+  } catch (err) {
+    if (err && err.code !== "ENOENT") throw err;
+    return out;
+  }
+  for (const entry of entries) {
+    const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...(await walkContentFiles(target, rel)));
+    else if (entry.isFile()) out.push(rel);
+  }
+  return out;
+}
+
+// Everything under <target> the dump is allowed to consider its own.
+// `git ls-files` alone is not enough: the release path dumps into a tarball
+// snapshot under .cache/, which .gitignore excludes wholesale, so git reports
+// nothing there and the orphans that resurrect deleted posts stay invisible.
+// Walking picks those up; the git listing still contributes for a plain
+// working-tree dump where a file may be tracked but momentarily absent.
+async function listContentCandidates(target) {
+  const candidates = new Set(await walkContentFiles(target));
+  try {
+    for (const relPath of await runGitLsFiles(target)) candidates.add(relPath);
+  } catch {
+    // git unavailable; the walk above is still a complete view of disk
+  }
+  return [...candidates].filter(isPrunableContentRel).sort();
+}
+
+export async function findOrphanContentFiles({ target, seenInDb }) {
+  const candidates = await listContentCandidates(target);
+  return candidates.filter((relPath) => !seenInDb.has(relPath));
+}
+
+// Deletions are logged even under --quiet: --quiet exists to silence the
+// per-file write chatter of a routine dump, and losing a file from the tree
+// is the one thing an operator reading a publish log needs to see.
+export async function pruneOrphanContentFiles({ target, seenInDb, dryRun = false }) {
+  // An empty (or failed-to-parse) result set would make every file on disk an
+  // orphan and empty content/ in one pass. D1 having no content rows at all is
+  // an infrastructure fault, never an editorial decision.
+  if (seenInDb.size === 0) {
+    throw new Error("refusing to prune content/: D1 returned no content_files rows");
+  }
+  const orphans = await findOrphanContentFiles({ target, seenInDb });
+  for (const relPath of orphans) {
+    if (!dryRun) await rm(path.join(target, relPath), { force: true });
+    console.log(`${dryRun ? "would prune" : "pruned"} ${relPath} (not in D1)`);
+  }
+  return orphans;
 }
 
 // `--diff-only` walks the same dump payload but writes nothing — instead
@@ -184,26 +275,12 @@ async function runDiffOnly(args, rows) {
     }
   }
 
-  // Files in the working tree that D1 doesn't know about. Walking the
-  // filesystem would over-report (caches, etc.); rely on `git ls-files`
-  // so we only report tracked files. If git isn't available, skip
-  // removed-detection rather than crash — the staging→git diff still
-  // captures the more useful add/modify dimension.
-  const removed = [];
-  try {
-    const tracked = await runGitLsFiles(args.target);
-    for (const relPath of tracked) {
-      if (seenInDb.has(relPath)) continue;
-      // `content/generated/*` is build-time output, written by
-      // scripts/build/prebuild.mjs and committed for production parity. It
-      // is intentionally never in D1, so reporting it as "drift"
-      // would be a false positive every single run.
-      if (relPath.startsWith("generated/")) continue;
-      removed.push({ relPath });
-    }
-  } catch {
-    // git unavailable; leave `removed` empty
-  }
+  // Files in the target that D1 doesn't know about — the same set `--prune`
+  // deletes, so `--diff-only --json` is an honest preview of a pruning dump.
+  const removed = (await findOrphanContentFiles({
+    seenInDb,
+    target: args.target,
+  })).map((relPath) => ({ relPath }));
 
   const result = {
     target: path.relative(ROOT, args.target),
@@ -238,16 +315,19 @@ async function runDiffOnly(args, rows) {
     );
   }
   for (const entry of removed) {
-    console.log(`  - ${entry.relPath}  (in git, not in D1)`);
+    console.log(`  - ${entry.relPath}  (on disk, not in D1)`);
   }
 }
 
 function runGitLsFiles(target) {
   const relTarget = path.relative(ROOT, target) || ".";
   return new Promise((resolve, reject) => {
+    // -z: without it git quotes and backslash-escapes any path outside plain
+    // ASCII, which would never match D1's rel_path and would show up as a
+    // phantom orphan the moment a post filename carries an accent or CJK.
     const proc = spawn(
       "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard", "--", relTarget],
+      ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", relTarget],
       { cwd: ROOT, env: process.env },
     );
     let stdout = "";
@@ -263,7 +343,7 @@ function runGitLsFiles(target) {
         return reject(new Error(`git ls-files exited ${code}: ${stderr}`));
       }
       const files = stdout
-        .split(/\r?\n/)
+        .split("\0")
         .filter(Boolean)
         // git ls-files reports paths relative to repo root; the dump
         // wrote them as <relTarget>/<relPath>. Strip the prefix so we
@@ -281,7 +361,9 @@ function runGitLsFiles(target) {
   });
 }
 
-main().catch((err) => {
-  console.error(err?.stack || String(err));
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((err) => {
+    console.error(err?.stack || String(err));
+    process.exit(1);
+  });
+}

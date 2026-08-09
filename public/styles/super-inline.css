@@ -82,6 +82,10 @@ a[data-link-style="icon"][href="/blog"].notion-link.link:before {
   box-shadow: none;
 }
 
+/* `/blog.rss` stays listed alongside the live `/rss.xml` so any older
+   content still carrying the retired static-feed href keeps its icon. */
+span[data-link-style="icon"] > a[href="/rss.xml"].notion-link.link:before,
+a[data-link-style="icon"][href="/rss.xml"].notion-link.link:before,
 span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link:before,
 a[data-link-style="icon"][href="/blog.rss"].notion-link.link:before {
   background-image: url(/web_image/rss.svg);

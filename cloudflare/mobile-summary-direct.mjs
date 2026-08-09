@@ -191,6 +191,16 @@ function str(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function jsonObject(value) {
+  if (typeof value !== "string" || !value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 async function bodyToText(value) {
   if (typeof value === "string") return value;
   if (value instanceof ArrayBuffer) return textDecoder().decode(value);
@@ -303,7 +313,10 @@ function mapJob(row) {
     phase: str(row.phase),
     createdAt: num(row.created_at),
     updatedAt: num(row.updated_at),
+    claimedAt: row.claimed_at == null ? null : num(row.claimed_at),
+    startedAt: row.started_at == null ? null : num(row.started_at),
     finishedAt: row.finished_at == null ? null : num(row.finished_at),
+    result: jsonObject(row.result_json),
     error: str(row.error),
   };
 }
@@ -317,17 +330,18 @@ function mapRunner(row) {
   };
 }
 
-async function releaseSummary(database, liveDatabase) {
+async function releaseSummary(database, liveDatabase, releaseDatabase = database) {
   const [jobs, runners, overlayCount, stagingNowSha, liveNowSha] = await Promise.all([
     all(
-      database,
-      `SELECT id, action, script, target, status, phase, created_at, updated_at, finished_at, error
+      releaseDatabase,
+      `SELECT id, action, script, target, status, phase, created_at, updated_at,
+              claimed_at, started_at, finished_at, result_json, error
          FROM release_jobs
         ORDER BY updated_at DESC
-        LIMIT 5`,
+        LIMIT 30`,
     ).then((rows) => rows.map(mapJob)),
     all(
-      database,
+      releaseDatabase,
       `SELECT agent_id, status, current_job_id, last_seen_at
          FROM release_agents
         ORDER BY last_seen_at DESC
@@ -337,7 +351,12 @@ async function releaseSummary(database, liveDatabase) {
     nowSha(database),
     liveDatabase ? nowSha(liveDatabase) : Promise.resolve(""),
   ]);
-  const runningJob = jobs.find((job) => job.status === "queued" || job.status === "running") || null;
+  const runningJob =
+    jobs.find((job) => job.status === "running") ||
+    jobs
+      .filter((job) => job.status === "queued")
+      .sort((a, b) => a.createdAt - b.createdAt)[0] ||
+    null;
   if (
     !runningJob &&
     stagingNowSha &&
@@ -402,12 +421,13 @@ export async function handleMobileSummaryRequest(request, env) {
     return json({ ok: false, error: "Server misconfigured: missing SITE_ADMIN_DB", code: "MISCONFIGURED" }, { status: 500 });
   }
   const liveDatabase = db(env, "SITE_ADMIN_DB_LIVE");
+  const releaseDatabase = db(env, "SITE_ADMIN_RELEASE_DB") || database;
 
   const [now, content, calendar, release, latestContentSha] = await Promise.all([
     readNow(database),
     contentCounts(database),
     calendarSummary(database),
-    releaseSummary(database, liveDatabase),
+    releaseSummary(database, liveDatabase, releaseDatabase),
     contentSha(database),
   ]);
   const envName = inferEnvironment(request.url, env) || "";

@@ -158,7 +158,7 @@ fn normalize_path(input: &str) -> String {
 /// connection reuse and — worse — NO timeout, so a hung edge would await
 /// forever. `redirect::none` keeps a 30x from bouncing our credentials to an
 /// attacker-controlled Location.
-fn http_client() -> &'static reqwest::Client {
+pub(crate) fn http_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -173,7 +173,7 @@ fn http_client() -> &'static reqwest::Client {
 /// Only the production/staging site (over https) and a local dev server may
 /// receive the Site Admin bearer token / Cloudflare Access secret. This stops
 /// a mis-set or attacker-influenced base_url from exfiltrating credentials.
-fn is_trusted_admin_host(url: &reqwest::Url) -> bool {
+pub(crate) fn is_trusted_admin_host(url: &reqwest::Url) -> bool {
     // host_str() returns IPv6 literals bracketed ("[::1]") and may carry a
     // valid FQDN trailing dot ("jinkunchen.com."); normalize both before
     // matching so legitimate local-dev / FQDN forms aren't wrongly refused.

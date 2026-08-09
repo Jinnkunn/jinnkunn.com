@@ -15,6 +15,14 @@ fallthrough = true
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
+# `/__static/*` is an INTERNAL implementation detail: the Worker fetches these
+# prerendered shells through `env.ASSETS.fetch()` after running the protected
+# route check in cloudflare/worker-entry.mjs. Without this, the asset server
+# answers `/__static/<path>` directly, before the Worker ever runs, which lets
+# anyone read a password-protected page by prefixing its path with `/__static`.
+# `run_worker_first` forces those requests through the Worker, which rejects
+# them (internal `env.ASSETS.fetch()` calls do not re-enter the Worker).
+run_worker_first = ["/__static/*"]
 
 [[r2_buckets]]
 binding = "SITE_ASSETS"
@@ -35,12 +43,23 @@ database_id = "019ccb92-d904-4a66-b25e-4e208b0c6b2c"
 SITE_ADMIN_STORAGE = "local"
 MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com"
 
+# Without this, `wrangler tail` is the only way to see anything and nothing is
+# retained — a failed deploy or a 1102 leaves no trace to look at afterwards.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [env.staging]
 name = "jinnkunn-site-staging"
 # Disabled so the worker is only reachable via `staging.jinkunchen.com`,
 # which is gated by Cloudflare Access (one-time PIN, allow list of one).
 # The `*.workers.dev` hostname would otherwise bypass Access entirely.
 workers_dev = false
+
+# Environments do not inherit the top-level `[observability]`, so repeat it.
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1
 
 [env.staging.vars]
 # Both ContentStore (posts/pages/blob) and SiteAdminSourceStore
@@ -121,6 +140,11 @@ database_id = "d48dd516-1a2c-4769-a678-8acab485cf11"
 [env.production]
 name = "jinnkunn-site"
 
+# Environments do not inherit the top-level `[observability]`, so repeat it.
+[env.production.observability]
+enabled = true
+head_sampling_rate = 1
+
 [env.production.vars]
 SITE_ADMIN_STORAGE = "db"
 SITE_ADMIN_REPO_BRANCH = "main"
@@ -150,6 +174,14 @@ preview_bucket_name = "jinnkunn"
 binding = "SITE_ADMIN_DB"
 database_name = "jinnkunn-content"
 database_id = "d48dd516-1a2c-4769-a678-8acab485cf11"
+
+[[env.production.d1_databases]]
+# Release jobs use the shared staging control-plane queue. The Mac mini
+# runner has one hardened API origin and can therefore claim staging and
+# production actions without polling two independent databases.
+binding = "SITE_ADMIN_RELEASE_DB"
+database_name = "jinnkunn-content-staging"
+database_id = "adb6f272-f7e6-471a-9c22-b257184b3adf"
 
 [[env.production.routes]]
 pattern = "jinkunchen.com/*"

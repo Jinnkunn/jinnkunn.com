@@ -142,6 +142,23 @@
   background: var(--ds-success-bg);
 }
 
+/* The visibility pill is the fastest way to publish or unpublish a document,
+   so it is a control rather than a read-only badge. */
+button.statusPill {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+button.statusPill:hover:not(:disabled) {
+  border-color: var(--ds-border-strong, var(--ds-border-subtle));
+}
+
+button.statusPill:disabled {
+  cursor: default;
+}
+
 .cardTitle {
   margin: 0;
   color: var(--ds-text-primary);
@@ -1121,6 +1138,131 @@
   gap: 8px;
   margin-left: auto;
   flex-wrap: wrap;
+}
+
+.publishingProgress {
+  display: grid;
+  flex: 1 0 100%;
+  min-width: 0;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--ds-info-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-elevated);
+}
+
+.publishingProgress[data-runner="offline"] {
+  border-color: var(--ds-warning-border);
+  background: var(--ds-warning-bg);
+}
+
+.publishingProgressHeader,
+.publishingProgressHeader > div,
+.publishingProgressMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.publishingProgressHeader {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.publishingProgressHeader > div {
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+
+.publishingProgressHeader strong {
+  color: var(--ds-text-primary);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.publishingProgressHeader span,
+.publishingProgressHeader small,
+.publishingProgressMeta {
+  color: var(--ds-text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.publishingProgressHeader small {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.publishingProgressTrack {
+  position: relative;
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-surface-soft);
+  box-shadow: inset 0 0 0 1px var(--ds-border-subtle);
+}
+
+.publishingProgressValue {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ds-accent);
+  transition: width 240ms ease;
+}
+
+.publishingProgress[data-runner="offline"] .publishingProgressValue {
+  background: var(--ds-warning-text);
+}
+
+.publishingProgressTrack[data-indeterminate="true"] .publishingProgressValue {
+  width: 34%;
+  animation: publishingProgressSweep 1.5s ease-in-out infinite;
+}
+
+.publishingProgressMeta {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.publishingProgressMeta span:first-child {
+  min-width: 0;
+}
+
+.publishingProgressMeta span:last-child {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.publishingProgress[data-compact="true"] {
+  padding: 10px;
+}
+
+.publishingProgress[data-compact="true"] .publishingProgressMeta span:last-child {
+  display: none;
+}
+
+@keyframes publishingProgressSweep {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(310%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .publishingProgressValue {
+    transition: none;
+  }
+
+  .publishingProgressTrack[data-indeterminate="true"] .publishingProgressValue {
+    width: 48%;
+    animation: none;
+    transform: none;
+  }
 }
 
 .inspectorSection {
@@ -2522,6 +2664,36 @@
   text-transform: uppercase;
 }
 
+/* Placeholder rows for the first load, so an empty list never reads as
+   "there is nothing here" while the request is still in flight. */
+.contentIndexSkeleton {
+  height: 46px;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--ds-surface-soft) 25%,
+    var(--ds-border-subtle) 37%,
+    var(--ds-surface-soft) 63%
+  );
+  background-size: 400% 100%;
+  animation: contentIndexShimmer 1.4s ease infinite;
+}
+
+@keyframes contentIndexShimmer {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentIndexSkeleton {
+    animation: none;
+  }
+}
+
 .contentIndexEmpty {
   padding: 48px 12px;
   color: var(--ds-text-secondary);
@@ -2642,6 +2814,13 @@
 
   .heroActions :global(.ds-button) {
     flex: 1 1 auto;
+  }
+
+  .publishingProgressHeader,
+  .publishingProgressMeta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
   }
 
   .summaryGrid,

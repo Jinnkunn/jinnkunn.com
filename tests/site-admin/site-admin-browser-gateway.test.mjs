@@ -10,6 +10,15 @@ test("site-admin browser gateway route exists and is auth gated", () => {
   assert.ok(source.includes("/api/auth/signin"));
 });
 
+test("site-admin browser summary keeps cookie sessions on the Next auth path", () => {
+  const worker = fs.readFileSync("cloudflare/worker-entry.mjs", "utf8");
+  assert.match(worker, /authorization[\s\S]*\^Bearer\\s\+\\S\+/);
+  assert.match(
+    worker,
+    /\/api\/site-admin\/mobile\/summary[\s\S]*authorization[\s\S]*handleMobileSummaryRequest/,
+  );
+});
+
 test("site-admin browser gateway renders the unified content workspace", () => {
   const pageSource = fs.readFileSync("app/site-admin/page.tsx", "utf8");
   const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
@@ -78,7 +87,7 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("frontmatterKeys"));
   assert.ok(source.includes("contentSavedAt"));
   assert.ok(source.includes("Unsaved edits"));
-  assert.ok(source.includes("Ready to publish"));
+  assert.ok(source.includes("Publish live when you are ready"));
   assert.ok(source.includes("Save first"));
   assert.ok(source.includes("editorTitleGrid"));
   assert.ok(source.includes("editorDetails"));
@@ -99,6 +108,11 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("moveSelectedContent"));
   assert.ok(source.includes("localDraftKey"));
   assert.ok(source.includes("releaseWatchUntil"));
+  assert.ok(source.includes("/api/site-admin/release-jobs?limit=30"));
+  assert.ok(source.includes("buildSiteAdminReleaseProgress"));
+  assert.ok(source.includes("SiteAdminPublishingProgress"));
+  assert.ok(source.includes("Runner offline"));
+  assert.ok(source.includes("release runner did not wake"));
   assert.ok(source.includes("saveSelectedContentRef"));
   assert.ok(source.includes("quiet: true"));
   assert.ok(source.includes("newerLocalEdits"));
@@ -139,6 +153,10 @@ test("site-admin content management includes recovery, media, settings, and vers
   const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
   const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
   const versions = fs.readFileSync("app/api/site-admin/versions/route.ts", "utf8");
+  // The path allowlist moved out of the route into lib/site-admin/version-path.ts
+  // so it can derive from the post/page slug validators (the inline regex
+  // capped slugs at 80 chars and had no room for hierarchical page slugs).
+  const versionPath = fs.readFileSync("lib/site-admin/version-path.ts", "utf8");
 
   assert.ok(source.includes("SiteAdminMediaLibrary"));
   assert.ok(source.includes("SiteAdminSettingsPanel"));
@@ -153,7 +171,8 @@ test("site-admin content management includes recovery, media, settings, and vers
   assert.ok(css.includes(".assetGrid"));
   assert.ok(css.includes(".versionCompareGrid"));
   assert.ok(css.includes(".settingsNavRow"));
-  assert.match(versions, /content\\\/components\\\//);
+  assert.ok(versions.includes("normalizeSiteAdminVersionPath"));
+  assert.match(versionPath, /content\\\/\(posts\|pages\|components\)\\\//);
   assert.ok(versions.includes("commitSha"));
 });
 

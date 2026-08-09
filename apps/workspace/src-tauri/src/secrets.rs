@@ -104,6 +104,29 @@ fn keychain_store_delete(key: &str) -> Result<(), String> {
     }
 }
 
+/// Backend-aware read for in-process callers (e.g. the MCP status panel).
+/// Going straight to `secure_values` would report "not signed in" forever on
+/// a release build, where the credential actually lives in the keychain.
+pub(crate) fn read_secret(app: &tauri::AppHandle, key: &str) -> Result<Option<String>, String> {
+    let normalized_key = normalize_store_key(key)?;
+    match selected_backend() {
+        SecretBackend::Keychain => keychain_store_get(&normalized_key),
+        SecretBackend::LocalDb => {
+            let conn = local_db::open(app)?;
+            local_store_get(&conn, &normalized_key)
+        }
+    }
+}
+
+/// Stable label for the active backend, surfaced in the MCP status panel so
+/// an operator can tell where the server will look for credentials.
+pub(crate) fn active_backend_label() -> &'static str {
+    match selected_backend() {
+        SecretBackend::Keychain => "keychain",
+        SecretBackend::LocalDb => "local-db",
+    }
+}
+
 #[tauri::command]
 pub fn secure_store_set(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
     let normalized_key = normalize_store_key(&key)?;
@@ -142,11 +165,7 @@ pub fn secure_store_delete(app: tauri::AppHandle, key: String) -> Result<(), Str
 
 #[tauri::command]
 pub fn secure_store_backend() -> Result<String, String> {
-    Ok(match selected_backend() {
-        SecretBackend::Keychain => "keychain",
-        SecretBackend::LocalDb => "local-db",
-    }
-    .to_string())
+    Ok(active_backend_label().to_string())
 }
 
 #[cfg(test)]

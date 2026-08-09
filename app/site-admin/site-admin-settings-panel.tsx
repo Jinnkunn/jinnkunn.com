@@ -1,17 +1,29 @@
 "use client";
 
+import { useEffect } from "react";
+
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
 import { StatusNotice } from "@/components/ui/status-notice";
+import { SiteAdminSettingsForm } from "@/components/site-admin/config/settings-form";
 import { useSiteAdminConfigData } from "@/components/site-admin/config/use-config-data";
 import type { NavItemRow } from "@/components/site-admin/config/types";
+import formStyles from "@/components/site-admin/config/settings-form.module.css";
 import styles from "./site-admin-dashboard.module.css";
 
-export function SiteAdminSettingsPanel() {
+export function SiteAdminSettingsPanel({
+  onDirtyChange,
+}: {
+  /** Lets the console include the settings draft in its unsaved-changes guard. */
+  onDirtyChange?: (dirty: boolean) => void;
+} = {}) {
   const {
     busy,
     err,
     nav,
     draftSettings,
+    settingsDirty,
+    settingsSavedAt,
     navDraft,
     setDraftSettings,
     saveSettings,
@@ -20,6 +32,11 @@ export function SiteAdminSettingsPanel() {
     addNavRow,
   } = useSiteAdminConfigData();
 
+  useEffect(() => {
+    onDirtyChange?.(settingsDirty);
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange, settingsDirty]);
+
   function navValue<K extends keyof NavItemRow>(row: NavItemRow, key: K): NavItemRow[K] {
     return (navDraft[row.rowId]?.[key] as NavItemRow[K] | undefined) ?? row[key];
   }
@@ -27,71 +44,33 @@ export function SiteAdminSettingsPanel() {
   return (
     <section className={styles.settingsWorkspace}>
       {err ? <StatusNotice tone="danger">{err}</StatusNotice> : null}
+      {!err && settingsSavedAt && !settingsDirty ? (
+        <StatusNotice tone="success">Settings saved.</StatusNotice>
+      ) : null}
       <div className={styles.settingsSection}>
         <div className={styles.settingsHeader}>
           <div>
             <h2 className={styles.panelTitle}>Site identity</h2>
-            <p className={styles.cardText}>Core metadata used by the public site and search previews.</p>
+            <p className={styles.cardText}>
+              Core metadata, analytics, and sitemap policy used by the public site and
+              search previews.
+            </p>
           </div>
-          <Button onClick={() => void saveSettings()} tone="accent" size="sm" disabled={busy || !draftSettings}>
-            Save settings
-          </Button>
+          <span className={styles.statusPill} data-state={settingsDirty ? "smart-release" : "noop"}>
+            {settingsDirty ? "Unsaved edits" : "Saved"}
+          </span>
         </div>
         {draftSettings ? (
-          <div className={styles.settingsGrid}>
-            <label className={styles.fieldLabel}>
-              Site name
-              <input
-                className={styles.textField}
-                value={draftSettings.siteName}
-                onChange={(event) =>
-                  setDraftSettings((current) => current ? { ...current, siteName: event.target.value } : current)
-                }
-              />
-            </label>
-            <label className={styles.fieldLabel}>
-              Language
-              <input
-                className={styles.textField}
-                value={draftSettings.lang}
-                onChange={(event) =>
-                  setDraftSettings((current) => current ? { ...current, lang: event.target.value } : current)
-                }
-              />
-            </label>
-            <label className={styles.fieldLabel}>
-              SEO title
-              <input
-                className={styles.textField}
-                value={draftSettings.seoTitle}
-                onChange={(event) =>
-                  setDraftSettings((current) => current ? { ...current, seoTitle: event.target.value } : current)
-                }
-              />
-            </label>
-            <label className={styles.fieldLabel}>
-              OG image
-              <input
-                className={styles.textField}
-                value={draftSettings.ogImage}
-                onChange={(event) =>
-                  setDraftSettings((current) => current ? { ...current, ogImage: event.target.value } : current)
-                }
-              />
-            </label>
-            <label className={`${styles.fieldLabel} ${styles.settingsWideField}`}>
-              SEO description
-              <textarea
-                className={styles.inspectorTextarea}
-                value={draftSettings.seoDescription}
-                onChange={(event) =>
-                  setDraftSettings((current) => current ? { ...current, seoDescription: event.target.value } : current)
-                }
-              />
-            </label>
+          <div className={formStyles.host}>
+            <SiteAdminSettingsForm
+              draftSettings={draftSettings}
+              busy={busy || !settingsDirty}
+              setDraftSettings={setDraftSettings}
+              onSaveSettings={() => void saveSettings()}
+            />
           </div>
         ) : (
-          <p className={styles.listEmpty}>Loading settings…</p>
+          <LoadingState label="Loading settings…" />
         )}
       </div>
 

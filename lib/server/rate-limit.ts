@@ -105,9 +105,35 @@ export function resetRateLimitForTests(): void {
   g.__rateLimitNamespaces = new Map();
 }
 
+/**
+ * Resolve the bucket key for a request.
+ *
+ * `x-forwarded-for` is client-writable: Cloudflare *appends* the real
+ * peer to whatever the client sent rather than replacing the header, so
+ * the leading segments are attacker-chosen and would let a caller hop
+ * buckets at will. Prefer the headers the edge sets itself
+ * (`cf-connecting-ip`, then `true-client-ip`), and when falling back to
+ * `x-forwarded-for` take the LAST segment — the one appended by the
+ * closest trusted proxy. Local dev, where none of these exist, keeps the
+ * previous `x-real-ip` / "unknown" behaviour.
+ */
 export function requestIpFromHeaders(headers: Headers): string {
+  const cfConnectingIp = String(headers.get("cf-connecting-ip") || "").trim();
+  if (cfConnectingIp) return cfConnectingIp;
+
+  const trueClientIp = String(headers.get("true-client-ip") || "").trim();
+  if (trueClientIp) return trueClientIp;
+
   const forwardedFor = String(headers.get("x-forwarded-for") || "").trim();
-  if (forwardedFor) return forwardedFor.split(",")[0]?.trim() || "unknown";
+  if (forwardedFor) {
+    const segments = forwardedFor
+      .split(",")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    const last = segments[segments.length - 1];
+    if (last) return last;
+  }
+
   const realIp = String(headers.get("x-real-ip") || "").trim();
   if (realIp) return realIp;
   return "unknown";

@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 
+import { SiteAdminStatusPanel } from "@/components/site-admin/status/panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { LoadingState } from "@/components/ui/loading-state";
 import { StatusNotice } from "@/components/ui/status-notice";
 import type {
   SiteAdminHomeData,
@@ -18,6 +20,20 @@ import {
   type SiteComponentName,
 } from "@/lib/site-admin/component-registry";
 import type { SiteAdminMobileSummary } from "@/lib/site-admin/mobile-summary";
+import {
+  contentListPlaceholder,
+  contentSaveEffects,
+  countLabel,
+  createSelectionGate,
+  liveSyncStatus,
+  visibilityLabel,
+} from "./site-admin-console-model";
+import {
+  buildSiteAdminReleaseProgress,
+  selectActiveReleaseJob,
+  type SiteAdminReleaseJobLike,
+  type SiteAdminReleaseRunnerLike,
+} from "@/lib/site-admin/release-progress";
 import {
   SiteAdminConflictDialog,
   type SiteAdminConflict,
@@ -74,6 +90,7 @@ import {
   type SiteAdminAsset,
 } from "./site-admin-media-library";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
+import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
 import { SiteAdminVersionHistory } from "./site-admin-version-history";
 import styles from "./site-admin-dashboard.module.css";
@@ -100,6 +117,22 @@ type NowPayload = {
 
 type SummaryPayload = {
   summary: SiteAdminMobileSummary;
+};
+
+type ReleaseJobsPayload = {
+  jobs: SiteAdminReleaseJobLike[];
+  runners: {
+    agents: SiteAdminReleaseRunnerLike[];
+    queuedCount: number;
+    runningCount: number;
+  };
+};
+
+type ReleaseWakePayload = {
+  configured: boolean;
+  ok: boolean;
+  status: number;
+  error: string;
 };
 
 type PageListItem = {
@@ -290,10 +323,10 @@ function formatValue(value: string | undefined) {
   return trimmed || "Not available";
 }
 
-function formatWhen(value: string | undefined) {
+function formatWhen(value: string | number | undefined) {
   if (!value) return "Not available";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -394,6 +427,7 @@ function sourceForNewContent(input: {
   description: string;
   date: string;
   body: string;
+  visible: boolean;
 }) {
   const title = input.title.trim() || (input.kind === "posts" ? "Untitled Post" : "Untitled Page");
   const description = input.description.trim();
@@ -403,7 +437,7 @@ function sourceForNewContent(input: {
     `title: ${frontmatterString(title)}`,
     ...(input.kind === "posts" ? [`date: ${input.date || todayInHalifax()}`] : []),
     `description: ${frontmatterString(description)}`,
-    "draft: true",
+    `draft: ${input.visible ? "false" : "true"}`,
     "---",
     "",
     body,
@@ -731,10 +765,18 @@ export function SiteAdminWebConsole({
   const [createDescription, setCreateDescription] = useState("");
   const [createDate, setCreateDate] = useState(todayInHalifax());
   const [createBody, setCreateBody] = useState(DEFAULT_CREATE_BODY);
+  // New content starts hidden, but the author can say otherwise up front
+  // instead of hunting for the toggle in the Inspector afterwards.
+  const [createVisible, setCreateVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Separate from `saving`: only mutations that replace the document under the
+  // editor (delete, rename, conflict resolve, version restore) may lock it.
+  const [blockingMutation, setBlockingMutation] = useState(false);
   const [releaseSaving, setReleaseSaving] = useState(false);
   const [releaseWatchUntil, setReleaseWatchUntil] = useState(0);
+  const [releaseActivity, setReleaseActivity] =
+    useState<ReleaseJobsPayload | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [assetPickerTarget, setAssetPickerTarget] = useState<"cover" | "ogImage" | null>(null);
   const [conflict, setConflict] = useState<(SiteAdminConflict & {
@@ -744,6 +786,19 @@ export function SiteAdminWebConsole({
   const [notice, setNotice] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [pendingPublishCount, setPendingPublishCount] = useState(0);
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [releaseJobs, setReleaseJobs] = useState<SiteAdminReleaseJobLike[] | null>(
+    null,
+  );
+  const [releaseJobsError, setReleaseJobsError] = useState("");
+  // One token per opened document. Every await in the load/save paths rechecks
+  // it so a response for document A can never be written into document B.
+  const selectionGateRef = useRef(createSelectionGate());
+  // The document whose detail GET is in flight, so a repeat click on the same
+  // row is dropped without also dropping a click on a different row.
+  const selectionLoadingRef = useRef("");
   const selectedSourceDraftRef = useRef("");
   const saveSelectedContentRef = useRef<
     (options?: { quiet?: boolean }) => Promise<void>
@@ -859,6 +914,36 @@ export function SiteAdminWebConsole({
   const componentSaveBlocked = selectedComponentIssues.length > 0;
   const release = summary?.release;
   const source = summary?.source;
+  const activityReleaseJob = useMemo(
+    () => (releaseActivity ? selectActiveReleaseJob(releaseActivity.jobs) : null),
+    [releaseActivity],
+  );
+  const activeReleaseJob = releaseActivity
+    ? activityReleaseJob
+    : release?.runningJob ?? null;
+  const activeReleaseJobs = releaseActivity?.jobs ??
+    [release?.runningJob, release?.latestJob].filter(
+      (job): job is SiteAdminReleaseJobLike => Boolean(job),
+    );
+  const activeReleaseRunners =
+    releaseActivity?.runners.agents ?? release?.runners ?? [];
+  const summaryGeneratedAt = Date.parse(summary?.generatedAt || "");
+  const activeReleaseUpdatedAt = Number(
+    activeReleaseJob?.updatedAt || activeReleaseJob?.createdAt || 0,
+  );
+  const releaseProgressNow = releaseActivity
+    ? Date.now()
+    : Number.isFinite(summaryGeneratedAt)
+      ? summaryGeneratedAt
+      : activeReleaseUpdatedAt;
+  const releaseProgress = activeReleaseJob
+    ? buildSiteAdminReleaseProgress({
+        job: activeReleaseJob,
+        jobs: activeReleaseJobs,
+        runners: activeReleaseRunners,
+        now: Number.isFinite(releaseProgressNow) ? releaseProgressNow : 0,
+      })
+    : release?.progress ?? null;
   const areaTitle =
     area === "media"
       ? "Media"
@@ -894,7 +979,7 @@ export function SiteAdminWebConsole({
   const homeDirty = Boolean(home && `${homeTitle}\n${homeBody}` !== homeBaseline);
   const nowComparable = `${nowText}\n${nowContext}\n${nowLocation}\n${nowDate}`;
   const nowDirty = Boolean(now && nowComparable !== nowBaseline);
-  const hasUnsavedChanges = selectedDirty || homeDirty || nowDirty;
+  const hasUnsavedChanges = selectedDirty || homeDirty || nowDirty || settingsDirty;
   const slugDirty = Boolean(
     selected &&
       (selected.kind === "posts" || selected.kind === "pages") &&
@@ -902,9 +987,25 @@ export function SiteAdminWebConsole({
       slugDraft.trim() !== selected.id,
   );
   const releaseActionKind = release?.recommendedAction.kind;
-  const releaseNeedsPublish = releaseActionKind === "smart-release";
-  const releaseIsRunning = releaseActionKind === "watch-release";
+  const releaseIsRunning =
+    Boolean(activeReleaseJob) ||
+    (!releaseActivity && releaseActionKind === "watch-release");
+  const releaseIsQueued = activeReleaseJob?.status === "queued";
+  const releaseRunnerOffline =
+    releaseIsQueued && releaseProgress?.runnerState === "offline";
   const releaseUnavailable = releaseActionKind === "refresh" || !release?.recommendedAction;
+  // Autosave deliberately stops at the draft, so the console has to count the
+  // saves itself rather than wait for the release summary to notice them.
+  const liveSync = liveSyncStatus({
+    releaseActionKind,
+    pendingSaves: pendingPublishCount,
+    releaseRunning: releaseIsRunning,
+  });
+  const publishBlocked =
+    releaseSaving ||
+    releaseIsRunning ||
+    (liveSync.state !== "pending" &&
+      (releaseActionKind === "noop" || releaseUnavailable));
   const draftStatusState = saving
     ? "saving"
     : componentSaveBlocked
@@ -921,22 +1022,24 @@ export function SiteAdminWebConsole({
       : "Saved";
   const liveStatusState = selectedDirty
     ? "blocked"
+    : releaseRunnerOffline
+      ? "blocked"
     : releaseIsRunning
       ? "saving"
-      : releaseNeedsPublish
+      : liveSync.state === "pending"
         ? "smart-release"
-        : releaseActionKind === "noop"
+        : liveSync.state === "live"
           ? "noop"
           : "blocked";
   const liveStatusLabel = selectedDirty
     ? "Save before publishing"
+    : releaseRunnerOffline
+      ? "Runner offline"
+    : releaseIsQueued
+      ? "Queued"
     : releaseIsRunning
       ? "Publishing"
-      : releaseNeedsPublish
-        ? "Ready to publish"
-        : releaseActionKind === "noop"
-          ? "Live current"
-          : "Publish unavailable";
+      : liveSync.label;
   const editorStatusHint = componentSaveBlocked
     ? `Fix ${selectedComponentIssues.length} validation ${
         selectedComponentIssues.length === 1 ? "issue" : "issues"
@@ -945,18 +1048,23 @@ export function SiteAdminWebConsole({
     ? localAutosaveAt
       ? `Recovery copy saved ${formatWhen(localAutosaveAt)}. Save before publishing.`
       : "Unsaved edits are protected in this browser until saved."
-    : releaseNeedsPublish
-      ? release?.detail || "Saved content is ahead of the live site."
+    : releaseIsRunning && releaseProgress
+      ? releaseProgress.detail
+    : liveSync.state === "pending"
+      ? contentSavedAt
+        ? `Saved ${formatWhen(contentSavedAt)}. ${liveSync.label} — use Publish live when you are ready.`
+        : release?.detail || "Saved content is ahead of the live site."
       : contentSavedAt
         ? `Saved ${formatWhen(contentSavedAt)}. ${release?.detail || ""}`.trim()
         : release?.headline || "Publish status unavailable";
+  const selectedVisibility = visibilityLabel(contentForm.draft);
   const publishButtonLabel = releaseSaving
     ? "Starting"
     : selectedDirty
       ? "Save first"
-      : releaseActionKind === "noop"
+      : liveSync.state === "live"
         ? "Live current"
-        : releaseUnavailable
+        : releaseUnavailable && liveSync.pendingCount === 0
           ? "Refresh status"
           : "Publish live";
 
@@ -1052,6 +1160,7 @@ export function SiteAdminWebConsole({
       }
     }
     setLoading(false);
+    setHasLoadedOnce(true);
   }
 
   useEffect(() => {
@@ -1086,6 +1195,10 @@ export function SiteAdminWebConsole({
   ]);
 
   useEffect(() => {
+    if (area !== "content") return;
+    // The create drawer shares `saving`, so an autosave of the document behind
+    // it would turn the new-content editor read-only mid-keystroke.
+    if (contentMode === "create") return;
     if (!selected || !selectedDirty || saving || conflict || componentSaveBlocked) return;
     const selectedKey = `${selected.kind}:${selected.id}`;
     const timer = window.setTimeout(() => {
@@ -1094,8 +1207,10 @@ export function SiteAdminWebConsole({
     }, 1600);
     return () => window.clearTimeout(timer);
   }, [
+    area,
     componentSaveBlocked,
     conflict,
+    contentMode,
     saving,
     selected,
     selectedDirty,
@@ -1129,31 +1244,52 @@ export function SiteAdminWebConsole({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [area, homeDirty, nowDirty, saving, selectedDirty]);
 
+  function toggleSelectedVisibility() {
+    setContentForm((current) => ({ ...current, draft: !current.draft }));
+  }
+
   function confirmDiscardChanges(): boolean {
     if (!hasUnsavedChanges) return true;
     return window.confirm("You have unsaved edits. Discard them and continue?");
   }
 
-  function changeArea(nextArea: Area) {
-    if (nextArea === area || confirmDiscardChanges()) {
-      setArea(nextArea);
-      setInspectorOpen(false);
-    }
+  /**
+   * Drops every editor draft. Confirming "discard" used to leave the draft in
+   * state with the autosave timer still armed, so the edits were saved 1.6s
+   * after the author said to throw them away.
+   */
+  function discardEditorDrafts() {
+    setSelected(null);
+    setContentMode("browse");
+    setSourceDraft("");
+    setContentForm(EMPTY_CONTENT_FORM);
+    setContentFormBaseline("");
+    setSlugDraft("");
+    setLocalAutosaveAt("");
+    setLocalDraftSnapshot(null);
+    setComponentReturnTarget(null);
+    setHomeTitle(home?.data.title || "");
+    setHomeBody(home?.data.bodyMdx || "");
+    setNowText(now?.data.current.text || "");
+    setNowContext(now?.data.current.context || "");
+    setNowLocation(now?.data.current.location || "");
+    setNowDate(dateInputFromIso(now?.data.current.updatedAt));
   }
 
-  useEffect(() => {
-    if (!releaseWatchUntil) return;
-    if (Date.now() >= releaseWatchUntil) {
-      setReleaseWatchUntil(0);
+  function changeArea(nextArea: Area) {
+    if (nextArea === area) {
+      setInspectorOpen(false);
       return;
     }
-    const timer = window.setTimeout(() => {
-      void refreshSummaryOnly();
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [releaseWatchUntil, summary?.release.recommendedAction.kind]);
+    if (!confirmDiscardChanges()) return;
+    // A dirty settings draft is discarded by unmounting its panel; wiping the
+    // document editor for it would throw away a selection that was never dirty.
+    if (selectedDirty || homeDirty || nowDirty) discardEditorDrafts();
+    setArea(nextArea);
+    setInspectorOpen(false);
+  }
 
-  async function refreshSummaryOnly() {
+  const refreshSummaryOnly = useCallback(async () => {
     try {
       const next = await readJson<SummaryPayload>("/api/site-admin/mobile/summary");
       setSummary(next.summary);
@@ -1162,16 +1298,78 @@ export function SiteAdminWebConsole({
       if (action === "noop" || action === "smart-release") {
         setReleaseWatchUntil(0);
       }
+      return next.summary;
     } catch (err) {
       setSummaryError(err instanceof Error ? err.message : String(err));
+      return null;
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const watchDeadline = releaseWatchUntil;
+    if (!releaseIsRunning && watchDeadline <= Date.now()) return;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const refreshReleaseActivity = async () => {
+      try {
+        const next = await readJson<ReleaseJobsPayload>(
+          "/api/site-admin/release-jobs?limit=30",
+        );
+        if (cancelled) return;
+        const nextJob = selectActiveReleaseJob(next.jobs);
+        if (!nextJob) {
+          const nextSummary = await refreshSummaryOnly();
+          if (cancelled) return;
+          setReleaseActivity(null);
+          // Keep polling for the whole watch window: a freshly queued job can
+          // take a few ticks to appear. Stop at the deadline instead of
+          // leaving the chain running for the rest of the session.
+          if (
+            nextSummary?.release.recommendedAction.kind !== "watch-release" ||
+            watchDeadline <= Date.now()
+          ) {
+            setReleaseWatchUntil(0);
+            return;
+          }
+          timer = window.setTimeout(refreshReleaseActivity, 4_000);
+          return;
+        }
+
+        setReleaseActivity(next);
+        setSummaryError("");
+        const progress = buildSiteAdminReleaseProgress({
+          job: nextJob,
+          jobs: next.jobs,
+          runners: next.runners.agents,
+          now: Date.now(),
+        });
+        const delay =
+          nextJob.status === "queued" && progress.runnerState === "offline"
+            ? 10_000
+            : 3_000;
+        timer = window.setTimeout(refreshReleaseActivity, delay);
+      } catch (err) {
+        if (cancelled) return;
+        setSummaryError(err instanceof Error ? err.message : String(err));
+        timer = window.setTimeout(refreshReleaseActivity, 5_000);
+      }
+    };
+
+    void refreshReleaseActivity();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [refreshSummaryOnly, releaseIsRunning, releaseWatchUntil]);
 
   function applySelectedDetail(
     nextKind: EditableKind,
     id: string,
     detail: EditableDetailPayload,
+    token = selectionGateRef.current.open(),
   ) {
+    if (selectionGateRef.current.isStale(token)) return null;
     const next = toEditableDetail(nextKind, id, detail);
     setKind(nextKind);
     if (nextKind === "posts" || nextKind === "pages") {
@@ -1212,6 +1410,14 @@ export function SiteAdminWebConsole({
     ) {
       return false;
     }
+    // A double-click used to fire two detail GETs whose responses could land
+    // out of order. Only the repeat click is dropped: opening a *different*
+    // document must still supersede the load in flight, and the gate below
+    // keeps the losing response out of the editor.
+    const requestKey = `${nextKind}:${id}`;
+    if (selectionLoadingRef.current === requestKey) return false;
+    selectionLoadingRef.current = requestKey;
+    const token = selectionGateRef.current.open();
     setLoading(true);
     setError("");
     setWarning("");
@@ -1220,13 +1426,20 @@ export function SiteAdminWebConsole({
       const detail = await readJson<EditableDetailPayload>(
         endpointFor(nextKind, id),
       );
-      applySelectedDetail(nextKind, id, detail);
+      if (selectionGateRef.current.isStale(token)) return false;
+      applySelectedDetail(nextKind, id, detail, token);
       return true;
     } catch (err) {
+      if (selectionGateRef.current.isStale(token)) return false;
       setError(err instanceof Error ? err.message : String(err));
       return false;
     } finally {
-      setLoading(false);
+      if (selectionLoadingRef.current === requestKey) {
+        selectionLoadingRef.current = "";
+      }
+      // A superseded load must not clear the spinner out from under the newer
+      // one; the request that still owns the selection ends it.
+      if (!selectionGateRef.current.isStale(token)) setLoading(false);
     }
   }
 
@@ -1242,23 +1455,37 @@ export function SiteAdminWebConsole({
     }
     const sourceAtStart = selectedSourceDraft;
     const selectedAtStart = selected;
+    const token = selectionGateRef.current.current();
+    const effects = contentSaveEffects(options);
+    let saved = false;
     setSaving(true);
     setError("");
     setWarning("");
     setNotice("");
     try {
-      await writeJson<MutationPayload>(endpointFor(selected.kind, selected.id), "PATCH", {
-        source: sourceAtStart,
-        version: selected.version,
-      });
-      const detail = await readJson<EditableDetailPayload>(
-        endpointFor(selected.kind, selected.id),
+      await writeJson<MutationPayload>(
+        endpointFor(selectedAtStart.kind, selectedAtStart.id),
+        "PATCH",
+        {
+          source: sourceAtStart,
+          version: selectedAtStart.version,
+        },
       );
-      const next = toEditableDetail(selected.kind, selected.id, detail);
+      const detail = await readJson<EditableDetailPayload>(
+        endpointFor(selectedAtStart.kind, selectedAtStart.id),
+      );
+      // The author may have opened another document while the round-trip was
+      // in flight; writing this response into it would overwrite their body.
+      if (selectionGateRef.current.isStale(token)) return;
+      const next = toEditableDetail(selectedAtStart.kind, selectedAtStart.id, detail);
       const newerLocalEdits = selectedSourceDraftRef.current !== sourceAtStart;
       setSelected(next);
       setSlugDraft(next.id);
-      const form = formFromEditablePayload(selected.kind, selected.id, detail);
+      const form = formFromEditablePayload(
+        selectedAtStart.kind,
+        selectedAtStart.id,
+        detail,
+      );
       if (!newerLocalEdits) {
         setSourceDraft(next.source);
         setContentForm(form);
@@ -1266,23 +1493,21 @@ export function SiteAdminWebConsole({
       setContentFormBaseline(
         newerLocalEdits
           ? sourceAtStart
-          : selected.kind === "posts" || selected.kind === "pages"
-            ? sourceForEditedContent(selected.kind, form)
+          : selectedAtStart.kind === "posts" || selectedAtStart.kind === "pages"
+            ? sourceForEditedContent(selectedAtStart.kind, form)
             : next.source,
       );
       if (!newerLocalEdits) {
-        clearLocalDraft(selected.kind, selected.id);
+        clearLocalDraft(selectedAtStart.kind, selectedAtStart.id);
         setLocalAutosaveAt("");
       }
       setContentSavedAt(new Date().toISOString());
       if (!newerLocalEdits) setLocalDraftSnapshot(null);
-      await refreshLists();
-      const publishNotice = await queueSavedContentPublish(
-        `${selected.kind}:${selected.id}:save`,
-      );
-      await refreshSummaryOnly();
-      if (!options.quiet) setNotice(`${next.title} saved.${publishNotice}`);
+      setPendingPublishCount((current) => current + 1);
+      saved = true;
+      if (effects.announce) setNotice(`${next.title} saved.`);
     } catch (err) {
+      if (selectionGateRef.current.isStale(token)) return;
       if (err instanceof SiteAdminRequestError && err.status === 409 && selectedAtStart) {
         try {
           const remotePayload = await readJson<EditableDetailPayload>(
@@ -1312,6 +1537,7 @@ export function SiteAdminWebConsole({
           });
           setWarning("A newer saved version exists. Review both versions before continuing.");
         } catch (refreshError) {
+          if (selectionGateRef.current.isStale(token)) return;
           setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
         }
       } else {
@@ -1319,6 +1545,23 @@ export function SiteAdminWebConsole({
       }
     } finally {
       setSaving(false);
+    }
+
+    if (!saved) return;
+    // Everything below is bookkeeping on top of a save that already succeeded,
+    // so it runs outside the mutation's try: a list hiccup used to be reported
+    // as a failed save and cancelled the publish that was meant to follow it.
+    if (effects.reconcileLists && !(await refreshLists())) {
+      setWarning("Saved. The content lists could not be refreshed — use Refresh to reload them.");
+    }
+    if (!effects.publish) return;
+    if (selectionGateRef.current.isStale(token)) return;
+    const publishNotice = await queueSavedContentPublish(
+      `${selectedAtStart.kind}:${selectedAtStart.id}:save`,
+    );
+    await refreshSummaryOnly();
+    if (effects.announce) {
+      setNotice(`${selectedAtStart.title} saved.${publishNotice}`);
     }
   }
 
@@ -1333,8 +1576,10 @@ export function SiteAdminWebConsole({
 
   async function keepConflictEdits() {
     if (!conflict || !selected) return;
+    setBlockingMutation(true);
     setSaving(true);
     setError("");
+    const token = selectionGateRef.current.current();
     try {
       await writeJson<MutationPayload>(endpointFor(selected.kind, selected.id), "PATCH", {
         source: conflict.localSource,
@@ -1343,7 +1588,7 @@ export function SiteAdminWebConsole({
       const detail = await readJson<EditableDetailPayload>(
         endpointFor(selected.kind, selected.id),
       );
-      applySelectedDetail(selected.kind, selected.id, detail);
+      applySelectedDetail(selected.kind, selected.id, detail, token);
       clearLocalDraft(selected.kind, selected.id);
       setConflict(null);
       setWarning("");
@@ -1358,6 +1603,7 @@ export function SiteAdminWebConsole({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+      setBlockingMutation(false);
     }
   }
 
@@ -1365,6 +1611,7 @@ export function SiteAdminWebConsole({
     if (!selected || !isDeleteSupported(selected.kind)) return;
     const confirmed = window.confirm(`Delete ${selected.title}?`);
     if (!confirmed) return;
+    setBlockingMutation(true);
     setSaving(true);
     setError("");
     setWarning("");
@@ -1393,6 +1640,7 @@ export function SiteAdminWebConsole({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+      setBlockingMutation(false);
     }
   }
 
@@ -1406,6 +1654,7 @@ export function SiteAdminWebConsole({
     }
     const confirmed = window.confirm(`Rename ${selected.id} to ${toSlug}?`);
     if (!confirmed) return;
+    setBlockingMutation(true);
     setSaving(true);
     setError("");
     setWarning("");
@@ -1435,6 +1684,7 @@ export function SiteAdminWebConsole({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+      setBlockingMutation(false);
     }
   }
 
@@ -1463,6 +1713,7 @@ export function SiteAdminWebConsole({
     setCreateDescription("");
     setCreateDate(todayInHalifax());
     setCreateBody(resolvedKind === "posts" ? "Write the post here." : "Write the page here.");
+    setCreateVisible(false);
   }
 
   async function createContent() {
@@ -1484,9 +1735,10 @@ export function SiteAdminWebConsole({
           description: createDescription,
           date: createDate,
           body: createBody,
+          visible: createVisible,
         }),
       });
-      await refreshLists();
+      const listsRefreshed = await refreshLists();
       await selectContent(createKind, slug);
       setContentSavedAt(new Date().toISOString());
       const publishNotice = await queueSavedContentPublish(
@@ -1498,7 +1750,13 @@ export function SiteAdminWebConsole({
       setCreateDescription("");
       setCreateDate(todayInHalifax());
       setCreateBody(createKind === "posts" ? "Write the post here." : "Write the page here.");
+      setCreateVisible(false);
       setNotice(`${slug} created.${publishNotice}`);
+      // refreshLists() reports instead of throwing, so say so rather than
+      // leaving the sidebar quietly missing the new document.
+      if (!listsRefreshed) {
+        setWarning("Created. The content lists could not be refreshed — use Refresh to reload them.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1506,16 +1764,47 @@ export function SiteAdminWebConsole({
     }
   }
 
-  async function refreshLists() {
-    const [nextPages, nextPosts, nextComponents] = await Promise.all([
+  /**
+   * Reconciles the sidebar lists. Never throws: one list failing must not
+   * discard the two that loaded, and must not be mistaken for a failed save.
+   * Returns false when any list could not be refreshed.
+   */
+  async function refreshLists(): Promise<boolean> {
+    const [pagesResult, postsResult, componentsResult] = await Promise.allSettled([
       readJson<PagesPayload>("/api/site-admin/pages?drafts=1"),
       readJson<PostsPayload>("/api/site-admin/posts?drafts=1"),
       readJson<ComponentsPayload>("/api/site-admin/components"),
     ]);
-    setPages(nextPages);
-    setPosts(nextPosts);
-    setComponents(nextComponents);
+    if (pagesResult.status === "fulfilled") setPages(pagesResult.value);
+    if (postsResult.status === "fulfilled") setPosts(postsResult.value);
+    if (componentsResult.status === "fulfilled") setComponents(componentsResult.value);
+    return [pagesResult, postsResult, componentsResult].every(
+      (result) => result.status === "fulfilled",
+    );
   }
+
+  /**
+   * Reads the release queue into the Publish tab. Previously the only way to
+   * see jobs was a link to the raw API response, which unloaded the page and
+   * took any unsaved draft with it.
+   */
+  const refreshReleaseJobs = useCallback(async () => {
+    setReleaseJobsError("");
+    try {
+      const next = await readJson<ReleaseJobsPayload>(
+        "/api/site-admin/release-jobs?limit=20",
+      );
+      setReleaseJobs(next.jobs);
+    } catch (err) {
+      setReleaseJobs([]);
+      setReleaseJobsError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (area !== "release") return;
+    void refreshReleaseJobs();
+  }, [area, refreshReleaseJobs]);
 
   async function runSmartRelease() {
     setReleaseSaving(true);
@@ -1523,7 +1812,10 @@ export function SiteAdminWebConsole({
     setWarning("");
     setNotice("");
     try {
-      const payload = await writeJson<{ job?: { id?: string } }>(
+      const payload = await writeJson<{
+        job?: SiteAdminReleaseJobLike;
+        wake?: ReleaseWakePayload;
+      }>(
         "/api/site-admin/release-jobs/smart",
         "POST",
         {
@@ -1534,8 +1826,16 @@ export function SiteAdminWebConsole({
         },
       );
       const jobId = payload.job?.id ? ` (${payload.job.id})` : "";
-      setNotice(`Publish job created${jobId}.`);
-      setReleaseWatchUntil(Date.now() + 3 * 60 * 1000);
+      const wakeNotice =
+        payload.wake?.configured && !payload.wake.ok
+          ? ` Runner wake failed: ${payload.wake.error || `HTTP ${payload.wake.status}`}.`
+          : payload.wake?.ok
+            ? " Runner wake sent."
+            : "";
+      setNotice(`Publish job created${jobId}.${wakeNotice}`);
+      setReleaseActivity(null);
+      setReleaseWatchUntil(Date.now() + 15 * 60 * 1000);
+      setPendingPublishCount(0);
       await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1548,7 +1848,10 @@ export function SiteAdminWebConsole({
     const action = contentPublishActionForBrowser();
     if (!action) return "";
     try {
-      const payload = await writeJson<{ job?: { id?: string } }>(
+      const payload = await writeJson<{
+        job?: SiteAdminReleaseJobLike;
+        wake?: ReleaseWakePayload;
+      }>(
         "/api/site-admin/release-jobs",
         "POST",
         {
@@ -1560,8 +1863,17 @@ export function SiteAdminWebConsole({
           },
         },
       );
-      setReleaseWatchUntil(Date.now() + 5 * 60 * 1000);
+      setReleaseActivity(null);
+      setReleaseWatchUntil(Date.now() + 15 * 60 * 1000);
+      setPendingPublishCount(0);
       const jobId = payload.job?.id ? ` Job ${payload.job.id}.` : "";
+      if (payload.wake?.configured && !payload.wake.ok) {
+        setWarning(
+          `Content was queued, but the release runner did not wake: ${
+            payload.wake.error || `HTTP ${payload.wake.status}`
+          }. The job will remain queued and retry when the runner reconnects.`,
+        );
+      }
       return action === "publish-content-production"
         ? ` Publishing the saved content to the public site.${jobId}`
         : ` Publishing the saved content to staging.${jobId}`;
@@ -2200,7 +2512,7 @@ export function SiteAdminWebConsole({
                 item={item}
                 fields={NEWS_ENTRY_FIELDS}
                 issues={issues}
-                disabled={saving}
+                disabled={blockingMutation}
                 onChange={updateNewsItem}
                 onComplete={() => completeComponentEntry(item.id)}
               />
@@ -2290,7 +2602,7 @@ export function SiteAdminWebConsole({
                 item={item}
                 fields={TEACHING_ENTRY_FIELDS}
                 issues={issues}
-                disabled={saving}
+                disabled={blockingMutation}
                 onChange={updateTeachingItem}
                 onComplete={() => completeComponentEntry(item.id)}
               />
@@ -2383,7 +2695,7 @@ export function SiteAdminWebConsole({
                 item={item}
                 fields={WORKS_ENTRY_FIELDS}
                 issues={issues}
-                disabled={saving}
+                disabled={blockingMutation}
                 onChange={updateWorksItem}
                 onComplete={() => completeComponentEntry(item.id)}
               />
@@ -2470,7 +2782,7 @@ export function SiteAdminWebConsole({
                 item={item}
                 fields={PUBLICATION_ENTRY_FIELDS}
                 issues={issues}
-                disabled={saving}
+                disabled={blockingMutation}
                 onChange={updatePublicationItem}
                 onComplete={() => completeComponentEntry(item.id)}
               />
@@ -2610,7 +2922,9 @@ export function SiteAdminWebConsole({
               onClick={() => openDocumentKind(value)}
             >
               <span>{titleForKind(value)}</span>
-              <small>{value === "posts" ? posts?.count ?? 0 : pages?.count ?? 0} items</small>
+              <small>
+                {countLabel(value === "posts" ? posts?.count : pages?.count)} items
+              </small>
             </button>
           ))}
         </div>
@@ -2643,6 +2957,11 @@ export function SiteAdminWebConsole({
       ? globalSearchItems
       : visibleItems.map((item) => ({ kind: documentKind, item }));
     const typeLabel = titleForKind(documentKind);
+    const placeholder = contentListPlaceholder({
+      hasLoadedOnce,
+      itemCount: indexedItems.length,
+      searching,
+    });
 
     return (
       <Card className={`${styles.editorPanel} ${styles.contentIndexPanel}`}>
@@ -2651,9 +2970,11 @@ export function SiteAdminWebConsole({
             <p className={styles.cardLabel}>Documents</p>
             <h2 className={styles.panelTitle}>{searching ? "Search results" : typeLabel}</h2>
             <p className={styles.cardText}>
-              {searching
-                ? `${indexedItems.length} matching items across posts and pages.`
-                : `${indexedItems.length} ${documentKind === "posts" ? "posts" : "pages"}.`}
+              {placeholder === "loading"
+                ? "Loading content…"
+                : searching
+                  ? `${indexedItems.length} matching items across posts and pages.`
+                  : `${indexedItems.length} ${documentKind === "posts" ? "posts" : "pages"}.`}
             </p>
           </div>
           <Button onClick={() => beginCreate(documentKind)} tone="accent" size="sm">
@@ -2685,7 +3006,15 @@ export function SiteAdminWebConsole({
           </label>
         </div>
 
-        {indexedItems.length ? (
+        {placeholder === "loading" ? (
+          <ul className={styles.contentIndexList} aria-hidden="true">
+            {[0, 1, 2, 3].map((row) => (
+              <li key={row}>
+                <div className={styles.contentIndexSkeleton} />
+              </li>
+            ))}
+          </ul>
+        ) : placeholder === "ready" ? (
           <ul className={styles.contentIndexList}>
             {indexedItems.map(({ kind: itemKind, item }) => (
               <li key={`${itemKind}:${item.id}`}>
@@ -2709,8 +3038,16 @@ export function SiteAdminWebConsole({
           </ul>
         ) : (
           <div className={styles.contentIndexEmpty}>
-            <h3>{searching ? "No matching content" : `No ${typeLabel.toLowerCase()} yet`}</h3>
-            <p>{searching ? "Try another title, slug, or metadata term." : "Create the first item here."}</p>
+            <h3>
+              {placeholder === "no-matches"
+                ? "No matching content"
+                : `No ${typeLabel.toLowerCase()} yet`}
+            </h3>
+            <p>
+              {placeholder === "no-matches"
+                ? "Try another title, slug, or metadata term."
+                : "Create the first item here."}
+            </p>
           </div>
         )}
       </Card>
@@ -2731,7 +3068,7 @@ export function SiteAdminWebConsole({
           <Button onClick={() => void refreshAll()} variant="subtle" disabled={loading}>
             {loading ? "Refreshing" : "Refresh"}
           </Button>
-          <Button href="/api/site-admin/status" variant="subtle">
+          <Button onClick={() => changeArea("release")} variant="subtle">
             Status
           </Button>
           <Button href="/" variant="ghost">
@@ -2845,9 +3182,16 @@ export function SiteAdminWebConsole({
                     {draftStatusLabel}
                   </span>
                   {selectedIsStructured ? (
-                    <span className={styles.statusPill} data-state={contentForm.draft ? "smart-release" : "noop"}>
-                      {contentForm.draft ? "Hidden" : "Public"}
-                    </span>
+                    <button
+                      type="button"
+                      className={styles.statusPill}
+                      data-state={selectedVisibility.state}
+                      onClick={toggleSelectedVisibility}
+                      title={selectedVisibility.actionLabel}
+                      aria-label={selectedVisibility.actionLabel}
+                    >
+                      {selectedVisibility.label}
+                    </button>
                   ) : null}
                   <span className={styles.statusPill} data-state={liveStatusState}>
                     {liveStatusLabel}
@@ -2866,28 +3210,29 @@ export function SiteAdminWebConsole({
                         Restore local draft
                       </Button>
                     ) : null}
-                    {release?.recommendedAction.kind === "watch-release" ? (
-                      <Button href="/api/site-admin/release-jobs" variant="subtle" size="sm">
+                    {releaseIsRunning ? (
+                      <Button
+                        onClick={() => changeArea("release")}
+                        variant="subtle"
+                        size="sm"
+                      >
                         View release
                       </Button>
                     ) : (
                       <Button
                         onClick={() => void runSmartRelease()}
-                        variant={release?.recommendedAction.kind === "noop" ? "subtle" : "solid"}
-                        tone={release?.recommendedAction.kind === "noop" ? "neutral" : "accent"}
+                        variant={liveSync.state === "live" ? "subtle" : "solid"}
+                        tone={liveSync.state === "live" ? "neutral" : "accent"}
                         size="sm"
-                        disabled={
-                          releaseSaving ||
-                          selectedDirty ||
-                          release?.recommendedAction.kind === "noop" ||
-                          release?.recommendedAction.kind === "refresh" ||
-                          !release?.recommendedAction
-                        }
+                        disabled={selectedDirty || publishBlocked}
                       >
                         {publishButtonLabel}
                       </Button>
                     )}
                   </div>
+                  {releaseIsRunning && releaseProgress ? (
+                    <SiteAdminPublishingProgress progress={releaseProgress} />
+                  ) : null}
                 </div>
                 {selectedIsStructured ? (
                   <>
@@ -2963,7 +3308,7 @@ export function SiteAdminWebConsole({
                                 }
                                 minHeight={320}
                                 size="large"
-                                disabled={saving}
+                                blocking={blockingMutation}
                                 initialMode="source"
                                 visualEditing={false}
                               />
@@ -2984,7 +3329,7 @@ export function SiteAdminWebConsole({
                           }
                           minHeight={560}
                           size="large"
-                          disabled={saving}
+                          blocking={blockingMutation}
                           onEditComponent={editComponentByEmbedTag}
                         />
                       </div>
@@ -3008,7 +3353,7 @@ export function SiteAdminWebConsole({
                           onChange={setSourceDraft}
                           minHeight={560}
                           size="large"
-                          disabled={saving}
+                          blocking={blockingMutation}
                           initialMode="source"
                           visualEditing={false}
                         />
@@ -3045,18 +3390,25 @@ export function SiteAdminWebConsole({
                       {draftStatusLabel}
                     </span>
                     {selectedIsStructured ? (
-                      <span
+                      <button
+                        type="button"
                         className={styles.statusPill}
-                        data-state={contentForm.draft ? "smart-release" : "noop"}
+                        data-state={selectedVisibility.state}
+                        onClick={toggleSelectedVisibility}
+                        title={selectedVisibility.actionLabel}
+                        aria-label={selectedVisibility.actionLabel}
                       >
-                        {contentForm.draft ? "Hidden" : "Public"}
-                      </span>
+                        {selectedVisibility.label}
+                      </button>
                     ) : null}
                     <span className={styles.statusPill} data-state={liveStatusState}>
                       {liveStatusLabel}
                     </span>
                   </div>
                   <p className={styles.editorHint}>{editorStatusHint}</p>
+                  {releaseIsRunning && releaseProgress ? (
+                    <SiteAdminPublishingProgress progress={releaseProgress} compact />
+                  ) : null}
                 </section>
 
                 {selectedIsStructured ? (
@@ -3117,15 +3469,15 @@ export function SiteAdminWebConsole({
                     <label className={styles.checkField}>
                       <input
                         type="checkbox"
-                        checked={contentForm.draft}
+                        checked={!contentForm.draft}
                         onChange={(event) =>
                           setContentForm((current) => ({
                             ...current,
-                            draft: event.target.checked,
+                            draft: !event.target.checked,
                           }))
                         }
                       />
-                      Hide from public site
+                      Visible on the public site
                     </label>
                     <label className={styles.fieldLabel}>
                       Description
@@ -3238,7 +3590,11 @@ export function SiteAdminWebConsole({
                         Open live
                       </Button>
                     ) : null}
-                    <Button href="/api/site-admin/release-jobs" variant="ghost" size="sm">
+                    <Button
+                      onClick={() => changeArea("release")}
+                      variant="ghost"
+                      size="sm"
+                    >
                       Release jobs
                     </Button>
                     {isDeleteSupported(selected.kind) ? (
@@ -3266,14 +3622,20 @@ export function SiteAdminWebConsole({
                     currentSource={selectedSourceDraft}
                     currentVersion={selected.version}
                     onRestored={async () => {
-                      clearLocalDraft(selected.kind, selected.id);
-                      const detail = await readJson<EditableDetailPayload>(
-                        endpointFor(selected.kind, selected.id),
-                      );
-                      applySelectedDetail(selected.kind, selected.id, detail);
-                      await refreshLists();
-                      await refreshSummaryOnly();
-                      setNotice("Earlier version restored and saved.");
+                      setBlockingMutation(true);
+                      const token = selectionGateRef.current.current();
+                      try {
+                        clearLocalDraft(selected.kind, selected.id);
+                        const detail = await readJson<EditableDetailPayload>(
+                          endpointFor(selected.kind, selected.id),
+                        );
+                        applySelectedDetail(selected.kind, selected.id, detail, token);
+                        await refreshLists();
+                        await refreshSummaryOnly();
+                        setNotice("Earlier version restored and saved.");
+                      } finally {
+                        setBlockingMutation(false);
+                      }
                     }}
                   />
                 </section>
@@ -3375,6 +3737,14 @@ export function SiteAdminWebConsole({
                 placeholder="Optional"
               />
             </label>
+            <label className={styles.checkField}>
+              <input
+                type="checkbox"
+                checked={createVisible}
+                onChange={(event) => setCreateVisible(event.target.checked)}
+              />
+              Visible on the public site
+            </label>
             <div className={styles.createEditorShell}>
               <SiteAdminMarkdownEditor
                 label="New content body"
@@ -3382,7 +3752,7 @@ export function SiteAdminWebConsole({
                 onChange={setCreateBody}
                 minHeight={360}
                 size="large"
-                disabled={saving}
+                blocking={saving}
               />
             </div>
             <Button
@@ -3401,7 +3771,7 @@ export function SiteAdminWebConsole({
       ) : null}
 
       {area === "settings" ? (
-        <SiteAdminSettingsPanel />
+        <SiteAdminSettingsPanel onDirtyChange={setSettingsDirty} />
       ) : null}
 
       {area === "release" ? (
@@ -3411,32 +3781,54 @@ export function SiteAdminWebConsole({
               <div>
                 <p className={styles.cardLabel}>Recommended action</p>
                 <h2 className={styles.cardTitle}>
-                  {release?.headline ||
+                  {releaseIsRunning && releaseProgress
+                    ? releaseProgress.label
+                    : release?.headline ||
                     (summaryError ? "Release status unavailable" : "Refresh release status")}
                 </h2>
               </div>
-              <span className={styles.statusPill} data-state={release?.recommendedAction.kind}>
-                {release?.recommendedAction.label || (summaryError ? "Unavailable" : "Refresh")}
+              <span className={styles.statusPill} data-state={liveStatusState}>
+                {releaseIsRunning || liveSync.state === "pending"
+                  ? liveStatusLabel
+                  : release?.recommendedAction.label ||
+                    (summaryError ? "Unavailable" : "Refresh")}
               </span>
             </div>
             <p className={styles.cardText}>
-              {release?.detail ||
+              {(releaseIsRunning
+                ? releaseProgress?.detail
+                : liveSync.state === "pending"
+                  ? `${liveSync.label}. Publish live when you are ready.`
+                  : release?.detail) ||
                 (summaryError
                   ? `Could not load release summary: ${summaryError}.`
                   : "Release status has not loaded yet.")}
             </p>
+            {releaseIsRunning && releaseProgress ? (
+              <SiteAdminPublishingProgress progress={releaseProgress} />
+            ) : null}
             <div className={styles.releaseSteps} aria-label="Release flow">
               <div data-active="true">
                 <span>1</span>
                 <strong>Draft</strong>
                 <small>Save content changes</small>
               </div>
-              <div data-active={releaseNeedsPublish || releaseIsRunning ? "true" : "false"}>
+              <div
+                data-active={
+                  liveSync.state === "pending" || releaseIsRunning ? "true" : "false"
+                }
+              >
                 <span>2</span>
                 <strong>Preview</strong>
-                <small>Optional for code and layout changes</small>
+                <small>
+                  {liveSync.pendingCount > 0
+                    ? `${liveSync.pendingCount} saved change${
+                        liveSync.pendingCount === 1 ? "" : "s"
+                      } not yet live`
+                    : "Optional for code and layout changes"}
+                </small>
               </div>
-              <div data-active={release?.recommendedAction.kind === "noop" ? "true" : "false"}>
+              <div data-active={liveSync.state === "live" ? "true" : "false"}>
                 <span>3</span>
                 <strong>Live</strong>
                 <small>Production is current</small>
@@ -3446,23 +3838,20 @@ export function SiteAdminWebConsole({
               <Button
                 onClick={() => void runSmartRelease()}
                 tone="accent"
-                disabled={
-                  releaseSaving ||
-                  release?.recommendedAction.kind === "noop" ||
-                  release?.recommendedAction.kind === "refresh" ||
-                  !release?.recommendedAction
-                }
+                disabled={publishBlocked}
               >
                 {releaseSaving
                   ? "Starting"
-                  : release?.recommendedAction.kind === "noop"
+                  : releaseIsRunning
+                    ? liveStatusLabel
+                  : liveSync.state === "live"
                     ? "Live current"
                     : "Publish live"}
               </Button>
               <Button onClick={() => void refreshAll()} variant="subtle" disabled={loading}>
                 Refresh
               </Button>
-              <Button href="/api/site-admin/release-jobs" variant="ghost">
+              <Button onClick={() => void refreshReleaseJobs()} variant="ghost" disabled={loading}>
                 Jobs
               </Button>
             </div>
@@ -3494,7 +3883,10 @@ export function SiteAdminWebConsole({
             <div className={styles.cardHeader}>
               <p className={styles.cardLabel}>Runner</p>
               <span className={styles.muted}>
-                {release?.runners?.[0]?.status || (summaryError ? "Unavailable" : "Not seen")}
+                {releaseProgress?.runnerState === "offline"
+                  ? "Offline"
+                  : activeReleaseRunners[0]?.status ||
+                    (summaryError ? "Unavailable" : "Not seen")}
               </span>
             </div>
             <p className={styles.cardText}>
@@ -3514,6 +3906,56 @@ export function SiteAdminWebConsole({
                 </div>
               </div>
             </details>
+          </Card>
+
+          <Card className={styles.releasePrimaryCard}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.cardLabel}>Release queue</p>
+                <h2 className={styles.cardTitle}>Recent jobs</h2>
+              </div>
+              <Button onClick={() => void refreshReleaseJobs()} variant="subtle" size="sm">
+                Reload
+              </Button>
+            </div>
+            {releaseJobsError ? (
+              <p className={styles.cardText}>{releaseJobsError}</p>
+            ) : releaseJobs === null ? (
+              <LoadingState label="Loading release jobs…" />
+            ) : releaseJobs.length === 0 ? (
+              <p className={styles.cardText}>No release jobs recorded yet.</p>
+            ) : (
+              <ul className={styles.contentIndexList}>
+                {releaseJobs.map((job) => (
+                  <li key={job.id}>
+                    <div className={styles.contentIndexRow}>
+                      <span className={styles.contentIndexPrimary}>
+                        <strong>{job.script || job.action}</strong>
+                        <small>
+                          {job.id} · {job.target}
+                        </small>
+                      </span>
+                      <span className={styles.contentIndexMeta}>
+                        <span className={styles.contentStateBadge}>{job.status}</span>
+                        <small>
+                          {job.phase || formatWhen(job.updatedAt || job.createdAt)}
+                        </small>
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card className={styles.releasePrimaryCard}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.cardLabel}>Diagnostics</p>
+                <h2 className={styles.cardTitle}>Build and content sync</h2>
+              </div>
+            </div>
+            <SiteAdminStatusPanel />
           </Card>
         </section>
       ) : null}
@@ -3551,7 +3993,7 @@ export function SiteAdminWebConsole({
               onChange={setHomeBody}
               minHeight={620}
               size="large"
-              disabled={saving}
+              blocking={blockingMutation}
             />
           </label>
           <p className={styles.editorHint}>

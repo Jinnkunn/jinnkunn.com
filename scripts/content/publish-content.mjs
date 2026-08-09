@@ -473,6 +473,12 @@ function syncD1ToContent({ env, targetRoot = ROOT }) {
       "--remote",
       `--env=${env}`,
       "--quiet",
+      // D1 is the source of truth for what exists, not just for what changed:
+      // without --prune a post deleted in Site Admin is republished from the
+      // .mdx the snapshot still carries. Not gated on --dry-run: the target
+      // is the throwaway .cache/ snapshot, and a dry run has to hash the same
+      // tree a real publish would build or its plan is a fiction.
+      "--prune",
       `--target=${target}`,
     ],
     { label: `dump ${env} D1 to content/`, cwd: ROOT },
@@ -742,6 +748,7 @@ function sleep(ms) {
 }
 
 async function verifyOverlayServing(env) {
+  logPhase(`verifying ${env} overlay on public routes`);
   const origin = normalizeOrigin(env);
   const cookie = await stagingCookieIfNeeded(env);
   const paths = ["/", "/news"];
@@ -1044,7 +1051,47 @@ async function snapshotCurrentOverlay({ env, git, note }) {
     })),
     chunkSize: 5,
   });
+  await pruneOverlaySnapshots(env);
   return { id, fileCount: rows.length, snapshotSha };
+}
+
+// Every publish copies the whole shell overlay (~3.5MB) into
+// static_shell_overlay_versions, and the admin console queues a publish on
+// each save — without a ceiling the rollback table is what fills D1. Ten
+// snapshots is far past the point where anyone rolls back by hand.
+export const OVERLAY_SNAPSHOT_RETENTION = 10;
+
+export async function pruneOverlaySnapshots(
+  env,
+  keep = OVERLAY_SNAPSHOT_RETENTION,
+  query = cfD1Query,
+) {
+  const result = await query({
+    env,
+    sql: `SELECT id FROM static_shell_overlay_snapshots
+      ORDER BY created_at DESC, id DESC
+      LIMIT -1 OFFSET ?`,
+    params: [keep],
+  });
+  const expired = d1Rows(result).map((row) => String(row.id || "")).filter(Boolean);
+  if (expired.length === 0) return 0;
+  for (const group of chunks(expired, 20)) {
+    const placeholders = group.map(() => "?").join(", ");
+    // Bodies first: a snapshot row without its versions is a rollback target
+    // that fails at restore time, which is worse than no row at all.
+    await query({
+      env,
+      sql: `DELETE FROM static_shell_overlay_versions WHERE snapshot_id IN (${placeholders})`,
+      params: group,
+    });
+    await query({
+      env,
+      sql: `DELETE FROM static_shell_overlay_snapshots WHERE id IN (${placeholders})`,
+      params: group,
+    });
+  }
+  logPhase(`pruned ${expired.length} overlay snapshot${expired.length === 1 ? "" : "s"} beyond the newest ${keep}`);
+  return expired.length;
 }
 
 async function applyOverlayDiff({ env, diff, git, dryRun }) {
@@ -1608,20 +1655,23 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  try {
-    const env = process.argv
-      .find((arg) => arg.startsWith("--env="))
-      ?.slice("--env=".length) || "staging";
-    appendReleaseHistory({
-      env,
-      sha: gitValue(["rev-parse", "HEAD"]) || "unknown",
-      failure: String(error?.message || error).split("\n")[0]?.slice(0, 240) ?? "unknown",
-      note: "content overlay publish failed",
-    });
-  } catch {
-    // Keep the real error visible.
-  }
-  console.error(error?.stack || String(error));
-  process.exit(1);
-});
+// Only self-run when invoked as a script so tests can import the helpers.
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((error) => {
+    try {
+      const env = process.argv
+        .find((arg) => arg.startsWith("--env="))
+        ?.slice("--env=".length) || "staging";
+      appendReleaseHistory({
+        env,
+        sha: gitValue(["rev-parse", "HEAD"]) || "unknown",
+        failure: String(error?.message || error).split("\n")[0]?.slice(0, 240) ?? "unknown",
+        note: "content overlay publish failed",
+      });
+    } catch {
+      // Keep the real error visible.
+    }
+    console.error(error?.stack || String(error));
+    process.exit(1);
+  });
+}

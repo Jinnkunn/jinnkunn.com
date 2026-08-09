@@ -1,0 +1,50 @@
+/*
+ * Layout for the full settings form. The rows carry global BEM class names
+ * because the same markup is shared with the Tauri workspace surface, so the
+ * rules are scoped through this module instead of leaking to the public site.
+ */
+
+.host :global(.site-admin-form) {
+  display: grid;
+  gap: 14px;
+}
+
+.host :global(.site-admin-form__row) {
+  display: grid;
+  gap: 6px;
+}
+
+.host :global(.site-admin-form__label) {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ds-text-secondary);
+}
+
+.host :global(.site-admin-form__checks) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.host :global(.site-admin-form__depth-grid) {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.host :global(.site-admin-form__depth-item) {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ds-text-faint);
+}
+
+.host :global(.site-admin-form__actions) {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.host :global(.site-admin-form__textarea) {
+  min-height: 84px;
+  resize: vertical;
+}

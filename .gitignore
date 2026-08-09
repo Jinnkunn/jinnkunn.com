@@ -26,6 +26,11 @@ node_modules/
 /content/local/
 /.cache/
 /.antigravitycli/
+/.tmp/
+
+# Personal, non-repo material that happens to live in the working tree.
+# This is a public repo — a stray `git add -A` would publish it.
+/_purdue_materials/
 
 # notion generated content/assets (synced at build time)
 /content/generated/*
@@ -35,6 +40,14 @@ node_modules/
 !/content/generated/protected-routes.json
 !/content/generated/classic-css-assets.json
 !/content/generated/component-sources.json
+# `lib/server/sitemap-core.ts` and `lib/search-index.ts` statically import these,
+# so `tsc`/`eslint`/`npm test` fail on a fresh clone unless they are committed.
+!/content/generated/content-routes.json
+!/content/generated/search-index.json
+!/content/generated/routes-manifest.json
+!/content/generated/routes.json
+!/content/generated/site-config.json
+!/content/generated/sync-meta.json
 
 # `public/notion-assets/` used to live here, but `content/generated/**`
 # hardcodes `/notion-assets/<sha>.png` paths in the baked HTML — if the

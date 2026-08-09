@@ -48,7 +48,10 @@
     "route": "/blog",
     "asset": "/web_image/rss.svg",
     "backgroundSize": "20px 20px",
-    "matchers": [{ "kind": "exact", "value": "/blog.rss" }]
+    "matchers": [
+      { "kind": "exact", "value": "/rss.xml" },
+      { "kind": "exact", "value": "/blog.rss" }
+    ]
   },
   {
     "id": "google-scholar",

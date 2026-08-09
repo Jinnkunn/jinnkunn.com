@@ -11,15 +11,19 @@
 //     to the original call. We rebuild them here from the stored
 //     base_url + auth that the caller passes on `outbox_drain`, so the
 //     queue itself doesn't store secrets.
+//
+// Replay is still a credentialed site-admin call, so it must obey the same
+// host allowlist and no-redirect policy as `site_admin_http_request`: we
+// reuse `site_admin::is_trusted_admin_host` + `site_admin::http_client`
+// rather than rebuilding a default client here.
 
 use crate::local_db;
+use crate::site_admin::{http_client, is_trusted_admin_host};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE, COOKIE};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::time::Duration;
 
-const OUTBOX_HTTP_TIMEOUT_SECS: u64 = 30;
 // Drain-time cap. The frontend asks for a single drain pass; we won't
 // sit in a loop for minutes if the queue grew large during a long
 // offline window. Anything still queued after this cap stays queued
@@ -78,6 +82,22 @@ fn now_unix_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
+/// Build the replay URL and refuse anything that isn't a trusted
+/// site-admin host. Enqueue calls this so an untrusted base_url never
+/// reaches the queue at all; drain calls it again because rows written by
+/// an older build (or hand-edited in the db file) predate that check.
+pub(crate) fn trusted_replay_url(base_url: &str, path: &str) -> Result<reqwest::Url, String> {
+    let raw = format!("{base_url}{path}");
+    let url = reqwest::Url::parse(&raw).map_err(|_| format!("invalid outbox url: {raw}"))?;
+    if !is_trusted_admin_host(&url) {
+        return Err(format!(
+            "refusing to queue/replay Site Admin credentials for untrusted host: {}",
+            url.host_str().unwrap_or("(none)")
+        ));
+    }
+    Ok(url)
+}
+
 /// Persist a failed mutating request so a future drain can replay it.
 /// The frontend calls this when its own request layer detects a
 /// network-level failure (status=0 or invoke error) on a mutating
@@ -105,6 +125,11 @@ pub async fn outbox_enqueue(
     } else {
         format!("/{path}")
     };
+    // Gate before persisting: a drain replays with the bearer token and the
+    // CF Access secret attached, so queuing an untrusted host would turn the
+    // offline safety net into a credential-exfiltration path.
+    trusted_replay_url(&base_url, &normalized_path)
+        .map_err(|err| format!("outbox_enqueue: {err}"))?;
     let body_json = match params.body {
         Some(value) => serde_json::to_string(&value)
             .map_err(|err| format!("outbox_enqueue: failed to serialize body: {err}"))?,
@@ -311,10 +336,9 @@ pub async fn outbox_drain(
         });
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(OUTBOX_HTTP_TIMEOUT_SECS))
-        .build()
-        .map_err(|err| format!("outbox_drain: failed to build http client: {err}"))?;
+    // Shared hardened client: timeouts + `redirect::none`, so a 30x can't
+    // bounce the bearer token / CF Access secret to an attacker-chosen host.
+    let client = http_client();
     let headers = build_drain_headers(&params.auth)?;
 
     let mut attempted: u32 = 0;
@@ -323,10 +347,30 @@ pub async fn outbox_drain(
 
     for (id, base_url, path, method, body_json) in pending {
         attempted += 1;
-        let url = format!("{base_url}{path}");
+        // Re-check per row: rows queued by a build that predates the enqueue
+        // gate must never be replayed with credentials. Quarantine straight
+        // to the attempt ceiling so the entry stays visible/discardable in
+        // the UI but is skipped by every future drain.
+        let url = match trusted_replay_url(&base_url, &path) {
+            Ok(url) => url,
+            Err(err) => {
+                let conn = local_db::open(&app)?;
+                conn.execute(
+                    r#"UPDATE write_outbox
+                          SET attempts = ?,
+                              last_error = ?,
+                              last_attempt = ?
+                        WHERE id = ?"#,
+                    params![OUTBOX_MAX_ATTEMPTS, err, now_unix_ms(), id],
+                )
+                .map_err(|err| format!("outbox_drain: failed to quarantine entry {id}: {err}"))?;
+                failed += 1;
+                continue;
+            }
+        };
         let method_kind = reqwest::Method::from_bytes(method.as_bytes())
             .map_err(|err| format!("outbox_drain: invalid method `{method}`: {err}"))?;
-        let mut request = client.request(method_kind, &url).headers(headers.clone());
+        let mut request = client.request(method_kind, url).headers(headers.clone());
         if !body_json.is_empty() {
             request = request.body(body_json.clone());
         }
@@ -383,4 +427,29 @@ pub async fn outbox_drain(
         failed,
         remaining,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replay_urls_are_limited_to_trusted_admin_hosts() {
+        assert!(
+            trusted_replay_url("https://staging.jinkunchen.com", "/api/site-admin/posts").is_ok()
+        );
+        assert!(trusted_replay_url("http://localhost:3000", "/api/site-admin/posts").is_ok());
+
+        // Attacker-controlled or downgraded hosts must never receive a replay
+        // carrying the bearer token / CF Access secret.
+        for base in [
+            "https://evil.example.com",
+            "http://jinkunchen.com",
+            "https://jinkunchen.com.evil.example",
+        ] {
+            let err = trusted_replay_url(base, "/api/site-admin/posts")
+                .expect_err("untrusted host must be refused");
+            assert!(err.contains("untrusted host"), "unexpected error: {err}");
+        }
+    }
 }

@@ -142,7 +142,7 @@ const LINK_STYLE_PROBES = [
   {
     route: "/blog",
     name: "Blog RSS icon link",
-    selector: 'span[data-link-style="icon"] > a[href="/blog.rss"].notion-link.link',
+    selector: 'span[data-link-style="icon"] > a[href="/rss.xml"].notion-link.link',
     icon: true,
   },
   {

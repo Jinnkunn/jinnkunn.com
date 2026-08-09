@@ -20,7 +20,7 @@ export async function getSiteAdminMobileSummary(): Promise<SiteAdminMobileSummar
       getSiteAdminStatusBackend(),
       loadSiteAdminNowData(),
       getLatestPublicCalendarData(),
-      listReleaseJobs({ limit: 5 }),
+      listReleaseJobs({ limit: 30 }),
       getReleaseRunnerStatus({ limit: 4 }),
       listPosts({ includeDrafts: true }),
       listPages({ includeDrafts: true }),

@@ -69,16 +69,22 @@ function fakeDb(opts = {}) {
               return null;
             },
             async all() {
-              if (sql.includes("FROM release_jobs")) return [];
-              if (sql.includes("FROM release_agents")) return [
-                {
-                  agent_id: "mac-mini",
-                  status: "idle",
-                  current_job_id: "",
-                  last_seen_at: 1779040000000,
-                },
-              ];
-              return [];
+              if (sql.includes("FROM release_jobs")) {
+                return { results: opts.releaseJobs ?? [] };
+              }
+              if (sql.includes("FROM release_agents")) {
+                return {
+                  results: opts.releaseAgents ?? [
+                    {
+                      agent_id: "mac-mini",
+                      status: "idle",
+                      current_job_id: "",
+                      last_seen_at: 1779040000000,
+                    },
+                  ],
+                };
+              }
+              return { results: [] };
             },
           };
         },
@@ -213,4 +219,39 @@ test("mobile summary direct handler recommends release when Draft Now differs fr
   assert.equal(body.data.summary.release.headline, "Release needed");
   assert.equal(body.data.summary.release.detail, "Draft Now is newer than Live.");
   assert.equal(body.data.summary.release.recommendedAction.label, "Publish Now");
+});
+
+test("mobile summary direct handler reads release jobs from the shared control-plane binding", async () => {
+  const token = issueToken({ env: "production" });
+  const res = await handleMobileSummaryRequest(
+    new Request("https://jinkunchen.com/api/site-admin/mobile/summary", {
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    {
+      NEXTAUTH_SECRET: "secret",
+      SITE_ADMIN_GITHUB_USERS: "jinnkunn",
+      SITE_ADMIN_DB: fakeDb({ nowSha: "same" }),
+      SITE_ADMIN_DB_LIVE: fakeDb({ nowSha: "same" }),
+      SITE_ADMIN_RELEASE_DB: fakeDb({
+        releaseJobs: [
+          {
+            action: "publish-content-production",
+            created_at: 100,
+            error: "",
+            id: "shared-job",
+            phase: "queued",
+            script: "publish:content:prod",
+            status: "queued",
+            target: "production",
+            updated_at: 100,
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.data.summary.release.runningJob.id, "shared-job");
+  assert.equal(body.data.summary.release.recommendedAction.kind, "watch-release");
 });

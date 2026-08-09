@@ -8,6 +8,11 @@ import {
   pickStaticProtectedRule,
 } from "./static-shell-protection.mjs";
 import { handleMobileSummaryRequest } from "./mobile-summary-direct.mjs";
+import {
+  isInternalStaticAssetPath,
+  isRscRequest,
+  normalizePathname,
+} from "./worker-entry-guards.mjs";
 
 const BYPASS_PREFIXES = [
   "/api/",
@@ -36,13 +41,6 @@ function shouldBypassStatic(pathname) {
     if (pathname === prefix || pathname.startsWith(prefix)) return true;
   }
   return hasLikelyFileExtension(pathname);
-}
-
-function normalizePathname(pathname) {
-  const raw = String(pathname || "").trim();
-  if (!raw || raw === "/") return "/";
-  const withLeading = raw.startsWith("/") ? raw : `/${raw}`;
-  return withLeading.replace(/\/+$/, "") || "/";
 }
 
 function staticAssetPathForRoute(pathname) {
@@ -208,6 +206,9 @@ async function tryServeStaticShell(request, env) {
   const url = new URL(request.url);
   const pathname = normalizePathname(url.pathname);
   if (shouldBypassStatic(pathname)) return null;
+  // An RSC payload request shares the page pathname; serving the HTML shell
+  // here breaks client-side navigation.
+  if (isRscRequest(request)) return null;
   if (await shouldDeferProtectedRouteToOpenNext(request, env, pathname)) return null;
 
   const assetPaths = staticAssetPathForRoute(pathname);
@@ -224,6 +225,8 @@ async function tryServeStaticShell(request, env) {
       headers.set("x-static-shell", "1");
       headers.set("x-static-shell-path", assetPath);
       headers.set("x-static-overlay", "1");
+      // The same URL yields HTML here and an RSC payload from OpenNext.
+      headers.set("vary", "RSC, Next-Router-Prefetch, Next-Router-State-Tree");
       return new Response(request.method === "HEAD" ? null : overlay.body, {
         status: 200,
         headers,
@@ -236,6 +239,7 @@ async function tryServeStaticShell(request, env) {
     const headers = new Headers(res.headers);
     headers.set("x-static-shell", "1");
     headers.set("x-static-shell-path", assetPath);
+    headers.set("vary", "RSC, Next-Router-Prefetch, Next-Router-State-Tree");
     return new Response(request.method === "HEAD" ? null : res.body, {
       status: res.status,
       statusText: res.statusText,
@@ -280,7 +284,20 @@ const worker = {
   async fetch(request, env, ctx) {
     const method = String(request.method || "GET").toUpperCase();
     const url = new URL(request.url);
-    if (normalizePathname(url.pathname) === "/api/site-admin/mobile/summary") {
+    // Reject direct hits on the internal shell key space before anything else.
+    // `[assets] run_worker_first = ["/__static/*"]` in wrangler.toml routes these
+    // here instead of letting the asset server answer them.
+    if (isInternalStaticAssetPath(url.pathname)) {
+      return new Response("Not Found", {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }
+    const authorization = String(request.headers.get("authorization") || "").trim();
+    if (
+      normalizePathname(url.pathname) === "/api/site-admin/mobile/summary" &&
+      /^Bearer\s+\S+/i.test(authorization)
+    ) {
       return handleMobileSummaryRequest(request, env);
     }
     if (

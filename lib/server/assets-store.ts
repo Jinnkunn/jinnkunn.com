@@ -15,6 +15,15 @@ const DEFAULT_MEDIA_PUBLIC_BASE_URL = "https://cdn.jinkunchen.com";
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 // Keep conservative: images only for v1. Widen later if needed.
+//
+// SVG stays allowed (dropping it would break existing logo/diagram
+// uploads) but is never served inline: an SVG is a script-carrying
+// document, so a direct navigation to one would run script under the
+// serving origin. `SVG_CONTENT_DISPOSITION` forces a download for that
+// case while `<img src=…>` embedding keeps working.
+const SVG_MIME_TYPE = "image/svg+xml";
+const SVG_CONTENT_DISPOSITION = "attachment";
+
 const ALLOWED_MIME_TYPES = new Set<string>([
   "image/png",
   "image/jpeg",
@@ -34,6 +43,12 @@ const EXTENSION_BY_MIME: Record<string, string> = {
 };
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+
+/** Response `Content-Disposition` an asset must be served with, if any. */
+/*  Exported so any non-R2 serving path can apply the same rule. */
+export function assetContentDisposition(contentType: string): string | null {
+  return contentType === SVG_MIME_TYPE ? SVG_CONTENT_DISPOSITION : null;
+}
 
 export class AssetsValidationError extends Error {
   readonly field: string;
@@ -67,6 +82,7 @@ type R2ObjectLike = {
   httpMetadata?: {
     contentType?: string;
     cacheControl?: string;
+    contentDisposition?: string;
   };
 };
 
@@ -80,6 +96,7 @@ type R2PutOptionsLike = {
   httpMetadata?: {
     contentType?: string;
     cacheControl?: string;
+    contentDisposition?: string;
   };
   customMetadata?: Record<string, string>;
 };
@@ -265,6 +282,9 @@ async function uploadR2Asset(input: {
     httpMetadata: {
       contentType: input.contentType,
       cacheControl: IMMUTABLE_CACHE_CONTROL,
+      ...(input.contentType === SVG_MIME_TYPE
+        ? { contentDisposition: SVG_CONTENT_DISPOSITION }
+        : {}),
     },
     customMetadata: {
       sha256: hash,

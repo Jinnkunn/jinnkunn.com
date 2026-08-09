@@ -168,6 +168,8 @@ export interface WorkspaceMcpStatus {
 
 export interface WorkspaceMcpSiteAdminCredentialStatus {
   baseUrl: string;
+  /** "keychain" or "local-db" — where these keys were looked up. */
+  backend: string;
   hasAppToken: boolean;
   hasCfAccess: boolean;
   hasAnyCredentials: boolean;

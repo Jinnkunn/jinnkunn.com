@@ -1,8 +1,6 @@
 import "server-only";
 
-import fs from "node:fs";
-import path from "node:path";
-
+import generatedContentRoutes from "@/content/generated/content-routes.json";
 import { getProtectedRoutes } from "@/lib/protected-routes";
 import { getRoutesManifest, type RouteManifestItem } from "@/lib/routes-manifest";
 import {
@@ -18,11 +16,10 @@ import {
 } from "@/lib/shared/sitemap-policy";
 import { HIERARCHY_TRAVERSAL_LIMIT } from "@/lib/shared/hierarchy";
 import { getSyncMeta } from "@/lib/sync-meta";
-import { parsePageFile } from "@/lib/pages/meta";
-import { parsePostFile } from "@/lib/posts/meta";
 import type { ProtectedRoute } from "@/lib/shared/protected-route";
 import { canonicalizeRoutePath, compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { parseSitemapExcludeEntries } from "@/lib/shared/sitemap-excludes";
+import { readContentJson } from "@/lib/server/content-json";
 import { listRawHtmlFiles } from "@/lib/server/content-files";
 
 export type SitemapNode = {
@@ -61,7 +58,21 @@ const EXTRA_ROUTES = ["/blog", "/calendar", "/sitemap"];
 type ContentRoute = {
   routePath: string;
   title: string;
-  mtimeMs: number;
+  lastmodMs: number;
+};
+
+// Build-time facts for every `content/pages/**.mdx` + `content/posts/**.mdx`
+// file, written by `scripts/build/prebuild.mjs`. Read from JSON — never from
+// the MDX itself: wrangler only bundles `content/**/*.json` as Data modules, so
+// an `fs.readFileSync` of an .mdx always fails on the Worker and used to be
+// swallowed, which silently collapsed the production sitemap to 4 URLs.
+type GeneratedContentRoute = {
+  routePath: string;
+  kind: string;
+  title: string;
+  draft: boolean;
+  protected: boolean;
+  lastmod: string | null;
 };
 
 type RouteSources = {
@@ -92,116 +103,77 @@ function displayTitleFromRoute(routePath: string): string {
   return decoded.replace(/[-_]+/g, " ").trim() || decoded || "Untitled";
 }
 
-function getContentRoots(dirName: "pages" | "posts"): string[] {
-  const cwd = process.cwd();
-  const dirs = [
-    path.join(cwd, "content", dirName),
-    path.join(cwd, "server-functions", "default", "content", dirName),
-    path.join(cwd, ".open-next", "server-functions", "default", "content", dirName),
-  ];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const dir of dirs) {
-    if (seen.has(dir)) continue;
-    seen.add(dir);
-    out.push(dir);
-  }
-  return out;
-}
-
-function listMdxFilesSync(rootDir: string, recursive: boolean): string[] {
-  const out: string[] = [];
-  const stack: Array<{ dir: string; prefix: string }> = [{ dir: rootDir, prefix: "" }];
-
-  while (stack.length) {
-    const { dir, prefix } = stack.pop()!;
-    let ents: fs.Dirent[] = [];
-    try {
-      ents = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
+function parseGeneratedContentRoutes(raw: unknown): {
+  routes: GeneratedContentRoute[];
+  skipped: number;
+} {
+  if (!Array.isArray(raw)) return { routes: [], skipped: 0 };
+  const routes: GeneratedContentRoute[] = [];
+  let skipped = 0;
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      skipped += 1;
       continue;
     }
-
-    for (const ent of ents) {
-      const abs = path.join(dir, ent.name);
-      const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
-      if (ent.isDirectory()) {
-        if (recursive) stack.push({ dir: abs, prefix: rel });
-        continue;
-      }
-      if (ent.isFile() && /\.mdx?$/.test(ent.name)) out.push(rel);
+    const row = item as Record<string, unknown>;
+    const routePath = canonicalizeRoutePath(String(row.routePath || ""));
+    if (!routePath) {
+      skipped += 1;
+      continue;
     }
+    const lastmod = typeof row.lastmod === "string" && row.lastmod.trim() ? row.lastmod.trim() : null;
+    routes.push({
+      routePath,
+      kind: String(row.kind || ""),
+      title: String(row.title || ""),
+      draft: Boolean(row.draft),
+      protected: Boolean(row.protected),
+      lastmod,
+    });
   }
-
-  return out.sort((a, b) => a.localeCompare(b));
+  return { routes, skipped };
 }
 
-function readMtimeMs(filePath: string): number {
-  try {
-    return fs.statSync(filePath).mtimeMs;
-  } catch {
-    return 0;
+function readGeneratedContentRoutes(): GeneratedContentRoute[] {
+  // A local override (content/local, content/filesystem) wins so dev servers
+  // and the site-admin preview see unpublished edits; otherwise fall back to
+  // the JSON baked into the bundle.
+  const override = readContentJson("content-routes.json");
+  const { routes, skipped } = parseGeneratedContentRoutes(override ?? generatedContentRoutes);
+
+  // Never fail silently: an empty or malformed index is exactly how the
+  // production sitemap lost every page and post.
+  if (skipped > 0) {
+    console.warn(`[sitemap] content-routes.json: skipped ${skipped} malformed entr${skipped === 1 ? "y" : "ies"}`);
   }
+  if (routes.length === 0) {
+    console.warn(
+      "[sitemap] content-routes.json produced 0 routes; the sitemap will only contain static routes. " +
+        "Re-run `node scripts/build/prebuild.mjs`.",
+    );
+  }
+  return routes;
 }
 
-function collectPageRoutes(): ContentRoute[] {
+function contentRouteLastmodMs(lastmod: string | null): number {
+  if (!lastmod) return 0;
+  const ms = Date.parse(lastmod);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function collectContentRoutes(): ContentRoute[] {
   const out = new Map<string, ContentRoute>();
-  for (const root of getContentRoots("pages")) {
-    for (const rel of listMdxFilesSync(root, true)) {
-      const slug = rel.replace(/\.mdx?$/, "");
-      if (!slug) continue;
-      const filePath = path.join(root, rel);
-      let source = "";
-      try {
-        source = fs.readFileSync(filePath, "utf8");
-      } catch {
-        continue;
-      }
-      try {
-        const { entry } = parsePageFile(slug, source);
-        if (entry.draft) continue;
-        const routePath = canonicalizeRoutePath(`/${slug}`);
-        if (!routePath || out.has(routePath)) continue;
-        out.set(routePath, {
-          routePath,
-          title: entry.title,
-          mtimeMs: readMtimeMs(filePath),
-        });
-      } catch {
-        // Skip malformed drafts/content rather than breaking sitemap generation.
-      }
-    }
-  }
-  return Array.from(out.values());
-}
-
-function collectPostRoutes(): ContentRoute[] {
-  const out = new Map<string, ContentRoute>();
-  for (const root of getContentRoots("posts")) {
-    for (const rel of listMdxFilesSync(root, false)) {
-      const slug = rel.replace(/\.mdx?$/, "");
-      if (!slug) continue;
-      const filePath = path.join(root, rel);
-      let source = "";
-      try {
-        source = fs.readFileSync(filePath, "utf8");
-      } catch {
-        continue;
-      }
-      try {
-        const { entry } = parsePostFile(slug, source);
-        if (entry.draft) continue;
-        const routePath = canonicalizeRoutePath(`/blog/${slug}`);
-        if (!routePath || out.has(routePath)) continue;
-        out.set(routePath, {
-          routePath,
-          title: entry.title,
-          mtimeMs: readMtimeMs(filePath),
-        });
-      } catch {
-        // Skip malformed drafts/content rather than breaking sitemap generation.
-      }
-    }
+  for (const row of readGeneratedContentRoutes()) {
+    if (row.draft) continue;
+    // A password-gated route returns the unlock form to a crawler, so listing it
+    // just advertises the gate and the URL. Keep it out of the sitemap.
+    if (row.protected) continue;
+    if (out.has(row.routePath)) continue;
+    out.set(row.routePath, {
+      routePath: row.routePath,
+      title: row.title,
+      lastmodMs: contentRouteLastmodMs(row.lastmod),
+    });
   }
   return Array.from(out.values());
 }
@@ -394,8 +366,7 @@ function collectRouteSources(ctx: SitemapExclusionContext): RouteSources {
     const routePath = routePathFromRawRelPath(file.relPath);
     tryAdd(routePath, file.mtimeMs);
   }
-  for (const route of collectPageRoutes()) tryAdd(route.routePath, route.mtimeMs, route.title);
-  for (const route of collectPostRoutes()) tryAdd(route.routePath, route.mtimeMs, route.title);
+  for (const route of collectContentRoutes()) tryAdd(route.routePath, route.lastmodMs, route.title);
   for (const extraRoute of EXTRA_ROUTES) tryAdd(extraRoute);
   tryAdd("/blog");
   tryAdd("/");

@@ -16,8 +16,9 @@ import {
   getNumber,
   getString,
   isObject,
-  readJsonBody,
+  parseJsonObject,
 } from "@/lib/server/validate";
+import { readTextWithLimit } from "@/lib/server/request-guards";
 
 export type SiteAdminSettingsPatch = Partial<Omit<SiteSettings, "rowId">>;
 export type SiteAdminNavPatch = Partial<Omit<NavItemRow, "rowId">>;
@@ -83,12 +84,11 @@ function bad(error: string, status = 400): ParseResult<never> {
 export type ParseJsonCommandOptions = {
   invalidJsonError?: string;
   invalidJsonStatus?: number;
-  /** Reject bodies whose declared Content-Length exceeds this value */
-  /*  before attempting to parse them. Missing header skips the check */
-  /*  (bodies bounded by the eventual `req.text()` buffer still apply */
-  /*  the limit inside Node's streaming layer). Defaults to 64KB, */
-  /*  which is comfortably above the largest admin command body but */
-  /*  small enough that a malicious caller cannot exhaust Worker RAM. */
+  /** Hard cap on the request body, enforced while it streams in — a */
+  /*  missing or under-declared Content-Length cannot get past it. */
+  /*  Defaults to 64KB, which is comfortably above the largest admin */
+  /*  command body but small enough that a malicious caller cannot */
+  /*  exhaust Worker RAM. */
   maxBytes?: number;
 };
 
@@ -100,12 +100,15 @@ export async function parseSiteAdminJsonCommand<T>(
   opts?: ParseJsonCommandOptions,
 ): Promise<ParseResult<T>> {
   const maxBytes = opts?.maxBytes ?? DEFAULT_ADMIN_BODY_MAX_BYTES;
-  const declared = Number(req.headers.get("content-length") ?? "");
-  if (Number.isFinite(declared) && declared > maxBytes) {
+  const read = await readTextWithLimit(req, maxBytes).catch(() => null);
+  if (!read) {
+    return bad(opts?.invalidJsonError || "Invalid JSON", opts?.invalidJsonStatus ?? 400);
+  }
+  if (!read.ok) {
     return bad("Request body too large", 413);
   }
 
-  const body = await readJsonBody(req);
+  const body = parseJsonObject(read.body);
   if (!body) {
     return bad(opts?.invalidJsonError || "Invalid JSON", opts?.invalidJsonStatus ?? 400);
   }

@@ -165,8 +165,26 @@ test("rate-limit: missing IP falls back to a shared 'unknown' bucket", () => {
   assert.equal(blocked.ok, false);
 });
 
-test("requestIpFromHeaders: prefers first entry from x-forwarded-for", () => {
-  const headers = new Headers({ "x-forwarded-for": "203.0.113.1, 10.0.0.1" });
+test("requestIpFromHeaders: prefers cf-connecting-ip over a forged x-forwarded-for", () => {
+  const headers = new Headers({
+    "cf-connecting-ip": "203.0.113.7",
+    "x-forwarded-for": "1.2.3.4, 203.0.113.7",
+    "true-client-ip": "9.9.9.9",
+  });
+  assert.equal(requestIpFromHeaders(headers), "203.0.113.7");
+});
+
+test("requestIpFromHeaders: falls back to true-client-ip before x-forwarded-for", () => {
+  const headers = new Headers({
+    "true-client-ip": "203.0.113.8",
+    "x-forwarded-for": "1.2.3.4",
+  });
+  assert.equal(requestIpFromHeaders(headers), "203.0.113.8");
+});
+
+test("requestIpFromHeaders: takes the LAST x-forwarded-for segment", () => {
+  // Cloudflare appends the real peer, so only the tail is trustworthy.
+  const headers = new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.1" });
   assert.equal(requestIpFromHeaders(headers), "203.0.113.1");
 });
 
@@ -176,4 +194,28 @@ test("requestIpFromHeaders: falls back to x-real-ip then 'unknown'", () => {
 
   const h2 = new Headers();
   assert.equal(requestIpFromHeaders(h2), "unknown");
+});
+
+test("rate-limit: a forged x-forwarded-for cannot move the bucket when cf-connecting-ip is set", () => {
+  resetRateLimitForTests();
+  const base = 1_700_000_000_000;
+  const attempt = (forgedPrefix, nowMs) =>
+    checkRateLimit({
+      namespace: "test-forged-xff",
+      ip: requestIpFromHeaders(
+        new Headers({
+          "cf-connecting-ip": "203.0.113.9",
+          "x-forwarded-for": `${forgedPrefix}, 203.0.113.9`,
+        }),
+      ),
+      maxRequests: 2,
+      windowMs: 60_000,
+      nowMs,
+    });
+
+  assert.equal(attempt("10.0.0.1", base).ok, true);
+  assert.equal(attempt("10.0.0.2", base + 1).ok, true);
+  // A third request with yet another forged prefix still lands in the
+  // same bucket, so it is blocked.
+  assert.equal(attempt("10.0.0.3", base + 2).ok, false);
 });

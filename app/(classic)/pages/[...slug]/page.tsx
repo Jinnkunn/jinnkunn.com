@@ -29,13 +29,17 @@ export async function generateMetadata({
   const cfg = getSiteConfig();
   const { slug } = await params;
   const joined = joinSlug(slug);
+  // Every page also serves at the bare `/<slug>` via the root catch-all.
+  // That one is the canonical URL, so the /pages mount points at it
+  // instead of self-canonicalising and splitting the two apart.
+  const canonicalPathname = `/${joined}`;
   const entry = await getPageEntry(joined);
   if (!entry) {
     return buildPageMetadata({
       cfg,
       title: "Page",
       description: cfg.seo.description,
-      pathname: `/pages/${joined}`,
+      pathname: canonicalPathname,
       type: "website",
     });
   }
@@ -43,7 +47,7 @@ export async function generateMetadata({
     cfg,
     title: entry.title,
     description: entry.description ?? cfg.seo.description,
-    pathname: `/pages/${joined}`,
+    pathname: canonicalPathname,
     type: "website",
     modifiedTime: entry.updatedIso || undefined,
   });

@@ -54,6 +54,11 @@ export function SiteAdminVisualEditor({
   const onEditComponentRef = useRef(onEditComponent);
   const disabledRef = useRef(disabled);
   const lastMarkdownRef = useRef(value);
+  // The console derives the label from the document title, so keeping `label`
+  // in the create effect meant every keystroke in the title field tore the
+  // editor down and lost the caret, the undo stack, and in-flight typing.
+  const labelRef = useRef(label);
+  const placeholderRef = useRef(placeholder);
   const [editorError, setEditorError] = useState("");
 
   useEffect(() => {
@@ -68,6 +73,13 @@ export function SiteAdminVisualEditor({
   }, [disabled]);
 
   useEffect(() => {
+    labelRef.current = label;
+    crepeRef.current?.editor.action((ctx) => {
+      ctx.get(editorViewCtx).dom.setAttribute("aria-label", label);
+    });
+  }, [label]);
+
+  useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     let disposed = false;
@@ -77,7 +89,7 @@ export function SiteAdminVisualEditor({
       defaultValue: lastMarkdownRef.current,
       featureConfigs: {
         [Crepe.Feature.Placeholder]: {
-          text: placeholder || "Write, or type / for commands…",
+          text: placeholderRef.current || "Write, or type / for commands…",
           mode: "doc",
         },
         [Crepe.Feature.ImageBlock]: {
@@ -169,7 +181,7 @@ export function SiteAdminVisualEditor({
         crepe.setReadonly(disabledRef.current);
         crepe.editor.action((ctx) => {
           const view = ctx.get(editorViewCtx);
-          view.dom.setAttribute("aria-label", label);
+          view.dom.setAttribute("aria-label", labelRef.current);
         });
         setEditorError("");
       })
@@ -187,7 +199,7 @@ export function SiteAdminVisualEditor({
       crepeRef.current = null;
       void crepe.destroy();
     };
-  }, [allowImageUpload, label, placeholder]);
+  }, [allowImageUpload]);
 
   useEffect(() => {
     const crepe = crepeRef.current;

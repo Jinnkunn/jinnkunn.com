@@ -12,24 +12,11 @@ import {
 } from "@/lib/server/site-admin-source-store";
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import type { ParseResult } from "@/lib/site-admin/request-types";
+import { normalizeSiteAdminVersionPath } from "@/lib/site-admin/version-path";
 
 export const runtime = "nodejs";
 
 const RATE_LIMIT = { namespace: "site-admin-versions", maxRequests: 40 };
-
-const STRUCTURED_CONTENT = new Set([
-  "content/home.json",
-  "content/now.json",
-]);
-
-function normalizeVersionPath(raw: unknown): string {
-  const value = typeof raw === "string" ? raw.trim().replace(/^\/+/, "") : "";
-  if (STRUCTURED_CONTENT.has(value)) return value;
-  if (/^content\/posts\/[a-z0-9-]{1,80}\.mdx$/.test(value)) return value;
-  if (/^content\/pages\/[a-z0-9-]{1,80}\.mdx$/.test(value)) return value;
-  if (/^content\/components\/[a-z0-9-]{1,80}\.mdx$/.test(value)) return value;
-  return "";
-}
 
 type RestoreCommand = {
   path: string;
@@ -40,7 +27,7 @@ type RestoreCommand = {
 function parseRestoreCommand(
   body: Record<string, unknown>,
 ): ParseResult<RestoreCommand> {
-  const path = normalizeVersionPath(body.path);
+  const path = normalizeSiteAdminVersionPath(body.path);
   const commitSha = typeof body.commitSha === "string" ? body.commitSha.trim() : "";
   const expectedFileSha =
     typeof body.expectedFileSha === "string" ? body.expectedFileSha.trim() : undefined;
@@ -56,7 +43,7 @@ export async function GET(req: NextRequest) {
     req,
     async () => {
       const url = new URL(req.url);
-      const path = normalizeVersionPath(url.searchParams.get("path"));
+      const path = normalizeSiteAdminVersionPath(url.searchParams.get("path"));
       const commitSha = String(url.searchParams.get("commitSha") || "").trim();
       const limitRaw = Number(url.searchParams.get("limit") || "12");
       const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, limitRaw)) : 12;

@@ -4,17 +4,26 @@ import { escapeXml } from "@/lib/server/http";
 
 type UrlsetEntry = {
   routePath: string;
+  lastmod?: string | null;
 };
 
 type IndexEntry = {
   path: string;
+  lastmod?: string | null;
 };
+
+// Sitemap 0.9 wants W3C Datetime; the callers already carry full ISO strings.
+function lastmodTag(lastmod: string | null | undefined, indent: string): string {
+  const value = String(lastmod || "").trim();
+  if (!value) return "";
+  return `\n${indent}<lastmod>${escapeXml(value)}</lastmod>`;
+}
 
 export function renderSitemapUrlsetXml(origin: string, entries: UrlsetEntry[]): string {
   const urls = entries
     .map((entry) => {
       const loc = `${origin}${entry.routePath}`;
-      return `  <url>\n    <loc>${escapeXml(loc)}</loc>\n  </url>`;
+      return `  <url>\n    <loc>${escapeXml(loc)}</loc>${lastmodTag(entry.lastmod, "    ")}\n  </url>`;
     })
     .join("\n");
 
@@ -30,7 +39,7 @@ export function renderSitemapIndexXml(origin: string, entries: IndexEntry[]): st
   const maps = entries
     .map((entry) => {
       const loc = `${origin}${entry.path}`;
-      return `  <sitemap>\n    <loc>${escapeXml(loc)}</loc>\n  </sitemap>`;
+      return `  <sitemap>\n    <loc>${escapeXml(loc)}</loc>${lastmodTag(entry.lastmod, "    ")}\n  </sitemap>`;
     })
     .join("\n");
 

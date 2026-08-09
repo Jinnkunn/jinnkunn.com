@@ -3,15 +3,18 @@ import type { Metadata } from "next";
 import { BlogIndexView } from "@/components/blog-index/blog-index-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
 import { getBlogIndex } from "@/lib/blog";
-import { buildPageMetadata } from "@/lib/seo/metadata";
+import { FEED_PATH, buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogIndexStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-static";
 
 const BLOG_TITLE = "Blog";
+// Points at the dynamic feed. The legacy static feed files this used to
+// link were export artifacts that stopped being regenerated; those paths
+// now 301 here.
 const BLOG_INTRO_LINKS: Array<{ label: string; href: string }> = [
-  { label: "RSS Feed", href: "/blog.rss" },
+  { label: "RSS Feed", href: FEED_PATH },
 ];
 
 export async function generateMetadata(): Promise<Metadata> {

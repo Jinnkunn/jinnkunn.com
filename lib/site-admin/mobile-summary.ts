@@ -2,6 +2,13 @@ import type {
   SiteAdminNowData,
   SiteAdminStatusPayload,
 } from "./api-types.ts";
+import {
+  buildSiteAdminReleaseProgress,
+  selectActiveReleaseJob,
+  type SiteAdminReleaseJobLike,
+  type SiteAdminReleaseProgress,
+  type SiteAdminReleaseRunnerLike,
+} from "./release-progress.ts";
 
 export type SiteAdminMobileStatusLike = Omit<SiteAdminStatusPayload, "ok"> & {
   ok?: true;
@@ -13,25 +20,9 @@ export type SiteAdminMobileReleaseActionKind =
   | "refresh"
   | "noop";
 
-export type SiteAdminMobileJobLike = {
-  id: string;
-  action: string;
-  script: string;
-  target: "staging" | "production";
-  status: string;
-  phase: string;
-  createdAt: number;
-  updatedAt: number;
-  finishedAt: number | null;
-  error: string;
-};
+export type SiteAdminMobileJobLike = SiteAdminReleaseJobLike;
 
-export type SiteAdminMobileRunnerLike = {
-  agentId: string;
-  status: "idle" | "running";
-  currentJobId: string;
-  lastSeenAt: number;
-};
+export type SiteAdminMobileRunnerLike = SiteAdminReleaseRunnerLike;
 
 export type SiteAdminMobileSummary = {
   generatedAt: string;
@@ -68,6 +59,7 @@ export type SiteAdminMobileSummary = {
     runningJob: SiteAdminMobileJobLike | null;
     latestJob: SiteAdminMobileJobLike | null;
     runners: SiteAdminMobileRunnerLike[];
+    progress?: SiteAdminReleaseProgress | null;
   };
   source: {
     storeKind: string;
@@ -109,22 +101,14 @@ function boolOrNull(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-function isRunningJob(job: SiteAdminMobileJobLike): boolean {
-  return job.status === "queued" || job.status === "running";
-}
-
 function latestJob(jobs: SiteAdminMobileJobLike[]): SiteAdminMobileJobLike | null {
   return jobs[0] ?? null;
-}
-
-function activeJob(jobs: SiteAdminMobileJobLike[]): SiteAdminMobileJobLike | null {
-  return jobs.find(isRunningJob) ?? null;
 }
 
 function releaseState(input: {
   job: SiteAdminMobileJobLike | null;
   status: SiteAdminMobileStatusLike | null;
-}): SiteAdminMobileSummary["release"] {
+}): Omit<SiteAdminMobileSummary["release"], "progress"> {
   const { job, status } = input;
   if (job) {
     const label = job.status === "queued" ? "Queued" : "Running";
@@ -198,13 +182,16 @@ export function buildSiteAdminMobileSummary(
   const status = input.status ?? null;
   const source = status?.source;
   const jobs = input.jobs ?? [];
-  const running = activeJob(jobs);
+  const running = selectActiveReleaseJob(jobs);
   const release = releaseState({ job: running, status });
   const now = input.now;
   const calendar = input.calendar ?? {};
+  const generatedAt = input.generatedAt || new Date().toISOString();
+  const generatedAtMs = Date.parse(generatedAt);
+  const runners = input.runners ?? [];
 
   return {
-    generatedAt: input.generatedAt || new Date().toISOString(),
+    generatedAt,
     site: {
       name: status?.content?.siteName || "jinkunchen.com",
       environment: status?.build?.branch || source?.branch || "",
@@ -230,7 +217,15 @@ export function buildSiteAdminMobileSummary(
     release: {
       ...release,
       latestJob: latestJob(jobs),
-      runners: input.runners ?? [],
+      runners,
+      progress: running
+        ? buildSiteAdminReleaseProgress({
+            job: running,
+            jobs,
+            runners,
+            now: Number.isFinite(generatedAtMs) ? generatedAtMs : Date.now(),
+          })
+        : null,
     },
     source: {
       storeKind: str(source?.storeKind),

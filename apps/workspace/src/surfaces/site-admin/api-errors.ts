@@ -88,6 +88,20 @@ export function classifySiteAdminError(
     };
   }
 
+  // Deliberately ahead of the network bucket: this is a refusal by our own
+  // host allowlist, not an unreachable server. Classifying it as network
+  // would make it look retryable/offline and feed it to the write outbox.
+  if (code === "UNTRUSTED_HOST") {
+    return {
+      category: "validation",
+      banner: "Refused: the API base URL is not a trusted Site Admin host.",
+      detail:
+        response.error ||
+        "Credentials are only sent to jinkunchen.com over https, or to a local dev server.",
+      retryable: false,
+    };
+  }
+
   if (KNOWN_CONFLICT_CODES.has(code) || status === 409) {
     return {
       category: "conflict",

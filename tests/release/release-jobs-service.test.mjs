@@ -17,6 +17,7 @@ import {
   markStaleReleaseJobs,
   releaseJobCommand,
   retryReleaseJob,
+  touchRunningReleaseAgent,
 } from "../../lib/server/release-jobs-service.ts";
 
 async function makeExecutor() {
@@ -223,6 +224,23 @@ test("release jobs: preferred claim targets one queued job and still checks capa
   assert.equal(preferred.data.job?.id, deployJob.data.id);
   assert.equal(preferred.data.job?.action, "deploy-staging-code");
 
+  // The agent now owns a running job, so the queue stays put until it reports
+  // back — one runner, one job (see the busy-agent test below).
+  const whileBusy = await claimReleaseJob({
+    agentId: "mac-mini",
+    capabilities: ["status", "deploy-staging-code"],
+    executor,
+  });
+  assert.equal(whileBusy.ok, true);
+  if (!whileBusy.ok) throw new Error(whileBusy.error);
+  assert.equal(whileBusy.data.job, null);
+
+  await completeReleaseJob({
+    agentId: "mac-mini",
+    id: deployJob.data.id,
+    status: "succeeded",
+    executor,
+  });
   const fallback = await claimReleaseJob({
     agentId: "mac-mini",
     capabilities: ["status", "deploy-staging-code"],
@@ -274,6 +292,19 @@ test("release jobs: tracks runner heartbeat and queue summary", async () => {
   if (!claimed.ok) throw new Error(claimed.error);
   assert.equal(claimed.data.job?.id, created.data.id);
 
+  await executor.execute({
+    sql: "UPDATE release_agents SET last_seen_at = 1 WHERE agent_id = ?",
+    args: ["mac-mini"],
+  });
+  const touched = await touchRunningReleaseAgent({
+    agentId: "mac-mini",
+    currentJobId: created.data.id,
+    executor,
+  });
+  assert.equal(touched.ok, true);
+  if (!touched.ok) throw new Error(touched.error);
+  assert.equal(touched.data.updated, true);
+
   const runningSummary = await getReleaseRunnerStatus({ executor });
   assert.equal(runningSummary.ok, true);
   if (!runningSummary.ok) throw new Error(runningSummary.error);
@@ -281,6 +312,8 @@ test("release jobs: tracks runner heartbeat and queue summary", async () => {
   assert.equal(runningSummary.data.runningCount, 1);
   assert.equal(runningSummary.data.agents[0].status, "running");
   assert.equal(runningSummary.data.agents[0].currentJobId, created.data.id);
+  assert.ok(runningSummary.data.agents[0].lastSeenAt > 1);
+  assert.deepEqual(runningSummary.data.agents[0].capabilities, ["publish-content-staging"]);
 
   const completed = await completeReleaseJob({
     agentId: "mac-mini",
@@ -420,4 +453,113 @@ test("release jobs: stale running jobs fail and free runner state", async () => 
   assert.equal(summary.data.runningCount, 0);
   assert.equal(summary.data.agents[0].status, "idle");
   assert.equal(summary.data.agents[0].currentJobId, "");
+});
+
+// P0-7: an agent that still owns a live job must not be handed a second one.
+// Without this, a runner restart (or a duplicated wake) put two releases on
+// the same repo and the same production Worker at once.
+test("release jobs: claim refuses an agent that already owns a live job", async () => {
+  const executor = await makeExecutor();
+  const first = await createReleaseJob({
+    action: "deploy-staging-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) throw new Error(first.error);
+  const second = await createReleaseJob({
+    action: "promote-production-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) throw new Error(second.error);
+
+  const claimed = await claimReleaseJob({ agentId: "mac-mini", executor });
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) throw new Error(claimed.error);
+  assert.equal(claimed.data.job?.id, first.data.id);
+
+  const secondClaim = await claimReleaseJob({ agentId: "mac-mini", executor });
+  assert.equal(secondClaim.ok, true);
+  if (!secondClaim.ok) throw new Error(secondClaim.error);
+  assert.equal(secondClaim.data.job, null);
+  assert.equal(secondClaim.data.busyJobId, first.data.id);
+  // The busy agent must also not be able to grab a job by name.
+  const preferred = await claimReleaseJob({
+    agentId: "mac-mini",
+    executor,
+    preferredJobId: second.data.id,
+  });
+  assert.equal(preferred.ok, true);
+  if (!preferred.ok) throw new Error(preferred.error);
+  assert.equal(preferred.data.job, null);
+
+  // A second runner is still free to take the queued job.
+  const other = await claimReleaseJob({ agentId: "spare-runner", executor });
+  assert.equal(other.ok, true);
+  if (!other.ok) throw new Error(other.error);
+  assert.equal(other.data.job?.id, second.data.id);
+});
+
+test("release jobs: finishing a job releases the agent for the next claim", async () => {
+  const executor = await makeExecutor();
+  const first = await createReleaseJob({
+    action: "deploy-staging-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) throw new Error(first.error);
+  const claimed = await claimReleaseJob({ agentId: "mac-mini", executor });
+  assert.equal(claimed.ok, true);
+  if (!claimed.ok) throw new Error(claimed.error);
+
+  await completeReleaseJob({
+    agentId: "mac-mini",
+    id: first.data.id,
+    status: "succeeded",
+    executor,
+  });
+  const second = await createReleaseJob({
+    action: "promote-production-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) throw new Error(second.error);
+  const next = await claimReleaseJob({ agentId: "mac-mini", executor });
+  assert.equal(next.ok, true);
+  if (!next.ok) throw new Error(next.error);
+  assert.equal(next.data.job?.id, second.data.id);
+});
+
+// A crashed runner leaves current_job_id pointing at a job nobody is running.
+// The stale sweep is what unblocks the agent — the busy guard must respect it.
+test("release jobs: the stale sweep unblocks an agent stuck on a dead job", async () => {
+  const executor = await makeExecutor();
+  const first = await createReleaseJob({
+    action: "deploy-staging-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) throw new Error(first.error);
+  await claimReleaseJob({ agentId: "mac-mini", executor });
+  await executor.execute({
+    sql: "UPDATE release_jobs SET updated_at = ? WHERE id = ?",
+    args: [Date.now() - 120 * 60_000, first.data.id],
+  });
+
+  const second = await createReleaseJob({
+    action: "promote-production-code",
+    actor: "jinkun",
+    executor,
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) throw new Error(second.error);
+  const next = await claimReleaseJob({ agentId: "mac-mini", executor });
+  assert.equal(next.ok, true);
+  if (!next.ok) throw new Error(next.error);
+  assert.equal(next.data.job?.id, second.data.id);
 });

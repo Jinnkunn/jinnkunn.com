@@ -4,6 +4,20 @@ export function isObject(x: unknown): x is Record<string, unknown> {
   return Boolean(x) && typeof x === "object" && !Array.isArray(x);
 }
 
+export function parseJsonObject(raw: string): Record<string, unknown> | null {
+  try {
+    const v = JSON.parse(raw);
+    return isObject(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Unbounded read. Prefer `parseSiteAdminJsonCommand` (or
+ * `readTextWithLimit` + `parseJsonObject`) on any path a hostile client
+ * can reach — this helper buffers whatever the caller sends.
+ */
 export async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
   try {
     const v = await req.json();

@@ -1,9 +1,14 @@
 name: CI
 
 on:
-  # Run CI manually when local verification is not enough for a release branch.
-  # Pushes and pull requests are intentionally not CI-triggering for now; local
-  # checks are the source of truth for small staging-only fixes.
+  # CI is a real gate again: every `main` push and every PR runs the full
+  # build/test/lint/UI matrix. Nothing here deploys or publishes — pushes only
+  # verify, and both staging and production releases stay operator-triggered
+  # (see AGENTS.md: push-triggered deploys are staging-only, promotion manual).
+  push:
+    branches: [main]
+  pull_request:
+  # Manual runs stay available for release branches and re-runs.
   workflow_dispatch:
 
 permissions:
@@ -63,6 +68,9 @@ jobs:
               - "package.json"
               - "package-lock.json"
 
+      - name: Lint
+        run: npm run lint
+
       - name: Check Scripts
         run: npm run check:scripts
 
@@ -95,15 +103,20 @@ jobs:
 
       # Keep a fast UI gate on PRs: core nav/search/mobile behavior only.
       # Heavier embed/reference checks stay in manual UI Smoke workflow.
+      #
+      # This and the three steps below run everywhere except PRs with no
+      # UI-impacting diff. The old `event_name == 'push'` form was unreachable
+      # under workflow_dispatch, so manual CI runs went green while silently
+      # skipping UI smoke, axe, snapshots and perf.
       - name: UI Smoke (Quick)
-        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
+        if: github.event_name != 'pull_request' || steps.changes.outputs.ui_quality == 'true'
         env:
           SMOKE_UI_QUICK: "1"
           SMOKE_UI_SKIP_BUILD: "1"
         run: npm run smoke:ui
 
       - name: Accessibility (Axe)
-        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
+        if: github.event_name != 'pull_request' || steps.changes.outputs.ui_quality == 'true'
         env:
           A11Y_SKIP_BUILD: "1"
           A11Y_FULL_SITE: "1"
@@ -111,13 +124,13 @@ jobs:
         run: npm run check:a11y
 
       - name: UI Snapshots (Light/Dark Matrix)
-        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
+        if: github.event_name != 'pull_request' || steps.changes.outputs.ui_quality == 'true'
         env:
           SNAPSHOT_THEMES: "light,dark"
         run: npm run snapshot:ui
 
       - name: Performance Budget
-        if: github.event_name == 'push' || steps.changes.outputs.ui_quality == 'true'
+        if: github.event_name != 'pull_request' || steps.changes.outputs.ui_quality == 'true'
         env:
           PERF_SKIP_BUILD: "1"
           PERF_STRICT: "1"

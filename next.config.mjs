@@ -99,7 +99,45 @@ const nextConfig = {
     // Content-hashed Next build assets under `/_next/static/**` can be held
     // forever; the hash in the URL is the cache key.
     const immutableCache = "public, max-age=31536000, immutable";
+    // Baseline hardening applied to every response. Kept deliberately small:
+    // a full CSP is enforced separately for /site-admin below, because the
+    // public pages inline KaTeX/Prism styling that a strict policy would break.
+    const baselineSecurityHeaders = [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        key: "Strict-Transport-Security",
+        value: "max-age=31536000; includeSubDomains; preload",
+      },
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+      },
+    ];
     return [
+      {
+        source: "/:path*",
+        headers: baselineSecurityHeaders,
+      },
+      {
+        // The admin console is a full editing surface with deploy powers, so it
+        // must never be framed, and it must not be cached by any shared proxy.
+        source: "/site-admin/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Cache-Control", value: "private, no-store, max-age=0" },
+        ],
+      },
+      {
+        // Admin APIs return content drafts and release state; never cache them.
+        source: "/api/site-admin/:path*",
+        headers: [
+          { key: "Cache-Control", value: "private, no-store, max-age=0" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        ],
+      },
       {
         source: "/_next/static/:path*",
         headers: [{ key: "Cache-Control", value: immutableCache }],

@@ -1,7 +1,22 @@
 import type { NavItemRow, SiteSettings } from "./types.ts";
 import type { ProtectedAccessMode } from "../shared/access.ts";
+import type { PublicCalendarData } from "../shared/public-calendar.ts";
 
 export type SiteAdminApiError = { ok: false; error: string; code: string };
+
+/** Wire shape of every site-admin JSON response. `apiPayloadOk(payload)`
+ * serialises `{ ok: true, data: payload }`, so an endpoint's payload always
+ * sits one level below `ok` — including endpoints whose payload has its own
+ * `data` field (Now, Home, calendar), which produces the real, easy-to-miss
+ * `{ ok, data: { data, sourceVersion } }` body.
+ *
+ * The `*Payload` types in this file are the *parsed* form: `{ ok: true }`
+ * merged with the inner payload. That's what the `parse*` contracts return
+ * and what clients should hold — see lib/site-admin/content-contract.ts. */
+export type SiteAdminApiEnvelope<T> = { ok: true; data: T } | SiteAdminApiError;
+
+/** Optimistic-lock token for single-file content (Now, Home, calendar). */
+export type SiteAdminFileSourceVersion = { fileSha: string };
 
 export type SiteAdminConfigSourceVersion = {
   siteConfigSha: string;
@@ -263,18 +278,25 @@ export type SiteAdminHomeData = {
   bodyMdx?: string;
 };
 
-export type SiteAdminHomeGetPayload = {
-  ok: true;
+/** Inner payload of GET /api/site-admin/home — the value of the envelope's
+ * `data` field, whose own `data` is the Home document. */
+export type SiteAdminHomeGetData = {
   data: SiteAdminHomeData;
-  sourceVersion: { fileSha: string };
+  sourceVersion: SiteAdminFileSourceVersion;
 };
+
+export type SiteAdminHomePostData = {
+  sourceVersion: SiteAdminFileSourceVersion;
+};
+
+export type SiteAdminHomeGetResponse = SiteAdminApiEnvelope<SiteAdminHomeGetData>;
+export type SiteAdminHomePostResponse = SiteAdminApiEnvelope<SiteAdminHomePostData>;
+
+export type SiteAdminHomeGetPayload = { ok: true } & SiteAdminHomeGetData;
 
 export type SiteAdminHomeGetResult = SiteAdminHomeGetPayload | SiteAdminApiError;
 
-export type SiteAdminHomePostPayload = {
-  ok: true;
-  sourceVersion: { fileSha: string };
-};
+export type SiteAdminHomePostPayload = { ok: true } & SiteAdminHomePostData;
 
 export type SiteAdminHomePostResult = SiteAdminHomePostPayload | SiteAdminApiError;
 
@@ -326,21 +348,88 @@ export type SiteAdminNowPostCommand =
       expectedFileSha?: string;
     };
 
-export type SiteAdminNowGetPayload = {
-  ok: true;
+/** Inner payload of GET and POST /api/site-admin/now — both return the whole
+ * Now document plus its version, so the body on the wire is
+ * `{ ok: true, data: { data: SiteAdminNowData, sourceVersion } }`. Clients
+ * that flattened this to `{ ok, data }` had to guess at runtime. */
+export type SiteAdminNowResponseData = {
   data: SiteAdminNowData;
-  sourceVersion: { fileSha: string };
+  sourceVersion: SiteAdminFileSourceVersion;
 };
+
+export type SiteAdminNowGetResponse = SiteAdminApiEnvelope<SiteAdminNowResponseData>;
+export type SiteAdminNowPostResponse = SiteAdminApiEnvelope<SiteAdminNowResponseData>;
+
+export type SiteAdminNowGetPayload = { ok: true } & SiteAdminNowResponseData;
 
 export type SiteAdminNowGetResult = SiteAdminNowGetPayload | SiteAdminApiError;
 
-export type SiteAdminNowPostPayload = {
-  ok: true;
-  data: SiteAdminNowData;
-  sourceVersion: { fileSha: string };
-};
+export type SiteAdminNowPostPayload = { ok: true } & SiteAdminNowResponseData;
 
 export type SiteAdminNowPostResult = SiteAdminNowPostPayload | SiteAdminApiError;
+
+// --- Public calendar projection ------------------------------------------
+
+/** `/api/site-admin/calendar-public` reads and writes the JSON projection
+ * that feeds the public calendar; `/live` writes the published D1 rows
+ * directly. Both take a required `expectedFileSha` — the token these
+ * payloads hand back — so concurrent publishers conflict instead of
+ * clobbering. */
+export type SiteAdminCalendarPublicGetData = {
+  data: PublicCalendarData;
+  sourceVersion: SiteAdminFileSourceVersion;
+};
+
+export type SiteAdminCalendarPublicPostData = {
+  sourceVersion: SiteAdminFileSourceVersion;
+  dbStatus: "ok" | "skipped" | "failed";
+};
+
+/** `data` is null when nothing has been published to D1 yet (or the binding
+ * is missing); `sourceVersion.fileSha` is "" in that case. */
+export type SiteAdminCalendarPublicLiveGetData = {
+  data: PublicCalendarData | null;
+  sourceVersion: SiteAdminFileSourceVersion;
+};
+
+export type SiteAdminCalendarPublicLivePostData = {
+  eventCount: number;
+  eventsWritten: number;
+  updatedAt: string;
+};
+
+export type SiteAdminCalendarPublicGetResponse =
+  SiteAdminApiEnvelope<SiteAdminCalendarPublicGetData>;
+export type SiteAdminCalendarPublicPostResponse =
+  SiteAdminApiEnvelope<SiteAdminCalendarPublicPostData>;
+export type SiteAdminCalendarPublicLiveGetResponse =
+  SiteAdminApiEnvelope<SiteAdminCalendarPublicLiveGetData>;
+export type SiteAdminCalendarPublicLivePostResponse =
+  SiteAdminApiEnvelope<SiteAdminCalendarPublicLivePostData>;
+
+export type SiteAdminCalendarPublicGetPayload = { ok: true } & SiteAdminCalendarPublicGetData;
+export type SiteAdminCalendarPublicGetResult =
+  | SiteAdminCalendarPublicGetPayload
+  | SiteAdminApiError;
+
+export type SiteAdminCalendarPublicPostPayload = { ok: true } & SiteAdminCalendarPublicPostData;
+export type SiteAdminCalendarPublicPostResult =
+  | SiteAdminCalendarPublicPostPayload
+  | SiteAdminApiError;
+
+export type SiteAdminCalendarPublicLiveGetPayload = {
+  ok: true;
+} & SiteAdminCalendarPublicLiveGetData;
+export type SiteAdminCalendarPublicLiveGetResult =
+  | SiteAdminCalendarPublicLiveGetPayload
+  | SiteAdminApiError;
+
+export type SiteAdminCalendarPublicLivePostPayload = {
+  ok: true;
+} & SiteAdminCalendarPublicLivePostData;
+export type SiteAdminCalendarPublicLivePostResult =
+  | SiteAdminCalendarPublicLivePostPayload
+  | SiteAdminApiError;
 
 export type SiteAdminDeployPayload = {
   ok: true;

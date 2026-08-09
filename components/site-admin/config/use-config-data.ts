@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { settingsDraftDirty } from "@/app/site-admin/site-admin-console-model";
 import type { NavItemRow, SiteSettings } from "@/components/site-admin/config/types";
 import { errorFromUnknown } from "@/components/site-admin/config/utils";
 import { useSiteAdminNavMutations } from "@/components/site-admin/config/use-nav-mutations";
@@ -14,6 +15,8 @@ export function useSiteAdminConfigData() {
   const [err, setErr] = useState("");
   const [nav, setNav] = useState<NavItemRow[]>([]);
   const [draftSettings, setDraftSettings] = useState<SiteSettings | null>(null);
+  const [savedSettings, setSavedSettings] = useState<SiteSettings | null>(null);
+  const [savedAt, setSavedAt] = useState("");
   const [sourceVersion, setSourceVersion] = useState<SiteAdminConfigSourceVersion | null>(null);
   const {
     openNav,
@@ -37,6 +40,10 @@ export function useSiteAdminConfigData() {
     setErr,
     sourceVersion,
     setSourceVersion,
+    onSaved: (saved) => {
+      setSavedSettings(saved);
+      setSavedAt(new Date().toISOString());
+    },
   });
 
   useEffect(() => {
@@ -47,6 +54,7 @@ export function useSiteAdminConfigData() {
         const data = await siteAdminBackend.getConfig();
         if (!cancelled) {
           setDraftSettings(data.settings ? { ...data.settings } : null);
+          setSavedSettings(data.settings ? { ...data.settings } : null);
           setNav(data.nav || []);
           setSourceVersion(data.sourceVersion);
           resetNavEditorState();
@@ -67,12 +75,19 @@ export function useSiteAdminConfigData() {
     return { top, more };
   }, [nav]);
 
+  const settingsDirty = useMemo(
+    () => settingsDraftDirty(savedSettings, draftSettings),
+    [draftSettings, savedSettings],
+  );
+
   return {
     busy,
     err,
     nav,
     openNav,
     draftSettings,
+    settingsDirty,
+    settingsSavedAt: savedAt,
     navDraft,
     navByGroup,
     setDraftSettings,

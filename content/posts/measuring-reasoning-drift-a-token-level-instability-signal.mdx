@@ -82,7 +82,7 @@ The most interpretable view is **bucket trends**:
 -   Split into 5 equal-sized buckets.
 -   Accuracy is much higher in the lowest-instability bucket, and remains low in the higher-instability buckets.
 
-<ReasoningDriftBucketChart />
+![Figure 1. Bucketed accuracy across five equal-sized buckets by peak instability strength S (GSM8K-300; greedy decoding).](https://cdn.jinkunchen.com/blog/6/bucket_trends_gsm8k300_llama_greedy.png)
 
 Takeaway:
 
@@ -96,7 +96,7 @@ In the same GSM8K run above, separability is already above chance using short pr
 
 If the curve looks “flat”, that’s the point: **most of the separability is already present very early**, so additional steps don’t add much extra predictive power (at least under this summary statistic).
 
-<ReasoningDriftEarlyWarningChart />
+![Figure 2. Early-warning separability: AUC for predicting wrong answers using prefix max instability S_w as a function of prefix length w (same GSM8K-300 run).](https://cdn.jinkunchen.com/blog/6/early_warning_auc_curve_gsm8k300_llama_greedy.png)
 
 ## Timing matters: corrective vs destructive instability
 
@@ -115,11 +115,11 @@ Let $t^* = \arg\max_t I_t$ be the peak step, $T$ be trace length, and define the
 
 As a sanity check beyond top-$k$ logging, I also ran a small held-out GSM8K set where entropy/JSD are computed from full-vocabulary logits (no truncation). In that run, early-peak traces are much more accurate than late-peak traces (about 46% vs 14%).
 
-<ReasoningDriftTimingChart />
+![Figure 3. Accuracy by relative peak position \rho = t^*/T on a held-out GSM8K run (100 traces) computed from full-vocabulary logits (no top-k truncation).](https://cdn.jinkunchen.com/blog/6/peak_timing_accuracy_full_vocab_100trace.png)
 
 To make this concrete, here are two example traces: one correct with an early peak, and one wrong with a late peak.
 
-<ReasoningDriftTraceExamples />
+![Figure 4 (optional). Two example instability traces (same GSM8K-300 run): a correct trace with an early peak and a wrong trace with a late peak.](https://cdn.jinkunchen.com/blog/6/trace_examples_gsm8k300_llama_greedy.png)
 
 ## A small but important limitation: stable-but-wrong failures
 
@@ -129,7 +129,7 @@ Some failures are **stable-but-wrong**: the model stays confident and consistent
 
 This is why I treat instability as a **diagnostic dimension**, not a catch-all label.
 
-<ReasoningDriftFailureModes />
+![Figure 5 (optional). Wrong-trace breakdown on the same GSM8K-300 run: stable wrong (low S), early collapse (high S_\{20\}), and unstable wrong (remainder), where S_\{20\} = \max_\{t \leq 20\} I_t.](https://cdn.jinkunchen.com/blog/6/failure_mode_partition_gsm8k300_llama_greedy.png)
 
 ## What this diagnostic is (and is not)
 

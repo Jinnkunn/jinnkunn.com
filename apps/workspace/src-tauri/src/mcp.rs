@@ -1,5 +1,4 @@
 use crate::local_db;
-use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -152,6 +151,8 @@ pub struct WorkspaceMcpContentPublishSuggestion {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceMcpSiteAdminCredentialStatus {
     pub base_url: String,
+    /// "keychain" or "local-db" — where these keys were looked up.
+    pub backend: String,
     pub has_app_token: bool,
     pub has_cf_access: bool,
     pub has_any_credentials: bool,
@@ -403,25 +404,14 @@ fn site_admin_credential_keys(kind: &str, base_url: &str) -> Vec<String> {
     ]
 }
 
-fn secure_value_exists(conn: &rusqlite::Connection, keys: &[String]) -> Result<bool, String> {
-    for key in keys {
-        let value = conn
-            .query_row(
-                "SELECT value FROM secure_values WHERE key = ?",
-                params![key],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(|err| format!("failed to read MCP credential status: {err}"))?;
-        if value
-            .as_deref()
-            .map(|item| !item.trim().is_empty())
+fn secure_value_exists(app: &tauri::AppHandle, keys: &[String]) -> bool {
+    keys.iter().any(|key| {
+        crate::secrets::read_secret(app, key)
+            .ok()
+            .flatten()
+            .map(|value| !value.trim().is_empty())
             .unwrap_or(false)
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    })
 }
 
 fn site_admin_credential_status(
@@ -438,20 +428,15 @@ fn site_admin_credential_status(
         .chain(cf_secret_keys.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let Ok(conn) = local_db::open(app) else {
-        return WorkspaceMcpSiteAdminCredentialStatus {
-            base_url,
-            has_app_token: false,
-            has_cf_access: false,
-            has_any_credentials: false,
-            checked_keys,
-        };
-    };
-    let has_app_token = secure_value_exists(&conn, &token_keys).unwrap_or(false);
-    let has_cf_access = secure_value_exists(&conn, &cf_id_keys).unwrap_or(false)
-        && secure_value_exists(&conn, &cf_secret_keys).unwrap_or(false);
+    // Resolve through secrets.rs rather than querying `secure_values`
+    // directly: a release build stores these in the OS keychain, and a
+    // SQLite-only probe would report "not signed in" no matter what.
+    let has_app_token = secure_value_exists(app, &token_keys);
+    let has_cf_access =
+        secure_value_exists(app, &cf_id_keys) && secure_value_exists(app, &cf_secret_keys);
     WorkspaceMcpSiteAdminCredentialStatus {
         base_url,
+        backend: crate::secrets::active_backend_label().to_string(),
         has_app_token,
         has_cf_access,
         has_any_credentials: has_app_token || has_cf_access,

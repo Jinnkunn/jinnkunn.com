@@ -9,8 +9,8 @@ import {
 } from "@/lib/server/site-admin-api";
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import { writePublicCalendarToDb } from "@/lib/server/public-calendar-db";
-import { normalizePublicCalendarData } from "@/lib/shared/public-calendar";
-import type { ParseResult } from "@/lib/site-admin/request-types";
+import { loadLiveSiteAdminPublicCalendarData } from "@/lib/server/site-admin-calendar-public-service";
+import { parseSiteAdminCalendarPublicLiveSaveCommand } from "@/lib/site-admin/calendar-public-commands";
 
 export const runtime = "nodejs";
 
@@ -20,25 +20,60 @@ const RATE_LIMIT = {
   windowMs: 60 * 1000,
 };
 
-type SaveLiveCalendarCommand = {
-  data: ReturnType<typeof normalizePublicCalendarData>;
-};
-
-function parseSaveCommand(
-  raw: Record<string, unknown>,
-): ParseResult<SaveLiveCalendarCommand> {
-  return {
-    ok: true,
-    value: { data: normalizePublicCalendarData(raw.data ?? raw) },
-  };
+export async function GET(req: NextRequest) {
+  return withSiteAdminContext(
+    req,
+    async () => {
+      try {
+        const { data, sourceVersion } = await loadLiveSiteAdminPublicCalendarData();
+        return apiPayloadOk({ data, sourceVersion });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return apiError(msg, { status: 500, code: "REQUEST_FAILED" });
+      }
+    },
+    { rateLimit: RATE_LIMIT },
+  );
 }
 
 export async function POST(req: NextRequest) {
   return withSiteAdminContext(
     req,
     async (ctx) => {
-      const parsed = await readSiteAdminJsonCommand(req, parseSaveCommand);
+      const parsed = await readSiteAdminJsonCommand(
+        req,
+        parseSiteAdminCalendarPublicLiveSaveCommand,
+      );
       if (!parsed.ok) return parsed.res;
+
+      const live = await loadLiveSiteAdminPublicCalendarData();
+      if (live.sourceVersion.fileSha !== parsed.value.expectedFileSha) {
+        await writeSiteAdminAuditLog({
+          actor: ctx.login,
+          action: "calendar.public.live.save",
+          endpoint: "/api/site-admin/calendar-public/live",
+          method: "POST",
+          status: 409,
+          result: "source_conflict",
+          code: "SOURCE_CONFLICT",
+          message: "live calendar changed since it was read",
+          metadata: {
+            expectedSha: parsed.value.expectedFileSha,
+            currentSha: live.sourceVersion.fileSha,
+          },
+        });
+        return apiError(
+          "Published calendar changed. Reload the live version and try again.",
+          {
+            status: 409,
+            code: "SOURCE_CONFLICT",
+            extras: {
+              expectedSha: parsed.value.expectedFileSha,
+              currentSha: live.sourceVersion.fileSha,
+            },
+          },
+        );
+      }
 
       const result = await writePublicCalendarToDb(parsed.value.data);
       if (!result.ok || result.skipped) {

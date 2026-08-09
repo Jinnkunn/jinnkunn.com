@@ -5,9 +5,39 @@ import { wakeReleaseRunnerForJob } from "../../lib/server/release-runner-wake.ts
 import {
   isWakeAuthorized,
   normalizeWakePayload,
+  releasePhaseForOutput,
   syncRepo,
   wakeHealthPayload,
 } from "../../scripts/release/release-agent.mjs";
+
+test("release agent progress: maps content publish checkpoints to stable phases", () => {
+  const action = "publish-content-production";
+  assert.equal(
+    releasePhaseForOutput(action, "[publish-content] dumping production D1 content"),
+    "prepare-content",
+  );
+  assert.equal(
+    releasePhaseForOutput(action, "[publish-content] running Next build with live build id abc"),
+    "build",
+  );
+  assert.equal(
+    releasePhaseForOutput(action, "[publish-content] exporting static shell assets"),
+    "export",
+  );
+  assert.equal(
+    releasePhaseForOutput(action, "[publish-content] uploading 12 changed overlay files"),
+    "upload",
+  );
+  assert.equal(
+    releasePhaseForOutput(action, "[publish-content] verifying production overlay on public routes"),
+    "verify",
+  );
+  assert.equal(releasePhaseForOutput(action, "ordinary build output"), "");
+  assert.equal(
+    releasePhaseForOutput("status", "[publish-content] running Next build"),
+    "",
+  );
+});
 
 const job = {
   action: "publish-content-staging",

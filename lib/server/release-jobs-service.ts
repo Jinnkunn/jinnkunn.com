@@ -156,7 +156,11 @@ function isD1Like(value: unknown): value is D1DatabaseLike {
 function tryGetD1Executor(): DbExecutor | null {
   try {
     const { env } = getCloudflareContext();
-    const binding = (env as Record<string, unknown>).SITE_ADMIN_DB;
+    const bindings = env as Record<string, unknown>;
+    // Production and staging share one release control-plane queue so the
+    // Mac mini runner can claim jobs through its single staging API origin.
+    // Content reads and writes continue to use the environment's SITE_ADMIN_DB.
+    const binding = bindings.SITE_ADMIN_RELEASE_DB ?? bindings.SITE_ADMIN_DB;
     return isD1Like(binding) ? createD1Executor(binding) : null;
   } catch {
     return null;
@@ -304,7 +308,7 @@ function getExecutor(executor?: DbExecutor): ReleaseJobServiceResult<DbExecutor>
   const resolved = executor ?? tryGetD1Executor();
   if (!resolved) {
     return serviceError(
-      "Release jobs require SITE_ADMIN_DB in the Cloudflare runtime.",
+      "Release jobs require SITE_ADMIN_RELEASE_DB or SITE_ADMIN_DB in the Cloudflare runtime.",
       503,
       "DB_BACKEND_UNAVAILABLE",
     );
@@ -547,6 +551,31 @@ export async function heartbeatReleaseAgent(input: {
   return serviceOk(rowToReleaseAgent(result.rows[0] ?? { agent_id: agentId }));
 }
 
+export async function touchRunningReleaseAgent(input: {
+  agentId: string;
+  currentJobId: string;
+  executor?: DbExecutor;
+}): Promise<ReleaseJobServiceResult<{ updated: boolean }>> {
+  const agentId = normalizeAgentId(input.agentId);
+  const currentJobId = String(input.currentJobId || "").trim().slice(0, 160);
+  if (!agentId || !currentJobId) {
+    return serviceError("Missing release agent or job id.");
+  }
+  const executor = getExecutor(input.executor);
+  if (!executor.ok) return executor;
+  await ensureReleaseJobTables(executor.data);
+  const now = Date.now();
+  const result = await executor.data.execute({
+    sql: `UPDATE release_agents
+             SET status = 'running',
+                 last_seen_at = ?,
+                 updated_at = ?
+           WHERE agent_id = ? AND current_job_id = ?`,
+    args: [now, now, agentId, currentJobId],
+  });
+  return serviceOk({ updated: result.rowsAffected > 0 });
+}
+
 export async function getReleaseRunnerStatus(input: {
   executor?: DbExecutor;
   limit?: number;
@@ -654,13 +683,35 @@ export async function claimReleaseJob(input: {
   capabilities?: unknown[];
   preferredJobId?: unknown;
   executor?: DbExecutor;
-}): Promise<ReleaseJobServiceResult<{ job: ReleaseJobRow | null; command?: ReleaseJobCommand }>> {
+}): Promise<
+  ReleaseJobServiceResult<{
+    job: ReleaseJobRow | null;
+    command?: ReleaseJobCommand;
+    busyJobId?: string;
+  }>
+> {
   const agentId = normalizeAgentId(input.agentId);
   if (!agentId) return serviceError("Missing agent id.");
   const executor = getExecutor(input.executor);
   if (!executor.ok) return executor;
   await ensureReleaseJobTables(executor.data);
   await markStaleReleaseJobs({ executor: executor.data });
+
+  // Read the agent's own record before the idle heartbeat below overwrites it:
+  // an agent that still owns a live job must not be handed a second one, or a
+  // restarted/duplicated runner ends up deploying twice against the same repo
+  // and Worker. A job that has already reached a terminal status (including one
+  // markStaleReleaseJobs just failed) releases the agent.
+  const busy = await executor.data.execute({
+    sql: `SELECT j.id AS id
+            FROM release_agents a
+            JOIN release_jobs j ON j.id = a.current_job_id
+           WHERE a.agent_id = ? AND j.status IN ('queued', 'running')
+           LIMIT 1`,
+    args: [agentId],
+  });
+  const busyJobId = String(busy.rows[0]?.id || "");
+  if (busyJobId) return serviceOk({ busyJobId, job: null });
 
   const capabilities = Array.isArray(input.capabilities)
     ? input.capabilities

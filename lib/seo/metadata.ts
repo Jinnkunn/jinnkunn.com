@@ -7,6 +7,20 @@ import type { SeoPageOverride } from "../shared/seo-page-overrides.ts";
 
 const FALLBACK_SITE_ORIGIN = "https://jinkunchen.com";
 
+/** The one feed URL the site advertises. `/blog/rss.xml` renders the same
+ * document; the retired static `/blog.rss` and `/blog.atom` 301 here. */
+export const FEED_PATH = "/rss.xml";
+const FEED_TITLE = "Blog";
+
+/** Emitted on every page so browsers/readers can autodiscover the feed.
+ * Next merges `alternates` wholesale per route, so both the root and the
+ * per-page builder have to carry it or pages would drop it. */
+function feedAlternates() {
+  return {
+    "application/rss+xml": [{ url: FEED_PATH, title: FEED_TITLE }],
+  };
+}
+
 function trimTrailingSlash(input: string): string {
   const s = String(input || "").trim();
   if (!s) return "";
@@ -130,7 +144,7 @@ export function buildPageMetadata(input: BuildPageMetadataInput): Metadata {
     metadataBase: getMetadataBase(),
     title,
     description,
-    alternates: { canonical },
+    alternates: { canonical, types: feedAlternates() },
     openGraph:
       ogType === "article"
         ? {
@@ -169,7 +183,7 @@ export function buildRootMetadata(cfg: SiteConfig): Metadata {
       template: `%s | ${baseTitle}`,
     },
     description,
-    alternates: { canonical },
+    alternates: { canonical, types: feedAlternates() },
     openGraph: {
       type: "website",
       siteName: cfg.siteName || baseTitle,

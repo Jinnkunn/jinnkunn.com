@@ -388,11 +388,15 @@ function McpSettingsPanel({
     : "npm run workspace:mcp";
   const writable = settings.enabled && settings.writeMode === "local-write";
   const credentials = status?.siteAdminCredentials;
+  // Name the backend on the "missing" branch: a release build looks in the
+  // keychain and a debug build in workspace.db, and knowing which one was
+  // consulted is the difference between "sign in again" and "wrong store".
   const credentialDetail = credentials
     ? [
         credentials.hasAppToken ? "app token" : "",
         credentials.hasCfAccess ? "CF Access" : "",
-      ].filter(Boolean).join(" + ") || `Missing for ${credentials.baseUrl}`
+      ].filter(Boolean).join(" + ") ||
+      `Missing for ${credentials.baseUrl} (${credentials.backend})`
     : "Not checked yet";
   const applyProfile = (profile: "read-only" | "daily" | "site") => {
     if (profile === "read-only") {

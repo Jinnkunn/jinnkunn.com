@@ -12,6 +12,7 @@
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/**/*.test.mjs'",
     "check:scripts": "node scripts/qa/check-scripts.mjs",
+    "check:dead-code": "npx --yes knip@5 --include files --no-progress",
     "db:migrate": "node scripts/content/db-migrate.mjs",
     "db:diff:staging": "node scripts/content/dump-content-from-db.mjs --remote --env=staging --diff-only",
     "db:diff:staging:json": "node scripts/content/dump-content-from-db.mjs --remote --env=staging --diff-only --json",

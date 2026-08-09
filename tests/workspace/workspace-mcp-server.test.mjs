@@ -33,6 +33,7 @@ async function withServer(fn) {
   const previousConfirmationsPath = process.env.WORKSPACE_MCP_CONFIRMATIONS_PATH;
   const previousContentRoot = process.env.WORKSPACE_MCP_CONTENT_ROOT;
   const previousSuggestionPath = process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH;
+  const previousSecretBackend = process.env.WORKSPACE_SECRET_BACKEND;
   const settingsPath = path.join(dir, "mcp-settings.json");
   const confirmationsPath = path.join(dir, "mcp-confirmations.json");
   const contentRoot = path.join(dir, "content");
@@ -44,6 +45,11 @@ async function withServer(fn) {
     dir,
     "site-admin-content-publish-suggestion.json",
   );
+  // Pin the credential lookup to this temp workspace.db. Without it the
+  // server falls back to the developer's real OS keychain, and the
+  // "no credentials configured" cases would authenticate against the live
+  // staging site instead.
+  process.env.WORKSPACE_SECRET_BACKEND = "local-db";
   const server = createWorkspaceMcpServer({ dbPath });
   try {
     await fs.writeFile(
@@ -88,6 +94,11 @@ async function withServer(fn) {
       delete process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH;
     } else {
       process.env.WORKSPACE_MCP_CONTENT_SUGGESTION_PATH = previousSuggestionPath;
+    }
+    if (previousSecretBackend === undefined) {
+      delete process.env.WORKSPACE_SECRET_BACKEND;
+    } else {
+      process.env.WORKSPACE_SECRET_BACKEND = previousSecretBackend;
     }
     await fs.rm(dir, { recursive: true, force: true });
   }

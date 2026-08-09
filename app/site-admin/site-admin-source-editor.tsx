@@ -3,7 +3,7 @@
 import { basicSetup } from "codemirror";
 import { defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap, placeholder as editorPlaceholder } from "@codemirror/view";
 import {
   type ClipboardEvent,
@@ -39,6 +39,14 @@ export function SiteAdminSourceEditor({
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const valueRef = useRef(value);
+  const disabledRef = useRef(disabled);
+  // Rebuilding the view drops the cursor, the undo stack, and any keystrokes
+  // typed while the state was being recreated, so everything that can change
+  // while the author is typing is applied through a compartment or a ref.
+  const editableCompartmentRef = useRef(new Compartment());
+  const labelRef = useRef(label);
+  const minHeightRef = useRef(minHeight);
+  const placeholderRef = useRef(placeholder);
   const [uploadError, setUploadError] = useState("");
 
   useEffect(() => {
@@ -46,7 +54,30 @@ export function SiteAdminSourceEditor({
   }, [onChange]);
 
   useEffect(() => {
+    disabledRef.current = disabled;
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: editableCompartmentRef.current.reconfigure([
+        EditorState.readOnly.of(disabled),
+        EditorView.editable.of(!disabled),
+      ]),
+    });
+  }, [disabled]);
+
+  useEffect(() => {
+    labelRef.current = label;
+    const view = viewRef.current;
+    if (!view) return;
+    view.contentDOM.setAttribute("aria-label", label);
+  }, [label]);
+
+  useEffect(() => {
     if (!hostRef.current) return;
+    const initialLabel = labelRef.current;
+    const initialMinHeight = minHeightRef.current;
+    const initialPlaceholder = placeholderRef.current;
+    const editableCompartment = editableCompartmentRef.current;
 
     const view = new EditorView({
       parent: hostRef.current,
@@ -57,13 +88,15 @@ export function SiteAdminSourceEditor({
           markdown({ base: markdownLanguage }),
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
-          EditorState.readOnly.of(disabled),
-          EditorView.editable.of(!disabled),
+          editableCompartment.of([
+            EditorState.readOnly.of(disabledRef.current),
+            EditorView.editable.of(!disabledRef.current),
+          ]),
           EditorView.contentAttributes.of({
-            "aria-label": label,
+            "aria-label": initialLabel,
             spellcheck: "false",
           }),
-          placeholder ? editorPlaceholder(placeholder) : [],
+          initialPlaceholder ? editorPlaceholder(initialPlaceholder) : [],
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
             const next = update.state.doc.toString();
@@ -72,13 +105,13 @@ export function SiteAdminSourceEditor({
           }),
           EditorView.theme({
             "&": {
-              minHeight: `${minHeight}px`,
+              minHeight: `${initialMinHeight}px`,
               backgroundColor: "transparent",
               color: "var(--ds-text-primary)",
               fontSize: "14px",
             },
             ".cm-scroller": {
-              minHeight: `${minHeight}px`,
+              minHeight: `${initialMinHeight}px`,
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
               lineHeight: "1.62",
               padding: "18px 20px 32px",
@@ -110,7 +143,7 @@ export function SiteAdminSourceEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, [disabled, label, minHeight, placeholder]);
+  }, []);
 
   useEffect(() => {
     valueRef.current = value;
@@ -118,8 +151,13 @@ export function SiteAdminSourceEditor({
     if (!view) return;
     const current = view.state.doc.toString();
     if (current === value) return;
+    // A save round-trip re-normalizes the document; keep the caret where the
+    // author left it instead of collapsing it to the top of the file.
+    const anchor = Math.min(view.state.selection.main.anchor, value.length);
+    const head = Math.min(view.state.selection.main.head, value.length);
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
+      selection: { anchor, head },
     });
   }, [value]);
 

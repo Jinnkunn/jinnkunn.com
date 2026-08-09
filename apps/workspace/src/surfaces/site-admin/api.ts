@@ -54,6 +54,17 @@ export function normalizeApiResponse(rawResponse: unknown): NormalizedApiRespons
   };
 }
 
+/** The Rust host allowlist (`is_trusted_admin_host`) rejects a credentialed
+ * call to an untrusted base URL by returning an `Err`, which surfaces here as
+ * a thrown invoke error. That is a refusal, not a network failure — callers
+ * must not mistake it for "offline" and queue the request into the write
+ * outbox, which would replay the same credentials at the same bad host. */
+export function isUntrustedHostRejection(message: string): boolean {
+  return /refusing to (send|queue\/replay) Site Admin credentials/i.test(
+    message,
+  );
+}
+
 export interface SiteAdminRequestInput {
   baseUrl: string;
   authToken: string;
@@ -138,7 +149,9 @@ export async function siteAdminRequest(
     const normalized: NormalizedApiResponse = {
       ok: false,
       status: 0,
-      code: "TAURI_INVOKE_ERROR",
+      code: isUntrustedHostRejection(message)
+        ? "UNTRUSTED_HOST"
+        : "TAURI_INVOKE_ERROR",
       error: message,
       raw: { error: message },
     };

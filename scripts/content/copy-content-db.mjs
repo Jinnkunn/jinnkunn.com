@@ -8,12 +8,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 
 const BINDING = "SITE_ADMIN_DB";
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const WRANGLER_TOML = path.join(ROOT, "wrangler.toml");
+// D1 caps bound parameters per query at 100. Seven columns per row means 14
+// rows would fit; 10 leaves headroom if the column list ever grows.
+const INSERT_CHUNK_ROWS = 10;
+const DELETE_CHUNK_PATHS = 50;
+// A row this large cannot survive the D1 HTTP query body limit. Catching it
+// during validation turns a mid-mirror explosion into a refusal to start.
+const MAX_ROW_BODY_BYTES = 900_000;
 
 function parseArgs(argv = process.argv.slice(2)) {
   const out = {
@@ -140,7 +148,7 @@ async function cfD1Query({ env, sql, params = [] }) {
   return result?.results ?? [];
 }
 
-function normalizeRow(row) {
+export function normalizeRow(row) {
   const relPath = String(row.rel_path || "");
   const bodyHex = String(row.body_hex || "");
   const sha = String(row.sha || "");
@@ -160,6 +168,89 @@ function normalizeRow(row) {
     updatedAt: Number.isFinite(updatedAtParsed) ? updatedAtParsed : Date.now(),
     updatedBy: row.updated_by === null || row.updated_by === undefined ? null : String(row.updated_by),
   };
+}
+
+// Every reason this mirror could refuse a row, checked across the whole set
+// before the first write. The old order — delete the target table, then
+// discover a binary row mid-insert — left production content_files empty and
+// made every retry fail at exactly the same point.
+export function assertMirrorableRows(rows) {
+  for (const row of rows) {
+    if (row.isBinary) {
+      throw new Error(`Refusing to mirror binary content row via text params: ${row.relPath}`);
+    }
+    if (row.bodyHex.length % 2 !== 0) {
+      throw new Error(`Refusing to mirror truncated body hex: ${row.relPath}`);
+    }
+    const byteLength = row.bodyHex.length / 2;
+    if (byteLength > MAX_ROW_BODY_BYTES) {
+      throw new Error(
+        `Refusing to mirror oversized row (${byteLength}B > ${MAX_ROW_BODY_BYTES}B): ${row.relPath}`,
+      );
+    }
+    // `size` is display metadata, so a legacy row whose size drifted from its
+    // body is copied as-is; only a nonsensical value is worth refusing.
+    if (!Number.isFinite(row.size) || row.size < 0) {
+      throw new Error(`Refusing to mirror row with invalid size: ${row.relPath}`);
+    }
+  }
+  return rows;
+}
+
+function chunk(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+// Writes rows into the target, then removes whatever the source no longer has.
+// D1 rejects bound parameters on multi-statement SQL, so the delete cannot
+// share a transaction with the inserts — it runs last instead of first, which
+// means an interrupted mirror leaves stale-but-complete content rather than an
+// empty table, and a retry converges.
+export async function mirrorRows({ query, rows, only = [], targetEnv }) {
+  assertMirrorableRows(rows);
+  const columns = ["rel_path", "body", "is_binary", "sha", "size", "updated_at", "updated_by"];
+  const rowSql = `(${columns.map(() => "?").join(", ")})`;
+  for (const group of chunk(rows, INSERT_CHUNK_ROWS)) {
+    try {
+      await query({
+        env: targetEnv,
+        sql: `INSERT OR REPLACE INTO content_files (${columns.join(", ")})
+              VALUES ${group.map(() => rowSql).join(", ")}`,
+        params: group.flatMap((row) => [
+          row.relPath,
+          Buffer.from(row.bodyHex, "hex").toString("utf8"),
+          row.isBinary,
+          row.sha,
+          row.size,
+          row.updatedAt,
+          row.updatedBy,
+        ]),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to mirror ${group.map((row) => row.relPath).join(", ")}: ${message}`);
+    }
+  }
+  // `--only` is a targeted overwrite; it must not touch rows it never read.
+  if (only.length > 0) return { deleted: 0, upserted: rows.length };
+  const kept = new Set(rows.map((row) => row.relPath));
+  const existing = await query({
+    env: targetEnv,
+    sql: "SELECT rel_path FROM content_files",
+  });
+  const orphans = existing
+    .map((row) => String(row.rel_path || ""))
+    .filter((relPath) => relPath && !kept.has(relPath));
+  for (const group of chunk(orphans, DELETE_CHUNK_PATHS)) {
+    await query({
+      env: targetEnv,
+      sql: `DELETE FROM content_files WHERE rel_path IN (${group.map(() => "?").join(", ")})`,
+      params: group,
+    });
+  }
+  return { deleted: orphans.length, upserted: rows.length };
 }
 
 function summarizeRows(rows) {
@@ -207,6 +298,10 @@ async function main() {
     throw new Error(`Missing ${args.sourceEnv} content_files rows: ${missing.join(", ")}`);
   }
 
+  // Validate before touching the target, even on a dry run, so `--dry-run`
+  // answers "would this promotion succeed?" and not just "what would it copy?".
+  assertMirrorableRows(sourceRows);
+
   const summary = {
     ok: true,
     dryRun: args.dryRun,
@@ -215,58 +310,32 @@ async function main() {
     sourceEnv: args.sourceEnv,
     targetEnv: args.targetEnv,
     copied: args.dryRun ? 0 : sourceRows.length,
+    deleted: 0,
     source: summarizeRows(sourceRows),
   };
 
   if (!args.dryRun) {
-    if (args.only.length) {
-      for (const relPath of args.only) {
-        await cfD1Query({
-          env: args.targetEnv,
-          sql: "DELETE FROM content_files WHERE rel_path = ?",
-          params: [relPath],
-        });
-      }
-    } else {
-      await cfD1Query({ env: args.targetEnv, sql: "DELETE FROM content_files" });
-    }
-    for (const row of sourceRows) {
-      if (row.isBinary) {
-        throw new Error(`Refusing to mirror binary content row via text params: ${row.relPath}`);
-      }
-      try {
-        await cfD1Query({
-          env: args.targetEnv,
-          sql: `INSERT INTO content_files
-                  (rel_path, body, is_binary, sha, size, updated_at, updated_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          params: [
-            row.relPath,
-            Buffer.from(row.bodyHex, "hex").toString("utf8"),
-            row.isBinary,
-            row.sha,
-            row.size,
-            row.updatedAt,
-            row.updatedBy,
-          ],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`Failed to mirror ${row.relPath}: ${message}`);
-      }
-    }
+    const mirrored = await mirrorRows({
+      only: args.only,
+      query: cfD1Query,
+      rows: sourceRows,
+      targetEnv: args.targetEnv,
+    });
+    summary.deleted = mirrored.deleted;
   }
 
   if (args.json) {
     console.log(JSON.stringify(summary, null, 2));
   } else if (!args.quiet) {
     console.log(
-      `[copy-content-db] ${args.dryRun ? "would copy" : "copied"} ${sourceRows.length} content_files rows ${args.sourceEnv} → ${args.targetEnv} (${summary.mode}, posts=${summary.source.posts}, pages=${summary.source.pages})`,
+      `[copy-content-db] ${args.dryRun ? "would copy" : "copied"} ${sourceRows.length} content_files rows ${args.sourceEnv} → ${args.targetEnv} (${summary.mode}, posts=${summary.source.posts}, pages=${summary.source.pages}, deleted=${summary.deleted})`,
     );
   }
 }
 
-main().catch((err) => {
-  console.error(err?.stack || String(err));
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((err) => {
+    console.error(err?.stack || String(err));
+    process.exit(1);
+  });
+}

@@ -17,6 +17,7 @@ import type { EditorDiagnostic } from "./editor-diagnostics";
 import {
   cfAccessIdStoreKeyForBase,
   cfAccessSecretStoreKeyForBase,
+  isUntrustedHostRejection,
   siteAdminRequest,
   tokenStoreKeyForBase,
   type SiteAdminRequestResult,
@@ -927,10 +928,15 @@ export function SiteAdminProvider({ children }: { children: ReactNode }) {
         //     operator actions; queueing would surprise the operator
         //     when "deploy now" silently fires three hours later)
         //   - only when we actually have credentials to replay with
+        // A host-allowlist refusal is deliberately NOT offline: queuing it
+        // would replay the same credentials at the same untrusted host, so
+        // the security control would become the bypass. api.ts codes those
+        // as UNTRUSTED_HOST, which this check excludes.
         const looksOffline =
           !response.ok &&
           response.status === 0 &&
-          response.code === "TAURI_INVOKE_ERROR";
+          response.code === "TAURI_INVOKE_ERROR" &&
+          !isUntrustedHostRejection(response.error);
         const isMutating = isMutatingHttpMethod(method);
         const isAuthFlow = path.startsWith("/api/site-admin/app-auth/");
         const isDeploy =

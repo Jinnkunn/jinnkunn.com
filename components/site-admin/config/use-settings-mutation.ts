@@ -11,6 +11,8 @@ type UseSiteAdminSettingsMutationArgs = {
   setErr: (value: string) => void;
   sourceVersion: SiteAdminConfigSourceVersion | null;
   setSourceVersion: (value: SiteAdminConfigSourceVersion) => void;
+  /** Receives the settings that were actually persisted, for dirty tracking. */
+  onSaved?: (saved: SiteSettings) => void;
 };
 
 export function useSiteAdminSettingsMutation({
@@ -19,6 +21,7 @@ export function useSiteAdminSettingsMutation({
   setErr,
   sourceVersion,
   setSourceVersion,
+  onSaved,
 }: UseSiteAdminSettingsMutationArgs) {
   return async () => {
     if (!draftSettings?.rowId) return;
@@ -56,6 +59,7 @@ export function useSiteAdminSettingsMutation({
         expectedSiteConfigSha: sourceVersion.siteConfigSha,
       });
       setSourceVersion(data.sourceVersion);
+      onSaved?.({ ...draftSettings });
     } catch (e: unknown) {
       setErr(errorFromUnknown(e));
     } finally {

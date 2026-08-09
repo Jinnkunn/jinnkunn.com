@@ -51,6 +51,42 @@ export const COMMANDS = {
   },
 };
 
+const CONTENT_PUBLISH_ACTIONS = new Set([
+  "publish-content-staging",
+  "publish-content-production",
+  "publish-content-production-from-staging",
+  "publish-now-production-from-staging",
+]);
+
+export function releasePhaseForOutput(action, line) {
+  if (!CONTENT_PUBLISH_ACTIONS.has(String(action || ""))) return "";
+  const message = String(line || "").toLowerCase();
+  if (!message.includes("[publish-content]")) return "";
+  if (
+    message.includes("verifying ") ||
+    message.includes("checking ")
+  ) {
+    return "verify";
+  }
+  if (
+    message.includes("uploading ") ||
+    message.includes("deleting ") ||
+    message.includes("creating d1 overlay")
+  ) {
+    return "upload";
+  }
+  if (message.includes("exporting ")) return "export";
+  if (message.includes("running next build")) return "build";
+  if (
+    message.includes("dumping ") ||
+    (message.includes("using ") && message.includes("d1 snapshot")) ||
+    message.includes("building content against")
+  ) {
+    return "prepare-content";
+  }
+  return "";
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
   const valueAfter = (name) => {
     const direct = argv.find((arg) => arg.startsWith(`${name}=`));
@@ -244,16 +280,31 @@ async function complete(baseUrl, token, agentId, jobId, body) {
   await postJson(baseUrl, `/api/site-admin/release-jobs/${jobId}/complete`, token, agentId, body);
 }
 
-async function isJobCanceled(baseUrl, token, agentId, jobId) {
+// Any status that is not queued/running means the control plane has already
+// closed this job out. Watching only for "canceled" let a job the API had
+// declared stale (status='failed') keep deploying: its completion was then
+// discarded by the `WHERE status='running'` guard, the operator saw a failure,
+// hit Retry, and two releases raced over the same repo and Worker.
+const TERMINAL_RELEASE_STATUSES = new Set(["succeeded", "failed", "canceled"]);
+
+export function releaseJobAbortStatus(payload) {
+  const data =
+    payload && typeof payload.data === "object" && payload.data !== null
+      ? payload.data
+      : payload;
+  const job = data && typeof data.job === "object" && data.job !== null ? data.job : null;
+  const status = String(job?.status || "").trim();
+  return TERMINAL_RELEASE_STATUSES.has(status) ? status : "";
+}
+
+async function jobAbortStatus(baseUrl, token, agentId, jobId) {
   const payload = await getJson(
     baseUrl,
     `/api/site-admin/release-jobs/${jobId}/agent`,
     token,
     agentId,
   );
-  const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
-  const job = data.job && typeof data.job === "object" ? data.job : null;
-  return job?.status === "canceled";
+  return releaseJobAbortStatus(payload);
 }
 
 function runRunnerGit({ args, onLine, repo, spawnSyncImpl }) {
@@ -313,7 +364,7 @@ export function syncRepo({ repo, onLine, spawnSyncImpl = spawnSync }) {
   onLine("status", `Release runner source: main ${sha}`);
 }
 
-function runCommand({ action, repo, dryRun, onLine, isCancelled }) {
+export function runCommand({ action, repo, dryRun, onLine, abortStatus, spawnImpl = spawn }) {
   const command = COMMANDS[action];
   if (!command) throw new Error(`Unsupported release action: ${action}`);
   if (dryRun) {
@@ -322,10 +373,10 @@ function runCommand({ action, repo, dryRun, onLine, isCancelled }) {
   }
   return new Promise((resolve, reject) => {
     const tail = [];
-    let cancelled = false;
+    let aborted = "";
     let cancelTimer;
     let finished = false;
-    const proc = spawn("npm", command.args, {
+    const proc = spawnImpl("npm", command.args, {
       cwd: repo,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -341,25 +392,28 @@ function runCommand({ action, repo, dryRun, onLine, isCancelled }) {
     read(proc.stdout, "stdout");
     read(proc.stderr, "stderr");
 
-    const checkCancel = async () => {
-      if (finished || cancelled || !isCancelled) return;
+    const checkAbort = async () => {
+      if (finished || aborted || !abortStatus) return;
       try {
-        if (await isCancelled()) {
-          cancelled = true;
-          const message = "Cancellation requested; terminating command.";
-          tailPush(tail, message);
-          onLine("status", message);
-          proc.kill("SIGTERM");
-          setTimeout(() => {
-            if (!finished) proc.kill("SIGKILL");
-          }, 5_000);
-        }
+        const status = await abortStatus();
+        if (!status) return;
+        aborted = status;
+        const message = `Release job is ${status}; terminating command.`;
+        tailPush(tail, message);
+        onLine("status", message);
+        proc.kill("SIGTERM");
+        // The live child keeps the loop alive on its own; unref so the escalation
+        // timer never becomes the last thing holding the runner open.
+        setTimeout(() => {
+          if (!finished) proc.kill("SIGKILL");
+        }, 5_000).unref?.();
       } catch (error) {
-        console.error(`[release-agent] cancel check failed: ${error?.message || error}`);
+        console.error(`[release-agent] abort check failed: ${error?.message || error}`);
       }
     };
-    cancelTimer = setInterval(() => void checkCancel(), 2_500);
-    void checkCancel();
+    cancelTimer = setInterval(() => void checkAbort(), 2_500);
+    if (cancelTimer.unref) cancelTimer.unref();
+    void checkAbort();
 
     proc.on("error", (error) => {
       finished = true;
@@ -369,7 +423,7 @@ function runCommand({ action, repo, dryRun, onLine, isCancelled }) {
     proc.on("exit", (code) => {
       finished = true;
       if (cancelTimer) clearInterval(cancelTimer);
-      resolve({ cancelled, code: cancelled ? 130 : code ?? 1, tail });
+      resolve({ aborted, code: aborted ? 130 : code ?? 1, tail });
     });
   });
 }
@@ -386,12 +440,20 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
     message: `${command.label}: npm ${command.args.join(" ")}`,
   });
   const started = Date.now();
+  let eventQueue = Promise.resolve();
+  let runningPhase = "running";
   const pushLine = (phase) => (stream, line) => {
-    void safePostEvent(baseUrl, token, agentId, id, {
-      phase,
-      stream,
-      message: redact(line),
-    });
+    if (phase === "running") {
+      runningPhase = releasePhaseForOutput(action, line) || runningPhase;
+    }
+    const nextPhase = phase === "running" ? runningPhase : phase;
+    eventQueue = eventQueue.then(() =>
+      safePostEvent(baseUrl, token, agentId, id, {
+        phase: nextPhase,
+        stream,
+        message: redact(line),
+      }),
+    );
   };
   try {
     if (!noSync) syncRepo({ repo, onLine: pushLine("sync") });
@@ -399,14 +461,19 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
       action,
       repo,
       dryRun,
-      isCancelled: () => isJobCanceled(baseUrl, token, agentId, id),
+      abortStatus: () => jobAbortStatus(baseUrl, token, agentId, id),
       onLine: pushLine("running"),
     });
+    await eventQueue;
     const durationMs = Date.now() - started;
     const ok = result.code === 0;
     await complete(baseUrl, token, agentId, id, {
-      status: result.cancelled ? "canceled" : ok ? "succeeded" : "failed",
-      error: result.cancelled ? "Release job was canceled." : ok ? "" : `Command exited with status ${result.code}.`,
+      status: result.aborted || (ok ? "succeeded" : "failed"),
+      error: result.aborted
+        ? `Release job was already ${result.aborted}; the runner stopped the command.`
+        : ok
+          ? ""
+          : `Command exited with status ${result.code}.`,
       result: {
         action,
         command: `npm ${command.args.join(" ")}`,
@@ -417,6 +484,7 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
     });
     return ok;
   } catch (error) {
+    await eventQueue;
     const durationMs = Date.now() - started;
     const message = error?.message || String(error);
     await safePostEvent(baseUrl, token, agentId, id, {
@@ -439,14 +507,33 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
   }
 }
 
-function createRunnerController({ baseUrl, token, agentId, repo, dryRun, noSync }) {
+export function createRunnerController({ baseUrl, token, agentId, repo, dryRun, noSync, claimImpl = claim, runJobImpl = runJob }) {
   let currentJobId = "";
   let currentAction = "";
+  // `currentJobId` can only be set once the claim resolves, so the poll loop
+  // and a wake request could both pass the busy check and hand this one runner
+  // two jobs to deploy at the same time. Claims therefore queue behind each
+  // other and reserve the runner before the next one is allowed to start.
+  let claimGate = Promise.resolve();
+
+  const claimExclusive = (preferredJobId = "") => {
+    const claimed = claimGate.then(async () => {
+      if (currentJobId) return null;
+      const job = await claimImpl(baseUrl, token, agentId, preferredJobId);
+      if (job) currentJobId = String(job.id || "");
+      return job;
+    });
+    claimGate = claimed.then(
+      () => undefined,
+      () => undefined,
+    );
+    return claimed;
+  };
 
   const runClaimedJob = (job) => {
     currentJobId = String(job.id || "");
     currentAction = String(job.action || "");
-    return runJob({
+    return runJobImpl({
       baseUrl,
       token,
       agentId,
@@ -468,8 +555,17 @@ function createRunnerController({ baseUrl, token, agentId, repo, dryRun, noSync 
         status: 409,
       };
     }
-    const job = await claim(baseUrl, token, agentId, jobId);
+    const job = await claimExclusive(jobId);
     if (!job) {
+      // A poll-loop claim that was already in flight when this request arrived
+      // wins the gate; report that as busy rather than "job not found".
+      if (currentJobId) {
+        return {
+          error: `Runner is busy with ${currentJobId}.`,
+          ok: false,
+          status: 409,
+        };
+      }
       return {
         error: "Queued release job was not found or is not claimable by this runner.",
         ok: false,
@@ -477,6 +573,9 @@ function createRunnerController({ baseUrl, token, agentId, repo, dryRun, noSync 
       };
     }
     if (String(job.action || "") !== action) {
+      // The reservation taken by claimExclusive has to be handed back, or the
+      // runner stays "busy" with a job it is never going to run.
+      currentJobId = "";
       return {
         error: "Claimed release job action does not match the wake request.",
         ok: false,
@@ -491,7 +590,7 @@ function createRunnerController({ baseUrl, token, agentId, repo, dryRun, noSync 
 
   const drainNextJob = async () => {
     if (currentJobId) return false;
-    const job = await claim(baseUrl, token, agentId);
+    const job = await claimExclusive();
     if (!job) return false;
     console.log(`[release-agent] claimed ${job.id} action=${job.action}`);
     await runClaimedJob(job);

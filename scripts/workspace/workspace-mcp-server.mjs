@@ -280,14 +280,19 @@ function likePattern(query) {
   return `%${String(query || "").replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
 }
 
-const DEFAULT_MCP_SETTINGS = Object.freeze({
+// Must stay byte-for-byte equivalent to `WorkspaceMcpSettings::default()` in
+// src-tauri/src/mcp.rs and DEFAULT_MCP_SETTINGS in shell/SettingsWindow.tsx.
+// When they disagree, a fresh install shows "writes disabled" in the panel
+// while this server happily accepts the write — see the agreement test in
+// tests/workspace/workspace-mcp-settings-defaults.test.mjs.
+export const DEFAULT_MCP_SETTINGS = Object.freeze({
   enabled: true,
   writeMode: "local-write",
   requireConfirmationForWrites: true,
-  allowNotesWrite: true,
-  allowTodosWrite: true,
-  allowProjectsWrite: true,
-  allowContactsWrite: true,
+  allowNotesWrite: false,
+  allowTodosWrite: false,
+  allowProjectsWrite: false,
+  allowContactsWrite: false,
   allowSiteAdminWrite: true,
   allowReleaseWrite: false,
   siteAdminWriteTarget: "api",
@@ -306,10 +311,12 @@ function normalizeMcpSettings(raw = {}) {
     enabled: input.enabled !== false,
     writeMode,
     requireConfirmationForWrites: input.requireConfirmationForWrites !== false,
-    allowNotesWrite: input.allowNotesWrite !== false,
-    allowTodosWrite: input.allowTodosWrite !== false,
-    allowProjectsWrite: input.allowProjectsWrite !== false,
-    allowContactsWrite: input.allowContactsWrite !== false,
+    // Opt-in, matching the Rust/UI defaults: a settings file that predates a
+    // capability must not silently grant it.
+    allowNotesWrite: input.allowNotesWrite === true,
+    allowTodosWrite: input.allowTodosWrite === true,
+    allowProjectsWrite: input.allowProjectsWrite === true,
+    allowContactsWrite: input.allowContactsWrite === true,
     allowSiteAdminWrite: input.allowSiteAdminWrite !== false,
     allowReleaseWrite: input.allowReleaseWrite === true,
     siteAdminWriteTarget,
@@ -2286,9 +2293,57 @@ function readSecureValue(db, key) {
   }
 }
 
+// Mirrors `secrets.rs::selected_backend`. Debug builds of the desktop app
+// stash credentials in workspace.db so macOS doesn't prompt on every hot
+// reload; release builds use the OS keychain. This server must look in the
+// same place, otherwise an installed build's siteAdmin.* writes silently
+// degrade to the local-file fallback with "no credentials found".
+const WORKSPACE_KEYRING_SERVICE = "com.jinnkunn.workspace.site-admin";
+
+function keychainLookupSupported() {
+  const forced = cleanText(process.env.WORKSPACE_SECRET_BACKEND, 40).toLowerCase();
+  if (forced === "local-db" || forced === "local_db" || forced === "sqlite" || forced === "db") {
+    return false;
+  }
+  return process.platform === "darwin";
+}
+
+// Every siteAdmin.* call resolves three credential kinds, each over two key
+// spellings — six `security` subprocesses per tool call, and on a fresh
+// install the first one can raise a modal Keychain prompt. Cache briefly so
+// a burst of calls pays that once; the TTL is short enough that signing in
+// from the desktop app while this server is running still takes effect.
+const KEYCHAIN_CACHE_TTL_MS = 60_000;
+const keychainCache = new Map();
+
+function readKeychainValue(key) {
+  if (!keychainLookupSupported()) return "";
+  const now = Date.now();
+  const cached = keychainCache.get(key);
+  if (cached && now - cached.at < KEYCHAIN_CACHE_TTL_MS) return cached.value;
+  let value = "";
+  try {
+    const result = spawnSync(
+      "security",
+      ["find-generic-password", "-s", WORKSPACE_KEYRING_SERVICE, "-a", key, "-w"],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+    if (result.status === 0) value = cleanText(result.stdout, 20_000);
+  } catch {
+    value = "";
+  }
+  keychainCache.set(key, { at: now, value });
+  return value;
+}
+
 function readSiteAdminCredential(db, kind, baseUrl) {
-  for (const key of siteAdminCredentialKeys(kind, baseUrl)) {
+  const keys = siteAdminCredentialKeys(kind, baseUrl);
+  for (const key of keys) {
     const value = readSecureValue(db, key);
+    if (value) return value;
+  }
+  for (const key of keys) {
+    const value = readKeychainValue(key);
     if (value) return value;
   }
   return "";
@@ -3090,6 +3145,16 @@ function createSiteAdminPage(db, args = {}) {
   return { backend: "local", fallbackReason: backend.fallbackReason || "", page: { ...preview, sourceSha: sha, treeUpdated } };
 }
 
+// The page write and the nav-tree save are two separate API calls. When the
+// second one fails the site is left half-updated, so the audit line and the
+// tool result must both say so — a bare success entry makes the partial
+// failure invisible to whoever reads the log later.
+function pageTreeOutcome(treeUpdated, treeError) {
+  return treeError
+    ? { status: "partial", treeUpdated: false, treeError }
+    : { status: "ok", treeUpdated, treeError: "" };
+}
+
 function createSiteAdminPageViaApi(api, args, slug, source) {
   const addToNavigation = args.addToNavigation !== false;
   const preview = {
@@ -3124,17 +3189,26 @@ function createSiteAdminPageViaApi(api, args, slug, source) {
   }
   markConfirmationConsumed(args.confirmationId);
   const data = asObject(created.data);
+  const outcome = pageTreeOutcome(treeUpdated, treeError);
   writeContentPublishSuggestion("POST", "/api/site-admin/pages");
-  writeAudit({ tool: "siteAdmin.create_page", backend: "api", baseUrl: api.baseUrl, slug, title: preview.title });
+  writeAudit({
+    tool: "siteAdmin.create_page",
+    backend: "api",
+    baseUrl: api.baseUrl,
+    slug,
+    title: preview.title,
+    ...outcome,
+  });
   return {
     backend: "api",
     baseUrl: api.baseUrl,
+    status: outcome.status,
     page: {
       ...preview,
       sourceSha: cleanText(data.version, 120) || sha1Hex(source),
       version: cleanText(data.version, 120) || sha1Hex(source),
-      treeUpdated,
-      treeError,
+      treeUpdated: outcome.treeUpdated,
+      treeError: outcome.treeError,
     },
   };
 }
@@ -3246,16 +3320,25 @@ function updateSiteAdminPageViaApi(api, args, slug) {
   }
   markConfirmationConsumed(args.confirmationId);
   const data = asObject(updated.data);
+  const outcome = pageTreeOutcome(treeUpdated, treeError);
   writeContentPublishSuggestion("PATCH", `/api/site-admin/pages/${slug}`);
-  writeAudit({ tool: "siteAdmin.update_page", backend: "api", baseUrl: api.baseUrl, slug, title: preview.title });
+  writeAudit({
+    tool: "siteAdmin.update_page",
+    backend: "api",
+    baseUrl: api.baseUrl,
+    slug,
+    title: preview.title,
+    ...outcome,
+  });
   return {
     backend: "api",
     baseUrl: api.baseUrl,
+    status: outcome.status,
     page: {
       ...remotePageFromApi({ ...existingData, ...data, source }, nextTree ? nextTree.indexOf(slug) : -1),
       source,
-      treeUpdated,
-      treeError,
+      treeUpdated: outcome.treeUpdated,
+      treeError: outcome.treeError,
       baseUrl: api.baseUrl,
     },
   };
@@ -3355,9 +3438,17 @@ function deleteSiteAdminPageViaApi(api, args, slug) {
     treeError = error?.message || String(error);
   }
   markConfirmationConsumed(args.confirmationId);
+  const outcome = pageTreeOutcome(treeUpdated, treeError);
   writeContentPublishSuggestion("DELETE", `/api/site-admin/pages/${slug}`);
-  writeAudit({ tool: "siteAdmin.delete_page", backend: "api", baseUrl: api.baseUrl, slug, deletedCount: targets.length });
-  return { backend: "api", baseUrl: api.baseUrl, deleted: targets, treeUpdated, treeError };
+  writeAudit({
+    tool: "siteAdmin.delete_page",
+    backend: "api",
+    baseUrl: api.baseUrl,
+    slug,
+    deletedCount: targets.length,
+    ...outcome,
+  });
+  return { backend: "api", baseUrl: api.baseUrl, deleted: targets, ...outcome };
 }
 
 function siteAdminListPosts(db, args = {}) {

@@ -69,6 +69,7 @@ test("mobile summary: recommends smart release when source is ahead", () => {
 
 test("mobile summary: surfaces active release job before any new action", () => {
   const summary = buildSiteAdminMobileSummary({
+    generatedAt: "2026-05-16T12:00:00.000Z",
     status: status({ pendingDeploy: true }),
     jobs: [
       {
@@ -78,10 +79,18 @@ test("mobile summary: surfaces active release job before any new action", () => 
         target: "production",
         status: "running",
         phase: "build",
-        createdAt: 1,
-        updatedAt: 2,
+        createdAt: Date.parse("2026-05-16T11:58:00.000Z"),
+        updatedAt: Date.parse("2026-05-16T11:59:50.000Z"),
         finishedAt: null,
         error: "",
+      },
+    ],
+    runners: [
+      {
+        agentId: "mac-mini",
+        currentJobId: "job_1",
+        lastSeenAt: Date.parse("2026-05-16T11:59:55.000Z"),
+        status: "running",
       },
     ],
   });
@@ -89,6 +98,8 @@ test("mobile summary: surfaces active release job before any new action", () => 
   assert.equal(summary.release.recommendedAction.kind, "watch-release");
   assert.equal(summary.release.runningJob?.id, "job_1");
   assert.equal(summary.release.latestJob?.id, "job_1");
+  assert.equal(summary.release.progress?.runnerState, "online");
+  assert.equal(summary.release.progress?.label, "Building public pages");
 });
 
 test("app auth redirect: allows localhost and the fixed iOS callback only", () => {

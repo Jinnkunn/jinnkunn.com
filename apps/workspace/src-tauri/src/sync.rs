@@ -19,16 +19,15 @@
 // next await. This avoids the "future is not Send" compile error.
 
 use crate::local_db;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use crate::site_admin::{http_client, is_trusted_admin_host};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE, COOKIE};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 const SYNC_KEY_LAST_SINCE: &str = "last_sync_since";
 const SYNC_KEY_LAST_AT: &str = "last_sync_at";
 const SYNC_DEFAULT_BATCH: u32 = 200;
 const SYNC_MAX_ITERATIONS: u32 = 50; // hard cap so one call can't loop forever
-const SYNC_HTTP_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, Deserialize)]
 pub struct SyncPullParams {
@@ -106,7 +105,7 @@ fn build_auth_headers(params: &SyncPullParams) -> Result<HeaderMap, String> {
         if !trimmed.is_empty() {
             let value = HeaderValue::from_str(trimmed)
                 .map_err(|_| "invalid session cookie header".to_string())?;
-            headers.insert(reqwest::header::COOKIE, value);
+            headers.insert(COOKIE, value);
         }
     }
     if let Some(cid) = params.cf_access_client_id.as_deref() {
@@ -151,11 +150,26 @@ pub async fn sync_pull(
         local_db::read_sync_state_int(&conn, SYNC_KEY_LAST_SINCE)?
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(SYNC_HTTP_TIMEOUT_SECS))
-        .build()
-        .map_err(|err| format!("failed to build http client: {err}"))?;
+    // Same policy as `site_admin_http_request` / the write outbox: a pull
+    // carries the bearer token and the CF Access secret, so it may only go to
+    // an allowlisted host, and a 30x must not bounce those headers to an
+    // attacker-chosen Location. `http_client()` supplies `redirect::none` plus
+    // request/connect timeouts; a default client had neither.
     let headers = build_auth_headers(&params)?;
+    let attaches_credentials = headers.contains_key(AUTHORIZATION)
+        || headers.contains_key(COOKIE)
+        || headers.contains_key("cf-access-client-secret");
+    if attaches_credentials {
+        let probe = reqwest::Url::parse(&format!("{base_url}/api/site-admin/sync/pull"))
+            .map_err(|_| format!("sync_pull: invalid base_url: {base_url}"))?;
+        if !is_trusted_admin_host(&probe) {
+            return Err(format!(
+                "refusing to send Site Admin credentials to untrusted host: {}",
+                probe.host_str().unwrap_or("(none)")
+            ));
+        }
+    }
+    let client = http_client();
 
     let mut rows_applied: u32 = 0;
     let mut iterations: u32 = 0;

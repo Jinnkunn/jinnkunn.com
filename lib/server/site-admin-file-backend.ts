@@ -61,8 +61,9 @@ export interface SiteAdminFileBackend {
   writeJsonFile(repoRel: string, value: unknown): Promise<void>;
 
   /** Read a UTF-8 text file by repo-root-relative path. The returned `sha`
-   * is the source-store's content-hash form (jsonSha) so it lines up with
-   * the optimistic-lock keys used by writeTextFile. */
+   * is sha1 over the raw content — the same token ContentStore mints — so it
+   * lines up with the optimistic-lock keys used by writeTextFile and with the
+   * versions a posts/pages editor round-trips back as expectedSha. */
   readTextFile(
     repoRel: string,
   ): Promise<{ content: string; sha: string } | null>;
@@ -138,15 +139,13 @@ function sortJson(value: unknown): unknown {
   return out;
 }
 
-function jsonShaOfValue(value: unknown): string {
-  return sha1Hex(JSON.stringify(sortJson(value)));
-}
-
-function jsonShaOfText(content: string): string {
-  // Match LocalSiteAdminSourceStore.readTextFile's hashing — wraps the raw
-  // string through the same JSON.stringify path so the returned sha lines
-  // up with what consumers expect and pass back as expectedSha.
-  return jsonShaOfValue(content);
+function textSha(content: string): string {
+  // sha1 over the raw bytes — the same hash lib/server/content-store.ts and
+  // the db backend mint for their ContentVersion. Hashing a JSON-encoded
+  // form here instead made the fs backend's tokens permanently unequal to
+  // the ones the posts/pages editors hand back, so every local restore lost
+  // its optimistic-lock check to a 409.
+  return sha1Hex(content);
 }
 
 function pickExistingFile(filePath: string): string {
@@ -221,7 +220,7 @@ export function createFsFileBackend(
       const filePath = resolve(repoRel);
       try {
         const content = fs.readFileSync(filePath, "utf8");
-        return { content, sha: jsonShaOfText(content) };
+        return { content, sha: textSha(content) };
       } catch {
         return null;
       }
@@ -238,7 +237,7 @@ export function createFsFileBackend(
       if (input.expectedSha !== undefined) {
         const currentSha = existingContent === null
           ? ""
-          : jsonShaOfText(existingContent);
+          : textSha(existingContent);
         if (currentSha !== input.expectedSha) {
           throw new SiteAdminFileBackendConflictError({
             expectedSha: input.expectedSha,
@@ -247,12 +246,12 @@ export function createFsFileBackend(
         }
       }
       if (existingContent === input.content) {
-        const sha = jsonShaOfText(input.content);
+        const sha = textSha(input.content);
         return { fileSha: sha, commitSha: sha };
       }
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, input.content, "utf8");
-      const sha = jsonShaOfText(input.content);
+      const sha = textSha(input.content);
       return { fileSha: sha, commitSha: sha };
     },
 
@@ -302,7 +301,7 @@ export function createFsFileBackend(
           ["show", `${commitSha}:${repoRel}`],
           { cwd: rootDir, maxBuffer: 8 * 1024 * 1024 },
         );
-        return { content: stdout, sha: jsonShaOfText(stdout), commitSha };
+        return { content: stdout, sha: textSha(stdout), commitSha };
       } catch {
         return null;
       }

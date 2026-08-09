@@ -39,6 +39,12 @@ type MarkdownEditorProps = {
   placeholder?: string;
   size?: MarkdownEditorSize;
   disabled?: boolean;
+  /**
+   * Locks the editor for a mutation that replaces the document underneath it
+   * (delete, rename, version restore). Autosave must never set this: going
+   * read-only mid-keystroke swallows typing and moves the caret.
+   */
+  blocking?: boolean;
   previewLayout?: MarkdownPreviewLayout;
   allowImageUpload?: boolean;
   initialMode?: EditorMode;
@@ -65,6 +71,7 @@ export function SiteAdminMarkdownEditor({
   placeholder,
   size = "regular",
   disabled = false,
+  blocking = false,
   previewLayout = "tabs",
   allowImageUpload = true,
   initialMode = "visual",
@@ -72,6 +79,7 @@ export function SiteAdminMarkdownEditor({
   onEditComponent,
 }: MarkdownEditorProps) {
   const previewRequestIdRef = useRef(0);
+  const readOnly = disabled || blocking;
   const [mode, setMode] = useState<EditorMode>(
     visualEditing ? initialMode : initialMode === "preview" ? "preview" : "source",
   );
@@ -173,7 +181,7 @@ export function SiteAdminMarkdownEditor({
       onChange={onChange}
       minHeight={minHeight}
       placeholder={placeholder}
-      disabled={disabled}
+      disabled={readOnly}
       allowImageUpload={allowImageUpload}
     />
   );
@@ -260,7 +268,7 @@ export function SiteAdminMarkdownEditor({
           onChange={onChange}
           minHeight={minHeight}
           placeholder={placeholder}
-          disabled={disabled}
+          disabled={readOnly}
           allowImageUpload={allowImageUpload}
           onEditComponent={onEditComponent}
           onVisualError={(message) => {

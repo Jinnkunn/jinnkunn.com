@@ -1,0 +1,147 @@
+/*
+ * The status cards were written for the Tauri workspace surface and carry
+ * global BEM class names. Scoping their styles inside this module keeps the
+ * markup untouched while letting the web console mount them in-app instead of
+ * linking the author out to raw API JSON.
+ */
+
+.panel {
+  display: grid;
+  gap: 16px;
+}
+
+.panel :global(.site-admin-status__grid) {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.panel :global(.site-admin-card) {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--ds-border-soft);
+  border-radius: var(--ds-radius-md, 12px);
+  background: var(--ds-surface);
+  min-width: 0;
+}
+
+.panel :global(.site-admin-card__title) {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+}
+
+.panel :global(.site-admin-kv) {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.panel :global(.site-admin-kv__row) {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.panel :global(.site-admin-kv__row) > :last-child {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.panel :global(.site-admin-kv__muted) {
+  color: var(--ds-text-faint);
+}
+
+.panel :global(.site-admin-status__hint) {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ds-text-faint);
+}
+
+.panel :global(.site-admin-status__banner) {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--ds-radius-md, 12px);
+  border: 1px solid var(--ds-border-soft);
+  background: var(--ds-surface-soft);
+}
+
+.panel :global(.site-admin-status__banner--warn) {
+  border-color: var(--ds-warning-border, var(--ds-border-soft));
+  background: var(--ds-warning-surface, var(--ds-surface-soft));
+}
+
+.panel :global(.site-admin-status__banner-title) {
+  font-weight: 600;
+}
+
+.panel :global(.site-admin-status__banner-detail) {
+  font-size: 13px;
+  color: var(--ds-text-secondary);
+}
+
+.panel :global(.site-admin-status__banner-cta) {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.panel :global(.site-admin-status__banner-feedback) {
+  font-size: 12px;
+  color: var(--ds-text-faint);
+}
+
+.panel :global(.site-admin-status__banner-feedback--error) {
+  color: var(--ds-danger-text, var(--ds-text-primary));
+}
+
+.panel :global(.site-admin-diagnostics__list) {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel :global(.site-admin-diagnostics__item) {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.panel :global(.site-admin-diagnostics__sev),
+.panel :global(.site-admin-diagnostics__source),
+.panel :global(.site-admin-diagnostics__time) {
+  color: var(--ds-text-faint);
+}
+
+.panel :global(.site-admin-diagnostics__message) {
+  color: var(--ds-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.panel :global(.site-admin-diagnostics__detail) {
+  color: var(--ds-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.panel :global(.code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ds-text-secondary);
+}

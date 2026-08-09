@@ -1,0 +1,37 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+
+  // Entry points knip's Next.js plugin does not infer: the Worker bundle and
+  // every build/QA/release script are launched by npm/wrangler, not imported.
+  "entry": ["cloudflare/**/*.mjs", "scripts/**/*.mjs", "tests/**/*.test.mjs"],
+
+  // `apps/**` is a separate Tauri workspace with its own toolchain and entry
+  // points; analysing it from here only produces noise.
+  "project": [
+    "app/**/*.{ts,tsx}",
+    "components/**/*.{ts,tsx}",
+    "lib/**/*.{ts,tsx,mjs}",
+    "cloudflare/**/*.mjs",
+    "scripts/**/*.mjs",
+    "tests/**/*.mjs"
+  ],
+
+  // Two classes knip structurally cannot see. Left in, they bury the ~30 real
+  // candidates under 22 guaranteed false positives and the report stops being
+  // read at all — so each is delegated to a test that *can* see it.
+  //
+  // 1. lib/**/*.mjs: this repo ships hand-written `X.mjs` / `X.ts` twins
+  //    (scripts import the .mjs, the app imports the .ts — see
+  //    tests/shared/ts-mjs-boundary.test.mjs). knip's `srcDir === outDir`
+  //    heuristic reads the .mjs as build output of the .ts and rewrites every
+  //    importer's specifier, so all 21 live twins report as unused. Orphan
+  //    twins are caught by tests/shared/shared-mjs-twins-referenced.test.mjs,
+  //    which resolves specifiers itself.
+  // 2. tests/helpers/empty-module.mjs is reached through a node loader hook
+  //    (`registerHooks` in tests/helpers/server-module-hooks.mjs), which
+  //    passes it as a path string rather than importing it.
+  "ignore": ["lib/**/*.mjs", "tests/helpers/empty-module.mjs"],
+
+  "ignoreExportsUsedInFile": true,
+  "includeEntryExports": false
+}
