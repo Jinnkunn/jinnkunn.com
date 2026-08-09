@@ -6,7 +6,85 @@
 
 .host :global(.site-admin-form) {
   display: grid;
+  gap: 18px;
+}
+
+.host :global(.site-admin-form__section) {
+  display: grid;
   gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.host :global(.site-admin-form__section-header) {
+  display: grid;
+  gap: 3px;
+}
+
+.host :global(.site-admin-form__section-header h3),
+.host :global(.site-admin-form__section-header p) {
+  margin: 0;
+}
+
+.host :global(.site-admin-form__section-header h3) {
+  color: var(--ds-text-primary);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.host :global(.site-admin-form__section-header p) {
+  color: var(--ds-text-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.host :global(.site-admin-form__section-fields),
+.host :global(.site-admin-form__advanced-body) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.host :global(.site-admin-form__row:has(textarea)),
+.host :global(.site-admin-form__row:has(.site-admin-form__checks)),
+.host :global(.site-admin-form__row:has(.site-admin-form__depth-grid)),
+.host :global(.site-admin-form__row:has(.site-admin-form__switch)) {
+  grid-column: 1 / -1;
+}
+
+.host :global(.site-admin-form__advanced) {
+  overflow: hidden;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-soft);
+}
+
+.host :global(.site-admin-form__advanced summary) {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 13px;
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.host :global(.site-admin-form__advanced summary small) {
+  color: var(--ds-text-faint);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.host :global(.site-admin-form__advanced[open] summary) {
+  border-bottom: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-elevated);
+}
+
+.host :global(.site-admin-form__advanced-body) {
+  padding: 13px;
 }
 
 .host :global(.site-admin-form__row) {
@@ -40,11 +118,33 @@
 }
 
 .host :global(.site-admin-form__actions) {
+  position: sticky;
+  z-index: 3;
+  bottom: 10px;
   display: flex;
   justify-content: flex-end;
+  padding: 10px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: color-mix(in srgb, var(--ds-surface-elevated) 94%, transparent);
+  backdrop-filter: blur(14px);
 }
 
 .host :global(.site-admin-form__textarea) {
   min-height: 84px;
   resize: vertical;
+}
+
+@media (max-width: 700px) {
+  .host :global(.site-admin-form__section-fields),
+  .host :global(.site-admin-form__advanced-body) {
+    grid-template-columns: 1fr;
+  }
+
+  .host :global(.site-admin-form__advanced summary) {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    padding: 10px 13px;
+  }
 }

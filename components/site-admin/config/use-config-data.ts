@@ -26,6 +26,7 @@ export function useSiteAdminConfigData() {
     clearNavDraft,
     toggleOpenNav,
     saveNavRow,
+    saveAllNavRows,
     addNavRow,
   } = useSiteAdminNavMutations({
     setBusy,
@@ -96,6 +97,7 @@ export function useSiteAdminConfigData() {
     clearNavDraft,
     toggleOpenNav,
     saveNavRow,
+    saveAllNavRows,
     addNavRow,
     sourceVersion,
   };

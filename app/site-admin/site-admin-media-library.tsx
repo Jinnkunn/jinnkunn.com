@@ -100,6 +100,9 @@ export function SiteAdminMediaLibrary({
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
+  const [uploadProgress, setUploadProgress] = useState("");
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [brokenAssets, setBrokenAssets] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -138,7 +141,10 @@ export function SiteAdminMediaLibrary({
     setNotice("");
     try {
       const uploaded: SiteAdminAsset[] = [];
-      for (const file of list) uploaded.push(await uploadSiteAdminAsset(file));
+      for (const [index, file] of list.entries()) {
+        setUploadProgress(`${index + 1} of ${list.length}`);
+        uploaded.push(await uploadSiteAdminAsset(file));
+      }
       setAssets((current) => [...uploaded, ...current]);
       setNotice(`${uploaded.length} asset${uploaded.length === 1 ? "" : "s"} uploaded.`);
       if (mode === "pick" && uploaded[0] && onSelect) onSelect(uploaded[0]);
@@ -146,6 +152,7 @@ export function SiteAdminMediaLibrary({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey("");
+      setUploadProgress("");
       if (inputRef.current) inputRef.current.value = "";
     }
   }
@@ -172,8 +179,11 @@ export function SiteAdminMediaLibrary({
     <section className={styles.mediaLibrary} aria-label="Media library">
       <div className={styles.mediaHeader}>
         <div>
-          <h2 className={styles.panelTitle}>{mode === "pick" ? "Choose media" : "Media"}</h2>
-          <p className={styles.cardText}>Upload once, then reuse the asset in content and metadata.</p>
+          <p className={styles.cardLabel}>{mode === "pick" ? "Media picker" : "Library"}</p>
+          <h2 className={styles.panelTitle}>{mode === "pick" ? "Choose media" : "Files"}</h2>
+          <p className={styles.cardText}>
+            {loading ? "Loading files…" : `${assets.length} reusable asset${assets.length === 1 ? "" : "s"}`}
+          </p>
         </div>
         <div className={styles.panelActions}>
           {onClose ? (
@@ -187,7 +197,7 @@ export function SiteAdminMediaLibrary({
             size="sm"
             disabled={busyKey === "upload"}
           >
-            {busyKey === "upload" ? "Uploading" : "Upload"}
+            {busyKey === "upload" ? `Uploading ${uploadProgress}` : "Upload"}
           </Button>
           <input
             ref={inputRef}
@@ -205,15 +215,25 @@ export function SiteAdminMediaLibrary({
       {notice ? <StatusNotice tone="success">{notice}</StatusNotice> : null}
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
 
-      <label className={styles.fieldLabel}>
-        Search
-        <input
-          className={styles.textField}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Filename or type"
-        />
-      </label>
+      <div className={styles.mediaToolbar}>
+        <label className={styles.fieldLabel}>
+          <span className={styles.visuallyHidden}>Search media</span>
+          <input
+            className={styles.textField}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search filename or type"
+          />
+        </label>
+        <div className={styles.segmented} aria-label="Media view">
+          <button type="button" data-active={view === "grid"} onClick={() => setView("grid")}>
+            Grid
+          </button>
+          <button type="button" data-active={view === "list"} onClick={() => setView("list")}>
+            List
+          </button>
+        </div>
+      </div>
 
       <div
         className={styles.assetDropZone}
@@ -223,14 +243,15 @@ export function SiteAdminMediaLibrary({
           void uploadFiles(event.dataTransfer.files);
         }}
       >
-        Drop images here to upload
+        <strong>{busyKey === "upload" ? `Uploading ${uploadProgress}` : "Drop images to upload"}</strong>
+        <span>PNG, JPEG, GIF, or WebP</span>
       </div>
 
       {loading ? <p className={styles.listEmpty}>Loading media…</p> : null}
       {!loading && visibleAssets.length === 0 ? (
         <p className={styles.listEmpty}>No matching assets.</p>
       ) : null}
-      <div className={styles.assetGrid}>
+      <div className={styles.assetGrid} data-view={view}>
         {visibleAssets.map((asset) => (
           <article key={asset.key} className={styles.assetItem}>
             <button
@@ -240,16 +261,27 @@ export function SiteAdminMediaLibrary({
               disabled={!onSelect}
               aria-label={onSelect ? `Use ${asset.filename}` : asset.filename}
             >
-              {asset.contentType.startsWith("image/") ? (
+              {asset.contentType.startsWith("image/") && !brokenAssets.has(asset.key) ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={asset.url} alt="" />
+                <img
+                  src={asset.url}
+                  alt=""
+                  onError={() =>
+                    setBrokenAssets((current) => new Set(current).add(asset.key))
+                  }
+                />
               ) : (
-                <span>{asset.contentType}</span>
+                <span>{brokenAssets.has(asset.key) ? "Preview unavailable" : asset.contentType}</span>
               )}
             </button>
             <div className={styles.assetMeta}>
               <strong title={asset.filename}>{asset.filename}</strong>
-              <small>{formatBytes(asset.size)}</small>
+              <small>
+                {asset.contentType.replace("image/", "").toUpperCase()} · {formatBytes(asset.size)}
+              </small>
+              {asset.uploadedAt ? (
+                <small>{new Date(asset.uploadedAt).toLocaleDateString()}</small>
+              ) : null}
             </div>
             <div className={styles.assetActions}>
               {onSelect ? (
@@ -258,7 +290,10 @@ export function SiteAdminMediaLibrary({
                 </Button>
               ) : (
                 <Button
-                  onClick={() => void navigator.clipboard.writeText(asset.url)}
+                  onClick={() => {
+                    void navigator.clipboard.writeText(asset.url);
+                    setNotice(`${asset.filename} URL copied.`);
+                  }}
                   variant="subtle"
                   size="sm"
                 >

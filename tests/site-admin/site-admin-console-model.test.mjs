@@ -6,6 +6,7 @@ import {
   contentSaveEffects,
   countLabel,
   createSelectionGate,
+  editorialStatus,
   liveSyncStatus,
   settingsDraftDirty,
   visibilityLabel,
@@ -126,6 +127,68 @@ test("live sync: nothing pending reports the release summary verbatim", () => {
     liveSyncStatus({ releaseActionKind: "refresh", pendingSaves: 0, releaseRunning: false })
       .state,
     "unknown",
+  );
+});
+
+test("editorial status presents one clear next state", () => {
+  const live = liveSyncStatus({
+    releaseActionKind: "noop",
+    pendingSaves: 0,
+    releaseRunning: false,
+  });
+  assert.deepEqual(
+    editorialStatus({
+      saving: false,
+      blocked: false,
+      dirty: false,
+      runnerOffline: false,
+      liveSync: live,
+    }),
+    { state: "live", label: "Live current", tone: "noop" },
+  );
+
+  const pending = liveSyncStatus({
+    releaseActionKind: "noop",
+    pendingSaves: 2,
+    releaseRunning: false,
+  });
+  assert.equal(
+    editorialStatus({
+      saving: false,
+      blocked: false,
+      dirty: false,
+      runnerOffline: false,
+      liveSync: pending,
+    }).label,
+    "Ready to publish",
+  );
+});
+
+test("editorial status gives local edits and validation priority over live state", () => {
+  const live = liveSyncStatus({
+    releaseActionKind: "noop",
+    pendingSaves: 0,
+    releaseRunning: false,
+  });
+  assert.equal(
+    editorialStatus({
+      saving: false,
+      blocked: false,
+      dirty: true,
+      runnerOffline: false,
+      liveSync: live,
+    }).label,
+    "Unsaved changes",
+  );
+  assert.equal(
+    editorialStatus({
+      saving: false,
+      blocked: true,
+      dirty: true,
+      runnerOffline: false,
+      liveSync: live,
+    }).label,
+    "Needs attention",
   );
 });
 

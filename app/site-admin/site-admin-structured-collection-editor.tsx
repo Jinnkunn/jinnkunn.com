@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -284,6 +285,56 @@ export function StructuredCollectionEntry({
   onDrop,
   children,
 }: StructuredCollectionEntryProps) {
+  const wasExpandedRef = useRef(false);
+  const drawerId = `${componentEntryDomId(id)}-drawer`;
+
+  useEffect(() => {
+    const trigger = document
+      .getElementById(componentEntryDomId(id))
+      ?.querySelector<HTMLElement>("[data-entry-trigger]");
+    if (expanded) {
+      window.requestAnimationFrame(() => {
+        const drawer = document.getElementById(drawerId);
+        const preferred = drawer?.querySelector<HTMLElement>(
+          "input:not([disabled]), textarea:not([disabled]), select:not([disabled])",
+        );
+        const fallback = drawer?.querySelector<HTMLElement>("button:not([disabled])");
+        (preferred || fallback || drawer)?.focus();
+      });
+    } else if (wasExpandedRef.current) {
+      window.requestAnimationFrame(() => trigger?.focus());
+    }
+    wasExpandedRef.current = expanded;
+  }, [drawerId, expanded, id]);
+
+  const handleDrawerKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onToggle();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => element.offsetParent !== null);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      event.currentTarget.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <>
       <StructuredCollectionGroup
@@ -294,41 +345,82 @@ export function StructuredCollectionEntry({
         onDragOver={onDragOver}
         onDrop={onDrop}
       />
-      <details
+      <article
         id={componentEntryDomId(id)}
         className={styles.newsEntryCard}
-        open={expanded}
         data-dragging={dragging}
         data-drop-target={dropTarget}
         data-invalid={issues.length > 0}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
-        <summary
-          className={styles.collectionEntrySummary}
-          onClick={(event) => {
-            event.preventDefault();
-            onToggle();
-          }}
-        >
+        <div className={styles.collectionEntrySummary}>
           <CollectionDragHandle
             disabled={dragDisabled}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
           />
-          <strong>{title}</strong>
-          <CollectionEntryMeta detail={detail} state={state} issueCount={issues.length} />
-        </summary>
-        <CollectionEntryActions
-          index={index}
-          count={count}
-          reorderDisabled={dragDisabled}
-          onMove={onMove}
-          onDuplicate={onDuplicate}
-          onDelete={onDelete}
-        />
-        {children}
-      </details>
+          <button
+            type="button"
+            className={styles.collectionEntryTrigger}
+            data-entry-trigger
+            aria-expanded={expanded}
+            aria-controls={drawerId}
+            onClick={onToggle}
+          >
+            <strong>{title}</strong>
+            <CollectionEntryMeta detail={detail} state={state} issueCount={issues.length} />
+          </button>
+        </div>
+        {expanded ? (
+          <>
+            <button
+              type="button"
+              className={styles.collectionEntryScrim}
+              aria-label={`Close ${title}`}
+              onClick={onToggle}
+            />
+            <aside
+              id={drawerId}
+              className={styles.collectionEntryDrawer}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Edit ${title}`}
+              tabIndex={-1}
+              onKeyDown={handleDrawerKeyDown}
+            >
+              <header className={styles.collectionEntryDrawerHeader}>
+                <div>
+                  <p className={styles.cardLabel}>Structured entry</p>
+                  <h3>{title}</h3>
+                  <small>{detail}</small>
+                </div>
+                <Button onClick={onToggle} variant="ghost" size="sm">
+                  Close
+                </Button>
+              </header>
+              <div className={styles.collectionEntryDrawerBody}>
+                <CollectionEntryActions
+                  index={index}
+                  count={count}
+                  reorderDisabled={dragDisabled}
+                  onMove={onMove}
+                  onDuplicate={onDuplicate}
+                />
+                {children}
+              </div>
+              <footer className={styles.collectionEntryDrawerFooter}>
+                <Button onClick={onDelete} variant="subtle" tone="danger" size="sm">
+                  Delete
+                </Button>
+                <Button onClick={onToggle} tone="accent" size="sm">
+                  Done
+                </Button>
+              </footer>
+            </aside>
+          </>
+        ) : null}
+      </article>
     </>
   );
 }
@@ -558,14 +650,12 @@ function CollectionEntryActions({
   count,
   onMove,
   onDuplicate,
-  onDelete,
   reorderDisabled,
 }: {
   index: number;
   count: number;
   onMove: (direction: MoveDirection) => void;
   onDuplicate: () => void;
-  onDelete: () => void;
   reorderDisabled: boolean;
 }) {
   return (
@@ -588,9 +678,6 @@ function CollectionEntryActions({
       </Button>
       <Button onClick={onDuplicate} variant="subtle" size="sm">
         Duplicate
-      </Button>
-      <Button onClick={onDelete} variant="subtle" tone="danger" size="sm">
-        Delete
       </Button>
     </div>
   );

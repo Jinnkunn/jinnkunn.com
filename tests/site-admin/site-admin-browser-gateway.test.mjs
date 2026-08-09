@@ -134,7 +134,7 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(editor.includes("onEditComponent"));
   assert.ok(editor.includes("SiteAdminSourceEditor"));
   assert.ok(editor.includes("analyzeVisualMdxCompatibility"));
-  assert.ok(editor.includes("Write mode is unavailable"));
+  assert.ok(editor.includes("This page uses advanced layout blocks"));
   assert.ok(editor.includes('disabled={!visualAvailable}'));
   assert.ok(visual.includes("new Crepe"));
   assert.ok(visual.includes("MDX component"));
@@ -147,6 +147,34 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(sourceEditor.includes("uploadSiteAdminAsset"));
   assert.ok(compatibility.includes('case "mdxJsxFlowElement"'));
   assert.ok(compatibility.includes("isStaticSelfClosingComponent"));
+});
+
+test("site-admin browser console keeps advanced workflows progressive and keyboard reachable", () => {
+  const source = fs.readFileSync("app/site-admin/site-admin-web-console.tsx", "utf8");
+  const collection = fs.readFileSync(
+    "app/site-admin/site-admin-structured-collection-editor.tsx",
+    "utf8",
+  );
+  const media = fs.readFileSync("app/site-admin/site-admin-media-library.tsx", "utf8");
+  const settings = fs.readFileSync("app/site-admin/site-admin-settings-panel.tsx", "utf8");
+  const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
+
+  assert.ok(source.includes("adminChrome"));
+  assert.ok(source.includes("editorialStatus"));
+  assert.ok(source.includes("data-inspector-close"));
+  assert.ok(source.includes("inert={!inspectorOpen}"));
+  assert.ok(source.includes("Diagnostics and recovery"));
+  assert.ok(source.includes("Release activity"));
+  assert.ok(collection.includes('role="dialog"'));
+  assert.ok(collection.includes("collectionEntryDrawer"));
+  assert.ok(collection.includes('event.key === "Escape"'));
+  assert.ok(media.includes('view === "grid"'));
+  assert.ok(media.includes("uploadProgress"));
+  assert.ok(settings.includes("saveAllNavRows"));
+  assert.ok(settings.includes("Site and SEO"));
+  assert.match(css, /\.adminChrome \{[\s\S]*position: sticky;/);
+  assert.match(css, /\.collectionEntryDrawer \{[\s\S]*position: fixed;/);
+  assert.match(css, /\.releaseWorkspace \{[\s\S]*width: min\(100%, 1100px\);/);
 });
 
 test("site-admin content management includes recovery, media, settings, and version history", () => {

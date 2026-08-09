@@ -251,8 +251,12 @@ export function SiteAdminMarkdownEditor({
       {visualEditing && !visualCompatibility.compatible ? (
         <div className={styles.editorModeNotice} role="status">
           <span>
-            Write mode is unavailable. {visualCompatibilitySummary(visualCompatibility)}
+            This page uses advanced layout blocks. Edit the source directly or preview the
+            published layout before saving.
           </span>
+          <button type="button" onClick={() => changeMode("preview")}>
+            Preview
+          </button>
         </div>
       ) : null}
 

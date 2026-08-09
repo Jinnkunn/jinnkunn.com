@@ -75,6 +75,51 @@ export type LiveSyncStatus = {
   pendingCount: number;
 };
 
+export type EditorialStatusState = "saving" | "attention" | "dirty" | "pending" | "live" | "unknown";
+
+export type EditorialStatus = {
+  state: EditorialStatusState;
+  label: string;
+  tone: "saving" | "blocked" | "smart-release" | "noop";
+};
+
+/**
+ * One document gets one primary state. The console previously rendered draft,
+ * visibility, and live badges with equal weight, so a healthy document could
+ * read as "Saved / Public / Live current / Up to date" all at once. Visibility
+ * remains a separate control; this status answers only "what should I do next?".
+ */
+export function editorialStatus(input: {
+  saving: boolean;
+  blocked: boolean;
+  dirty: boolean;
+  runnerOffline: boolean;
+  liveSync: LiveSyncStatus;
+}): EditorialStatus {
+  if (input.saving) {
+    return { state: "saving", label: "Saving", tone: "saving" };
+  }
+  if (input.blocked) {
+    return { state: "attention", label: "Needs attention", tone: "blocked" };
+  }
+  if (input.dirty) {
+    return { state: "dirty", label: "Unsaved changes", tone: "smart-release" };
+  }
+  if (input.runnerOffline) {
+    return { state: "attention", label: "Runner offline", tone: "blocked" };
+  }
+  if (input.liveSync.state === "publishing") {
+    return { state: "saving", label: "Publishing", tone: "saving" };
+  }
+  if (input.liveSync.state === "pending") {
+    return { state: "pending", label: "Ready to publish", tone: "smart-release" };
+  }
+  if (input.liveSync.state === "live") {
+    return { state: "live", label: "Live current", tone: "noop" };
+  }
+  return { state: "unknown", label: "Status unavailable", tone: "blocked" };
+}
+
 /**
  * The Draft -> Preview -> Live card has to admit that saved drafts are not
  * live. `pendingSaves` counts saves made since the last publish was queued,

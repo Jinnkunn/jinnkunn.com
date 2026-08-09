@@ -25,6 +25,7 @@ import {
   contentSaveEffects,
   countLabel,
   createSelectionGate,
+  editorialStatus,
   liveSyncStatus,
   visibilityLabel,
 } from "./site-admin-console-model";
@@ -806,6 +807,56 @@ export function SiteAdminWebConsole({
   const saveHomeRef = useRef<() => Promise<void>>(async () => {});
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
 
+  useEffect(() => {
+    if (!inspectorOpen) return;
+    const panel = document.getElementById("site-admin-inspector");
+    const trigger = document.getElementById("site-admin-inspector-trigger");
+    if (!panel) return;
+
+    const focusableSelector = [
+      "a[href]",
+      "button:not([disabled])",
+      "input:not([disabled])",
+      "textarea:not([disabled])",
+      "select:not([disabled])",
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(",");
+    const focusFirst = () =>
+      panel.querySelector<HTMLElement>("[data-inspector-close]")?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setInspectorOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(focusableSelector),
+      ).filter((element) => element.offsetParent !== null);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    window.requestAnimationFrame(focusFirst);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      window.requestAnimationFrame(() => trigger?.focus());
+    };
+  }, [inspectorOpen]);
+
   const currentItems = useMemo(
     () => contentItems({ kind: documentKind, pages, posts, components }),
     [documentKind, pages, posts, components],
@@ -1006,31 +1057,13 @@ export function SiteAdminWebConsole({
     releaseIsRunning ||
     (liveSync.state !== "pending" &&
       (releaseActionKind === "noop" || releaseUnavailable));
-  const draftStatusState = saving
-    ? "saving"
-    : componentSaveBlocked
-      ? "blocked"
-    : selectedDirty
-      ? "smart-release"
-      : "noop";
-  const draftStatusLabel = saving
-    ? "Saving"
-    : componentSaveBlocked
-      ? "Needs attention"
-    : selectedDirty
-      ? "Unsaved edits"
-      : "Saved";
-  const liveStatusState = selectedDirty
-    ? "blocked"
-    : releaseRunnerOffline
-      ? "blocked"
-    : releaseIsRunning
-      ? "saving"
-      : liveSync.state === "pending"
-        ? "smart-release"
-        : liveSync.state === "live"
-          ? "noop"
-          : "blocked";
+  const documentStatus = editorialStatus({
+    saving,
+    blocked: componentSaveBlocked,
+    dirty: selectedDirty,
+    runnerOffline: releaseRunnerOffline,
+    liveSync,
+  });
   const liveStatusLabel = selectedDirty
     ? "Save before publishing"
     : releaseRunnerOffline
@@ -2400,7 +2433,7 @@ export function SiteAdminWebConsole({
     window.requestAnimationFrame(() => {
       document
         .getElementById(componentEntryDomId(id))
-        ?.querySelector<HTMLElement>("summary")
+        ?.querySelector<HTMLElement>("[data-entry-trigger]")
         ?.focus({ preventScroll: true });
     });
   }
@@ -3058,51 +3091,50 @@ export function SiteAdminWebConsole({
 
   return (
     <main className={styles.shell} data-area={area}>
-      <section className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Site Admin · {actor}</p>
-          <h1 className={styles.title}>{areaTitle}</h1>
-          <p className={styles.description}>{areaDescription}</p>
-        </div>
-        <div className={styles.heroActions}>
-          <Button onClick={() => void refreshAll()} variant="subtle" disabled={loading}>
-            {loading ? "Refreshing" : "Refresh"}
-          </Button>
-          <Button onClick={() => changeArea("release")} variant="subtle">
-            Status
-          </Button>
-          <Button href="/" variant="ghost">
-            Public site
-          </Button>
-        </div>
-      </section>
+      <header className={styles.adminChrome}>
+        <section className={styles.hero}>
+          <div className={styles.heroCopy}>
+            <p className={styles.eyebrow}>Site Admin · {actor}</p>
+            <h1 className={styles.title}>{areaTitle}</h1>
+            <p className={styles.description}>{areaDescription}</p>
+          </div>
+          <div className={styles.heroActions}>
+            <Button onClick={() => void refreshAll()} variant="subtle" size="sm" disabled={loading}>
+              {loading ? "Refreshing" : "Refresh"}
+            </Button>
+            <Button href="/" variant="ghost" size="sm">
+              Public site
+            </Button>
+          </div>
+        </section>
+
+        <nav className={styles.adminTabs} aria-label="Site Admin sections">
+          {[
+            ["content", "Content"],
+            ["media", "Media"],
+            ["release", "Publish"],
+            ["settings", "Settings"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={styles.adminTab}
+              data-active={
+                id === "content"
+                  ? area === "content" || area === "home" || area === "now"
+                  : area === id
+              }
+              onClick={() => changeArea(id as Area)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </header>
 
       {notice ? <StatusNotice tone="success">{notice}</StatusNotice> : null}
       {warning ? <StatusNotice tone="warning">{warning}</StatusNotice> : null}
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
-
-      <nav className={styles.adminTabs} aria-label="Site Admin sections">
-        {[
-          ["content", "Content"],
-          ["media", "Media"],
-          ["release", "Publish"],
-          ["settings", "Settings"],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className={styles.adminTab}
-            data-active={
-              id === "content"
-                ? area === "content" || area === "home" || area === "now"
-                : area === id
-            }
-            onClick={() => changeArea(id as Area)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
 
       {area === "content" ? (
         <section
@@ -3113,6 +3145,7 @@ export function SiteAdminWebConsole({
 
           {selected ? (
             <Card className={styles.editorPanel}>
+              <div className={styles.editorChrome}>
                 <div className={styles.panelHeader}>
                   <div>
                     <p className={styles.cardLabel}>{titleForKind(selected.kind)}</p>
@@ -3133,10 +3166,11 @@ export function SiteAdminWebConsole({
                       {componentReturnTarget
                         ? `Back to ${componentReturnTarget.title}`
                         : selected.kind === "components"
-                          ? "Content"
-                          : `All ${selected.kind}`}
+                          ? "Back to content"
+                          : `Back to ${selected.kind}`}
                     </Button>
                     <Button
+                      id="site-admin-inspector-trigger"
                       onClick={() => setInspectorOpen((current) => !current)}
                       variant="subtle"
                       size="sm"
@@ -3151,7 +3185,8 @@ export function SiteAdminWebConsole({
                     ) : null}
                     <Button
                       onClick={() => void saveSelectedContent()}
-                      tone="accent"
+                      variant={selectedDirty ? "solid" : "subtle"}
+                      tone={selectedDirty ? "accent" : "neutral"}
                       size="sm"
                       disabled={saving || !selectedDirty || componentSaveBlocked}
                     >
@@ -3178,8 +3213,8 @@ export function SiteAdminWebConsole({
                   </div>
                 ) : null}
                 <div className={styles.editorStatusBar}>
-                  <span className={styles.statusPill} data-state={draftStatusState}>
-                    {draftStatusLabel}
+                  <span className={styles.statusPill} data-state={documentStatus.tone}>
+                    {documentStatus.label}
                   </span>
                   {selectedIsStructured ? (
                     <button
@@ -3193,9 +3228,6 @@ export function SiteAdminWebConsole({
                       {selectedVisibility.label}
                     </button>
                   ) : null}
-                  <span className={styles.statusPill} data-state={liveStatusState}>
-                    {liveStatusLabel}
-                  </span>
                   <span className={styles.editorHint}>
                     {editorStatusHint}
                   </span>
@@ -3218,22 +3250,22 @@ export function SiteAdminWebConsole({
                       >
                         View release
                       </Button>
-                    ) : (
+                    ) : liveSync.state !== "live" ? (
                       <Button
                         onClick={() => void runSmartRelease()}
-                        variant={liveSync.state === "live" ? "subtle" : "solid"}
-                        tone={liveSync.state === "live" ? "neutral" : "accent"}
+                        tone="accent"
                         size="sm"
                         disabled={selectedDirty || publishBlocked}
                       >
                         {publishButtonLabel}
                       </Button>
-                    )}
+                    ) : null}
                   </div>
                   {releaseIsRunning && releaseProgress ? (
                     <SiteAdminPublishingProgress progress={releaseProgress} />
                   ) : null}
                 </div>
+              </div>
                 {selectedIsStructured ? (
                   <>
                     <div className={styles.editorTitleGrid}>
@@ -3373,7 +3405,17 @@ export function SiteAdminWebConsole({
               onClick={() => setInspectorOpen(false)}
             />
           ) : null}
-          <Card className={styles.inspectorPanel} data-open={inspectorOpen ? "true" : "false"}>
+          <Card
+            id="site-admin-inspector"
+            className={styles.inspectorPanel}
+            data-open={inspectorOpen ? "true" : "false"}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Draft settings"
+            aria-hidden={!inspectorOpen}
+            inert={!inspectorOpen}
+            tabIndex={-1}
+          >
             {selected ? (
               <>
                 <div className={styles.panelHeader}>
@@ -3381,13 +3423,21 @@ export function SiteAdminWebConsole({
                     <p className={styles.cardLabel}>Inspector</p>
                     <h2 className={styles.panelTitle}>Draft settings</h2>
                   </div>
+                  <Button
+                    data-inspector-close
+                    onClick={() => setInspectorOpen(false)}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    Close
+                  </Button>
                 </div>
 
                 <section className={styles.inspectorSection}>
                   <p className={styles.inspectorLabel}>State</p>
                   <div className={styles.inspectorPills}>
-                    <span className={styles.statusPill} data-state={draftStatusState}>
-                      {draftStatusLabel}
+                    <span className={styles.statusPill} data-state={documentStatus.tone}>
+                      {documentStatus.label}
                     </span>
                     {selectedIsStructured ? (
                       <button
@@ -3401,9 +3451,6 @@ export function SiteAdminWebConsole({
                         {selectedVisibility.label}
                       </button>
                     ) : null}
-                    <span className={styles.statusPill} data-state={liveStatusState}>
-                      {liveStatusLabel}
-                    </span>
                   </div>
                   <p className={styles.editorHint}>{editorStatusHint}</p>
                   {releaseIsRunning && releaseProgress ? (
@@ -3583,35 +3630,6 @@ export function SiteAdminWebConsole({
                 ) : null}
 
                 <section className={styles.inspectorSection}>
-                  <p className={styles.inspectorLabel}>Actions</p>
-                  <div className={styles.inspectorActions}>
-                    {selected.href ? (
-                      <Button href={selected.href} variant="subtle" size="sm">
-                        Open live
-                      </Button>
-                    ) : null}
-                    <Button
-                      onClick={() => changeArea("release")}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      Release jobs
-                    </Button>
-                    {isDeleteSupported(selected.kind) ? (
-                      <Button
-                        onClick={() => void deleteSelectedContent()}
-                        variant="ghost"
-                        tone="danger"
-                        size="sm"
-                        disabled={saving}
-                      >
-                        Delete
-                      </Button>
-                    ) : null}
-                  </div>
-                </section>
-
-                <section className={styles.inspectorSection}>
                   <p className={styles.inspectorLabel}>Version</p>
                   <div className={styles.inspectorStat}>
                     <span>Saved version</span>
@@ -3639,6 +3657,32 @@ export function SiteAdminWebConsole({
                     }}
                   />
                 </section>
+
+                {isDeleteSupported(selected.kind) ? (
+                  <details className={`${styles.editorDetails} ${styles.dangerZone}`}>
+                    <summary>
+                      <span>Danger zone</span>
+                      <small>Delete this item</small>
+                    </summary>
+                    <div className={styles.editorDetailsBody}>
+                      <p className={styles.editorHint}>
+                        Deleting removes this draft and its public route. Version recovery remains
+                        available only while the backend retains history.
+                      </p>
+                      <div className={styles.panelActions}>
+                        <Button
+                          onClick={() => void deleteSelectedContent()}
+                          variant="subtle"
+                          tone="danger"
+                          size="sm"
+                          disabled={saving}
+                        >
+                          Delete {titleForKind(selected.kind).toLowerCase()}
+                        </Button>
+                      </div>
+                    </div>
+                  </details>
+                ) : null}
               </>
             ) : (
               <div className={styles.emptyInspector}>
@@ -3775,188 +3819,194 @@ export function SiteAdminWebConsole({
       ) : null}
 
       {area === "release" ? (
-        <section className={styles.releaseGrid}>
-          <Card className={styles.releasePrimaryCard}>
+        <section className={styles.releaseWorkspace}>
+          <Card className={styles.releaseOverview}>
             <div className={styles.cardHeader}>
               <div>
-                <p className={styles.cardLabel}>Recommended action</p>
+                <p className={styles.cardLabel}>Release status</p>
                 <h2 className={styles.cardTitle}>
                   {releaseIsRunning && releaseProgress
                     ? releaseProgress.label
-                    : release?.headline ||
-                    (summaryError ? "Release status unavailable" : "Refresh release status")}
+                    : liveSync.state === "pending"
+                      ? "Ready to publish"
+                      : liveSync.state === "live"
+                        ? "Live current"
+                        : summaryError
+                          ? "Release status unavailable"
+                          : release?.headline || "Refresh release status"}
                 </h2>
               </div>
-              <span className={styles.statusPill} data-state={liveStatusState}>
-                {releaseIsRunning || liveSync.state === "pending"
-                  ? liveStatusLabel
-                  : release?.recommendedAction.label ||
-                    (summaryError ? "Unavailable" : "Refresh")}
+              <span className={styles.statusPill} data-state={documentStatus.tone}>
+                {documentStatus.label}
               </span>
             </div>
             <p className={styles.cardText}>
-              {(releaseIsRunning
+              {releaseIsRunning
                 ? releaseProgress?.detail
                 : liveSync.state === "pending"
-                  ? `${liveSync.label}. Publish live when you are ready.`
-                  : release?.detail) ||
-                (summaryError
-                  ? `Could not load release summary: ${summaryError}.`
-                  : "Release status has not loaded yet.")}
+                  ? `${liveSync.pendingCount || "Saved"} content change${
+                      liveSync.pendingCount === 1 ? " is" : "s are"
+                    } ready for the public site.`
+                  : liveSync.state === "live"
+                    ? "Saved content matches the public site."
+                    : summaryError
+                      ? `Could not load release status: ${summaryError}.`
+                      : "Release status has not loaded yet."}
             </p>
             {releaseIsRunning && releaseProgress ? (
               <SiteAdminPublishingProgress progress={releaseProgress} />
             ) : null}
             <div className={styles.releaseSteps} aria-label="Release flow">
-              <div data-active="true">
-                <span>1</span>
+              <div data-active={liveSync.state !== "unknown" ? "true" : "false"}>
                 <strong>Draft</strong>
-                <small>Save content changes</small>
+                <small>Content is saved</small>
               </div>
               <div
                 data-active={
                   liveSync.state === "pending" || releaseIsRunning ? "true" : "false"
                 }
               >
-                <span>2</span>
-                <strong>Preview</strong>
+                <strong>Publish</strong>
                 <small>
                   {liveSync.pendingCount > 0
                     ? `${liveSync.pendingCount} saved change${
                         liveSync.pendingCount === 1 ? "" : "s"
                       } not yet live`
-                    : "Optional for code and layout changes"}
+                    : releaseIsRunning
+                      ? "Release in progress"
+                      : "No pending content"}
                 </small>
               </div>
               <div data-active={liveSync.state === "live" ? "true" : "false"}>
-                <span>3</span>
                 <strong>Live</strong>
-                <small>Production is current</small>
+                <small>Public site is current</small>
               </div>
             </div>
             <div className={styles.panelActions}>
-              <Button
-                onClick={() => void runSmartRelease()}
-                tone="accent"
-                disabled={publishBlocked}
-              >
-                {releaseSaving
-                  ? "Starting"
-                  : releaseIsRunning
-                    ? liveStatusLabel
-                  : liveSync.state === "live"
-                    ? "Live current"
-                    : "Publish live"}
-              </Button>
+              {liveSync.state !== "live" || releaseIsRunning ? (
+                <Button
+                  onClick={() => void runSmartRelease()}
+                  tone="accent"
+                  disabled={publishBlocked}
+                >
+                  {releaseSaving
+                    ? "Starting"
+                    : releaseIsRunning
+                      ? liveStatusLabel
+                      : "Publish live"}
+                </Button>
+              ) : null}
               <Button onClick={() => void refreshAll()} variant="subtle" disabled={loading}>
-                Refresh
-              </Button>
-              <Button onClick={() => void refreshReleaseJobs()} variant="ghost" disabled={loading}>
-                Jobs
+                Refresh status
               </Button>
             </div>
           </Card>
 
-          <Card className={styles.releaseSideCard}>
-            <p className={styles.cardLabel}>Source state</p>
-            <dl className={styles.kvGrid}>
-              <div>
-                <dt>Branch</dt>
-                <dd>{formatValue(source?.branch)}</dd>
-              </div>
-              <div>
-                <dt>Code</dt>
-                <dd>{shortSha(source?.codeSha)}</dd>
-              </div>
-              <div>
-                <dt>Content</dt>
-                <dd>{shortSha(source?.contentSha)}</dd>
-              </div>
-              <div>
-                <dt>Pending deploy</dt>
-                <dd>{source?.pendingDeploy === true ? "Yes" : "No"}</dd>
-              </div>
-            </dl>
-          </Card>
-
-          <Card className={styles.releaseSideCard}>
-            <div className={styles.cardHeader}>
-              <p className={styles.cardLabel}>Runner</p>
-              <span className={styles.muted}>
-                {releaseProgress?.runnerState === "offline"
-                  ? "Offline"
-                  : activeReleaseRunners[0]?.status ||
-                    (summaryError ? "Unavailable" : "Not seen")}
+          <details
+            className={styles.releaseDisclosure}
+            open={releaseIsRunning ? true : undefined}
+          >
+            <summary>
+              <span>
+                <strong>Release activity</strong>
+                <small>Source, runner health, and recent jobs</small>
               </span>
-            </div>
-            <p className={styles.cardText}>
-              Release jobs run through the shared Site Admin release queue. Logs and recovery
-              commands stay available without becoming the default path.
-            </p>
-            <details className={styles.editorDetails}>
-              <summary>
-                <span>Advanced recovery</span>
-                <small>Raw status endpoints</small>
-              </summary>
-              <div className={styles.editorDetailsBody}>
-                <div className={styles.linkRow}>
-                  <Link href="/api/site-admin/status">API status</Link>
-                  <Link href="/api/site-admin/mobile/summary">Summary</Link>
-                  <Link href="/api/site-admin/release-jobs">Release jobs</Link>
+              <span className={styles.muted}>
+                {releaseIsRunning
+                  ? "Publishing"
+                  : releaseJobs?.[0]?.status || "No active release"}
+              </span>
+            </summary>
+            <div className={styles.releaseDisclosureBody}>
+              <div className={styles.releaseMetaRow}>
+                <dl className={styles.kvGrid}>
+                  <div>
+                    <dt>Branch</dt>
+                    <dd>{formatValue(source?.branch)}</dd>
+                  </div>
+                  <div>
+                    <dt>Code</dt>
+                    <dd>{shortSha(source?.codeSha)}</dd>
+                  </div>
+                  <div>
+                    <dt>Content</dt>
+                    <dd>{shortSha(source?.contentSha)}</dd>
+                  </div>
+                  <div>
+                    <dt>Deploy needed</dt>
+                    <dd>{source?.pendingDeploy === true ? "Yes" : "No"}</dd>
+                  </div>
+                </dl>
+                <div className={styles.releaseRunnerSummary}>
+                  <span>Runner</span>
+                  <strong>
+                    {releaseProgress?.runnerState === "offline"
+                      ? "Offline"
+                      : activeReleaseRunners[0]?.status ||
+                        (summaryError ? "Unavailable" : "Not seen")}
+                  </strong>
+                  <small>
+                    Release jobs use the shared Site Admin queue. A queued job is preserved if
+                    the runner is temporarily unavailable.
+                  </small>
                 </div>
               </div>
-            </details>
-          </Card>
-
-          <Card className={styles.releasePrimaryCard}>
-            <div className={styles.cardHeader}>
-              <div>
-                <p className={styles.cardLabel}>Release queue</p>
-                <h2 className={styles.cardTitle}>Recent jobs</h2>
+              <div className={styles.releaseJobsHeader}>
+                <div>
+                  <strong>Recent jobs</strong>
+                  <small>Latest release activity across clients</small>
+                </div>
+                <Button onClick={() => void refreshReleaseJobs()} variant="subtle" size="sm">
+                  Reload
+                </Button>
               </div>
-              <Button onClick={() => void refreshReleaseJobs()} variant="subtle" size="sm">
-                Reload
-              </Button>
+              {releaseJobsError ? (
+                <p className={styles.cardText}>{releaseJobsError}</p>
+              ) : releaseJobs === null ? (
+                <LoadingState label="Loading release jobs…" />
+              ) : releaseJobs.length === 0 ? (
+                <p className={styles.cardText}>No release jobs recorded yet.</p>
+              ) : (
+                <ul className={styles.contentIndexList}>
+                  {releaseJobs.slice(0, 6).map((job) => (
+                    <li key={job.id}>
+                      <div className={styles.contentIndexRow}>
+                        <span className={styles.contentIndexPrimary}>
+                          <strong>{job.script || job.action}</strong>
+                          <small>
+                            {job.id} · {job.target}
+                          </small>
+                        </span>
+                        <span className={styles.contentIndexMeta}>
+                          <span className={styles.contentStateBadge}>{job.status}</span>
+                          <small>
+                            {job.phase || formatWhen(job.updatedAt || job.createdAt)}
+                          </small>
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {releaseJobsError ? (
-              <p className={styles.cardText}>{releaseJobsError}</p>
-            ) : releaseJobs === null ? (
-              <LoadingState label="Loading release jobs…" />
-            ) : releaseJobs.length === 0 ? (
-              <p className={styles.cardText}>No release jobs recorded yet.</p>
-            ) : (
-              <ul className={styles.contentIndexList}>
-                {releaseJobs.map((job) => (
-                  <li key={job.id}>
-                    <div className={styles.contentIndexRow}>
-                      <span className={styles.contentIndexPrimary}>
-                        <strong>{job.script || job.action}</strong>
-                        <small>
-                          {job.id} · {job.target}
-                        </small>
-                      </span>
-                      <span className={styles.contentIndexMeta}>
-                        <span className={styles.contentStateBadge}>{job.status}</span>
-                        <small>
-                          {job.phase || formatWhen(job.updatedAt || job.createdAt)}
-                        </small>
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+          </details>
 
-          <Card className={styles.releasePrimaryCard}>
-            <div className={styles.cardHeader}>
-              <div>
-                <p className={styles.cardLabel}>Diagnostics</p>
-                <h2 className={styles.cardTitle}>Build and content sync</h2>
+          <details className={styles.releaseDisclosure}>
+            <summary>
+              <span>
+                <strong>Diagnostics and recovery</strong>
+                <small>Build details and raw status endpoints</small>
+              </span>
+            </summary>
+            <div className={styles.releaseDisclosureBody}>
+              <SiteAdminStatusPanel />
+              <div className={styles.linkRow}>
+                <Link href="/api/site-admin/status">API status</Link>
+                <Link href="/api/site-admin/mobile/summary">Summary</Link>
+                <Link href="/api/site-admin/release-jobs">Release jobs</Link>
               </div>
             </div>
-            <SiteAdminStatusPanel />
-          </Card>
+          </details>
         </section>
       ) : null}
 

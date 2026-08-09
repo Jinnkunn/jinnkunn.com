@@ -79,6 +79,38 @@ export function useSiteAdminNavMutations({
     }
   };
 
+  const saveAllNavRows = async () => {
+    if (!sourceVersion?.siteConfigSha) {
+      setErr("Missing sourceVersion. Reload latest and try again.");
+      return;
+    }
+    const pendingRows = Object.entries(navDraft);
+    if (pendingRows.length === 0) return;
+    setBusy(true);
+    setErr("");
+    let expectedSiteConfigSha = sourceVersion.siteConfigSha;
+    try {
+      for (const [rowId, patch] of pendingRows) {
+        const data = await siteAdminBackend.postConfig({
+          kind: "nav-update",
+          rowId,
+          patch,
+          expectedSiteConfigSha,
+        });
+        expectedSiteConfigSha = data.sourceVersion.siteConfigSha;
+        setSourceVersion(data.sourceVersion);
+        setNav((current) =>
+          current.map((item) => (item.rowId === rowId ? { ...item, ...patch } : item)),
+        );
+        clearNavDraft(rowId);
+      }
+    } catch (e: unknown) {
+      setErr(errorFromUnknown(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addNavRow = async (group: "top" | "more") => {
     if (!sourceVersion?.siteConfigSha) {
       setErr("Missing sourceVersion. Reload latest and try again.");
@@ -119,6 +151,7 @@ export function useSiteAdminNavMutations({
     clearNavDraft,
     toggleOpenNav,
     saveNavRow,
+    saveAllNavRows,
     addNavRow,
   };
 }
