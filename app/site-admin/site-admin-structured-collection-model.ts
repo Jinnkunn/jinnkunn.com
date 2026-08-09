@@ -7,6 +7,7 @@ import {
 } from "@/lib/components/parse";
 import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
 import type { SiteComponentName } from "@/lib/site-admin/component-registry";
+import { parseMonthRangePeriod } from "./site-admin-month-range";
 
 export type NewsDraftEntry = {
   id: string;
@@ -118,8 +119,23 @@ export function worksEntryIssues(item: WorksDraftEntry): ComponentEntryIssue[] {
   if (!item.role.trim()) {
     issues.push({ entryId: item.id, field: "role", message: "Add a role." });
   }
+  const period = parseMonthRangePeriod(item.period);
   if (!item.period.trim()) {
     issues.push({ entryId: item.id, field: "period", message: "Add a period." });
+  } else if (!period.valid || !period.start) {
+    issues.push({ entryId: item.id, field: "period", message: "Choose a valid start month." });
+  } else if (!period.ongoing && !period.end) {
+    issues.push({
+      entryId: item.id,
+      field: "period",
+      message: "Choose an end month or mark this role as ongoing.",
+    });
+  } else if (period.end && period.end < period.start) {
+    issues.push({
+      entryId: item.id,
+      field: "period",
+      message: "End month must be after the start month.",
+    });
   }
   if (!optionalUrlIsValid(item.affiliationUrl)) {
     issues.push({ entryId: item.id, field: "affiliationUrl", message: "Enter a valid URL." });

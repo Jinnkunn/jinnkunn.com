@@ -13,7 +13,7 @@ export type StructuredCollectionFieldOption = {
 export type StructuredCollectionFieldSchema<T extends { id: string }> = {
   key: string;
   label: string;
-  control?: "input" | "textarea" | "select";
+  control?: "input" | "textarea" | "select" | "month-range";
   inputType?: "text" | "date" | "url";
   placeholder?: string;
   wide?: boolean;
@@ -160,7 +160,10 @@ export const WORKS_ENTRY_FIELDS: readonly StructuredCollectionFieldSchema<WorksD
     { inputType: "url" },
   ),
   stringField<WorksDraftEntry, "location">("location", "Location"),
-  stringField<WorksDraftEntry, "period">("period", "Period"),
+  stringField<WorksDraftEntry, "period">("period", "Period", {
+    control: "month-range",
+    wide: true,
+  }),
   stringField<WorksDraftEntry, "body">("body", "Body", {
     control: "textarea",
     wide: true,

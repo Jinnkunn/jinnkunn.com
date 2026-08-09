@@ -52,6 +52,8 @@ test("site-admin browser console keeps form controls inside panels", () => {
   assert.match(css, /@media \(max-width: 1180px\)/);
   assert.match(css, /\.contentWorkspace \{\n    grid-template-columns: minmax\(230px, 290px\) minmax\(0, 1fr\);/);
   assert.match(css, /\.inspectorPanel\[data-open="true"\]/);
+  assert.match(css, /\.sidePanel \{[\s\S]*overflow-y: auto;/);
+  assert.match(css, /\.contentIndexRow \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);
   assert.match(css, /\.editorTitleGrid[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /\.editorDetails[\s\S]*background: var\(--ds-surface-soft\);/);
   assert.match(css, /\.editorBodyShell[\s\S]*flex: 1;/);
@@ -84,6 +86,9 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("inspectorPanel"));
   assert.ok(source.includes("createDrawer"));
   assert.ok(source.includes("renderContentLibrary"));
+  assert.ok(source.includes("renderDocumentIndex"));
+  assert.ok(source.includes("Search posts and pages"));
+  assert.ok(source.includes("contentIndexList"));
   assert.ok(source.includes("releaseSteps"));
   assert.ok(source.includes("/api/site-admin/release-jobs/smart"));
   assert.ok(source.includes("moveSelectedContent"));
@@ -98,7 +103,7 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes('setContentMode("browse")'));
   assert.ok(source.includes('setContentMode("edit")'));
   assert.ok(source.includes('setContentMode("create")'));
-  assert.ok(source.includes("Select content"));
+  assert.ok(!source.includes('<h2 className={styles.panelTitle}>Select content</h2>'));
   assert.ok(!source.includes('previewLayout="split"'));
   assert.ok(source.includes("Back"));
   assert.ok(editor.includes("Source"));

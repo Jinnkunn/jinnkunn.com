@@ -68,6 +68,7 @@ import {
   WORKS_ENTRY_FIELDS,
   structuredCollectionSearchValues,
 } from "./site-admin-structured-collection-schema";
+import { reorderWorksEntriesAcrossGroups } from "./site-admin-works-drag";
 import {
   SiteAdminMediaLibrary,
   type SiteAdminAsset,
@@ -688,7 +689,8 @@ export function SiteAdminWebConsole({
   const [pages, setPages] = useState<PagesPayload | null>(null);
   const [posts, setPosts] = useState<PostsPayload | null>(null);
   const [components, setComponents] = useState<ComponentsPayload | null>(null);
-  const [kind, setKind] = useState<EditableKind>("posts");
+  const [, setKind] = useState<EditableKind>("posts");
+  const [documentKind, setDocumentKind] = useState<"posts" | "pages">("posts");
   const [contentMode, setContentMode] = useState<ContentMode>("browse");
   const [contentSearch, setContentSearch] = useState("");
   const [componentSearch, setComponentSearch] = useState("");
@@ -736,8 +738,8 @@ export function SiteAdminWebConsole({
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
 
   const currentItems = useMemo(
-    () => contentItems({ kind, pages, posts, components }),
-    [kind, pages, posts, components],
+    () => contentItems({ kind: documentKind, pages, posts, components }),
+    [documentKind, pages, posts, components],
   );
   const visibleItems = useMemo(() => {
     const query = contentSearch.trim().toLowerCase();
@@ -751,7 +753,7 @@ export function SiteAdminWebConsole({
   const globalSearchItems = useMemo(() => {
     const query = contentSearch.trim().toLowerCase();
     if (!query) return [];
-    return (["posts", "pages", "components"] as EditableKind[]).flatMap((itemKind) =>
+    return (["posts", "pages"] as const).flatMap((itemKind) =>
       contentItems({ kind: itemKind, pages, posts, components })
         .filter((item) =>
           [item.title, item.id, item.meta].some((value) =>
@@ -1158,6 +1160,9 @@ export function SiteAdminWebConsole({
   ) {
     const next = toEditableDetail(nextKind, id, detail);
     setKind(nextKind);
+    if (nextKind === "posts" || nextKind === "pages") {
+      setDocumentKind(nextKind);
+    }
     setContentMode("edit");
     setSelected(next);
     setSourceDraft(next.source);
@@ -1424,7 +1429,7 @@ export function SiteAdminWebConsole({
   }
 
   function beginCreate(nextKind?: "posts" | "pages") {
-    const resolvedKind = nextKind ?? (kind === "pages" ? "pages" : "posts");
+    const resolvedKind = nextKind ?? documentKind;
     setContentMode("create");
     setCreateKind(resolvedKind);
     setCreateSlug("");
@@ -1933,7 +1938,7 @@ export function SiteAdminWebConsole({
     } else if (selectedComponentName === "works") {
       updateWorksDraft((draft) => ({
         ...draft,
-        items: reorderDraftEntries(draft.items, sourceId, targetId),
+        items: reorderWorksEntriesAcrossGroups(draft.items, sourceId, targetId),
       }));
     } else if (selectedComponentName === "publications") {
       updatePublicationsDraft((draft) => ({
@@ -2457,6 +2462,8 @@ export function SiteAdminWebConsole({
     if (!confirmDiscardChanges()) return;
     setArea("content");
     setKind(nextKind);
+    setDocumentKind(nextKind);
+    setContentSearch("");
     setContentMode("browse");
     setSelected(null);
     setSourceDraft("");
@@ -2472,6 +2479,9 @@ export function SiteAdminWebConsole({
   function closeSelectedContent() {
     if (!confirmDiscardChanges()) return;
     setContentMode("browse");
+    if (selected?.kind === "posts" || selected?.kind === "pages") {
+      setDocumentKind(selected.kind);
+    }
     setSelected(null);
     setSourceDraft("");
     setContentForm(EMPTY_CONTENT_FORM);
@@ -2484,7 +2494,6 @@ export function SiteAdminWebConsole({
   }
 
   function renderContentLibrary() {
-    const searching = Boolean(contentSearch.trim());
     return (
       <Card className={styles.sidePanel}>
         <div className={styles.panelHeader}>
@@ -2492,7 +2501,7 @@ export function SiteAdminWebConsole({
             <h2 className={styles.panelTitle}>Content</h2>
           </div>
           <Button
-            onClick={() => beginCreate(kind === "pages" ? "pages" : "posts")}
+            onClick={() => beginCreate(documentKind)}
             variant="subtle"
             size="sm"
           >
@@ -2523,55 +2532,23 @@ export function SiteAdminWebConsole({
         </div>
 
         <div className={styles.contentNavSection}>
-          <div className={styles.contentNavSectionHeader}>
-            <p className={styles.inspectorLabel}>Documents</p>
-            <div className={styles.segmented} role="group" aria-label="Document type">
-              {(["posts", "pages"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  data-active={area === "content" && kind === value}
-                  onClick={() => openDocumentKind(value)}
-                >
-                  {titleForKind(value)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <label className={styles.fieldLabel}>
-            Search all content
-            <input
-              className={styles.textField}
-              value={contentSearch}
-              onChange={(event) => setContentSearch(event.target.value)}
-              placeholder="Title, slug, or metadata"
-            />
-          </label>
-          <div className={styles.itemList}>
-            {(searching
-              ? globalSearchItems
-              : visibleItems.map((item) => ({ kind, item })))
-              .filter(({ kind: itemKind }) => itemKind !== "components")
-              .map(({ kind: itemKind, item }) => (
-                <button
-                  key={`${itemKind}:${item.id}`}
-                  type="button"
-                  className={styles.itemButton}
-                  data-active={selected?.kind === itemKind && selected?.id === item.id}
-                  onClick={() => void selectLibraryContent(itemKind, item.id)}
-                >
-                  <span>{item.title}</span>
-                  <small>
-                    {searching ? `${titleForKind(itemKind)} · ` : ""}
-                    {item.draft ? "Hidden · " : ""}
-                    {item.meta}
-                  </small>
-                </button>
-              ))}
-            {(searching ? globalSearchItems : visibleItems).length === 0 ? (
-              <p className={styles.listEmpty}>No matching content.</p>
-            ) : null}
-          </div>
+          <p className={styles.inspectorLabel}>Documents</p>
+          {(["posts", "pages"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={styles.contentNavButton}
+              data-active={
+                area === "content" &&
+                documentKind === value &&
+                selected?.kind !== "components"
+              }
+              onClick={() => openDocumentKind(value)}
+            >
+              <span>{titleForKind(value)}</span>
+              <small>{value === "posts" ? posts?.count ?? 0 : pages?.count ?? 0} items</small>
+            </button>
+          ))}
         </div>
 
         <div className={styles.contentNavSection}>
@@ -2592,6 +2569,86 @@ export function SiteAdminWebConsole({
             );
           })}
         </div>
+      </Card>
+    );
+  }
+
+  function renderDocumentIndex() {
+    const searching = Boolean(contentSearch.trim());
+    const indexedItems = searching
+      ? globalSearchItems
+      : visibleItems.map((item) => ({ kind: documentKind, item }));
+    const typeLabel = titleForKind(documentKind);
+
+    return (
+      <Card className={`${styles.editorPanel} ${styles.contentIndexPanel}`}>
+        <div className={styles.panelHeader}>
+          <div>
+            <p className={styles.cardLabel}>Documents</p>
+            <h2 className={styles.panelTitle}>{searching ? "Search results" : typeLabel}</h2>
+            <p className={styles.cardText}>
+              {searching
+                ? `${indexedItems.length} matching items across posts and pages.`
+                : `${indexedItems.length} ${documentKind === "posts" ? "posts" : "pages"}.`}
+            </p>
+          </div>
+          <Button onClick={() => beginCreate(documentKind)} tone="accent" size="sm">
+            New {documentKind === "posts" ? "post" : "page"}
+          </Button>
+        </div>
+
+        <div className={styles.contentIndexToolbar}>
+          <div className={styles.segmented} role="group" aria-label="Document type">
+            {(["posts", "pages"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                data-active={!searching && documentKind === value}
+                onClick={() => openDocumentKind(value)}
+              >
+                {titleForKind(value)}
+              </button>
+            ))}
+          </div>
+          <label className={styles.contentIndexSearch}>
+            <span className={styles.visuallyHidden}>Search posts and pages</span>
+            <input
+              className={styles.textField}
+              value={contentSearch}
+              onChange={(event) => setContentSearch(event.target.value)}
+              placeholder="Search posts and pages"
+            />
+          </label>
+        </div>
+
+        {indexedItems.length ? (
+          <ul className={styles.contentIndexList}>
+            {indexedItems.map(({ kind: itemKind, item }) => (
+              <li key={`${itemKind}:${item.id}`}>
+                <button
+                  type="button"
+                  className={styles.contentIndexRow}
+                  onClick={() => void selectLibraryContent(itemKind, item.id)}
+                >
+                  <span className={styles.contentIndexPrimary}>
+                    <strong>{item.title}</strong>
+                    <small>/{item.id}</small>
+                  </span>
+                  <span className={styles.contentIndexMeta}>
+                    {searching ? <small>{titleForKind(itemKind)}</small> : null}
+                    {item.draft ? <span className={styles.contentStateBadge}>Hidden</span> : null}
+                    <small>{item.meta}</small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className={styles.contentIndexEmpty}>
+            <h3>{searching ? "No matching content" : `No ${typeLabel.toLowerCase()} yet`}</h3>
+            <p>{searching ? "Try another title, slug, or metadata term." : "Create the first item here."}</p>
+          </div>
+        )}
       </Card>
     );
   }
@@ -2672,7 +2729,11 @@ export function SiteAdminWebConsole({
                       variant="subtle"
                       size="sm"
                     >
-                      {componentReturnTarget ? `Back to ${componentReturnTarget.title}` : "Back"}
+                      {componentReturnTarget
+                        ? `Back to ${componentReturnTarget.title}`
+                        : selected.kind === "components"
+                          ? "Content"
+                          : `All ${selected.kind}`}
                     </Button>
                     <Button
                       onClick={() => setInspectorOpen((current) => !current)}
@@ -2893,24 +2954,7 @@ export function SiteAdminWebConsole({
                 )}
             </Card>
           ) : (
-            <Card className={styles.editorPanel}>
-              <div className={styles.emptyEditor}>
-                <p className={styles.cardLabel}>Editor</p>
-                <h2 className={styles.panelTitle}>Select content</h2>
-                <p className={styles.cardText}>
-                  Choose an item from the list, or create a new post/page from the same workspace.
-                </p>
-                <div className={styles.emptyEditorActions}>
-                  <Button
-                    onClick={() => beginCreate(kind === "pages" ? "pages" : "posts")}
-                    tone="accent"
-                    size="sm"
-                  >
-                    New {kind === "pages" ? "page" : "post"}
-                  </Button>
-                </div>
-              </div>
-            </Card>
+            renderDocumentIndex()
           )}
           {inspectorOpen ? (
             <button

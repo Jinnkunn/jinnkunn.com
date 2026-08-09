@@ -3,6 +3,10 @@ import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import {
+  formatMonthRangePeriod,
+  parseMonthRangePeriod,
+} from "./site-admin-month-range";
+import {
   componentEntryDomId,
   type ComponentEntryIssue,
   type ComponentGrouping,
@@ -231,13 +235,28 @@ export function StructuredCollectionGroup({
   label,
   previousLabel,
   grouping,
+  dropTarget = false,
+  onDragOver,
+  onDrop,
 }: {
   label: string;
   previousLabel: string;
   grouping: ComponentGrouping;
+  dropTarget?: boolean;
+  onDragOver?: (event: DragEvent<HTMLElement>) => void;
+  onDrop?: (event: DragEvent<HTMLElement>) => void;
 }) {
   if (grouping === "none" || !label || label === previousLabel) return null;
-  return <div className={styles.collectionGroupHeading}>{label}</div>;
+  return (
+    <div
+      className={styles.collectionGroupHeading}
+      data-drop-target={dropTarget}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {label}
+    </div>
+  );
 }
 
 export function StructuredCollectionEntry({
@@ -271,6 +290,9 @@ export function StructuredCollectionEntry({
         label={groupLabel}
         previousLabel={previousGroupLabel}
         grouping={grouping}
+        dropTarget={dropTarget}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
       />
       <details
         id={componentEntryDomId(id)}
@@ -437,6 +459,71 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
             event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
           ) => onChange(field.write(item, event.target.value)),
         };
+
+        if (field.control === "month-range") {
+          const range = parseMonthRangePeriod(value);
+          const writeRange = (next: {
+            start: string;
+            end: string;
+            ongoing: boolean;
+          }) => onChange(field.write(item, formatMonthRangePeriod(next)));
+
+          return (
+            <fieldset
+              className={`${styles.fieldLabel} ${styles.monthRangeField}${
+                field.wide ? ` ${styles.componentFieldWide}` : ""
+              }`}
+              key={field.key}
+            >
+              <legend>{field.label}</legend>
+              <div className={styles.monthRangeControl}>
+                <label className={styles.monthRangeSegment}>
+                  <span>Start</span>
+                  <input
+                    className={styles.textField}
+                    type="month"
+                    value={range.start}
+                    disabled={disabled}
+                    data-component-field={field.key}
+                    aria-invalid={Boolean(issue)}
+                    aria-label={`${field.label} start month`}
+                    onChange={(event) =>
+                      writeRange({ ...range, start: event.target.value })
+                    }
+                  />
+                </label>
+                <span className={styles.monthRangeSeparator} aria-hidden="true">
+                  to
+                </span>
+                <label className={styles.monthRangeSegment}>
+                  <span>End</span>
+                  <input
+                    className={styles.textField}
+                    type="month"
+                    value={range.end}
+                    disabled={disabled || range.ongoing}
+                    aria-label={`${field.label} end month`}
+                    onChange={(event) =>
+                      writeRange({ ...range, end: event.target.value })
+                    }
+                  />
+                </label>
+                <label className={styles.monthRangeOngoing}>
+                  <input
+                    type="checkbox"
+                    checked={range.ongoing}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      writeRange({ ...range, ongoing: event.target.checked })
+                    }
+                  />
+                  <span>Ongoing</span>
+                </label>
+              </div>
+              <StructuredCollectionFieldIssue issue={issue} />
+            </fieldset>
+          );
+        }
 
         return (
           <label

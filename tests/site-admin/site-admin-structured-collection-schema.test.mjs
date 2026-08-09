@@ -8,6 +8,10 @@ import {
   WORKS_ENTRY_FIELDS,
   structuredCollectionSearchValues,
 } from "../../app/site-admin/site-admin-structured-collection-schema.ts";
+import {
+  formatMonthRangePeriod,
+  parseMonthRangePeriod,
+} from "../../app/site-admin/site-admin-month-range.ts";
 
 function field(fields, key) {
   const result = fields.find((candidate) => candidate.key === key);
@@ -47,6 +51,30 @@ test("structured collection schema edits News, Teaching, and Works entries", () 
   const nextWork = field(WORKS_ENTRY_FIELDS, "category").write(work, "passed");
   assert.equal(nextWork.category, "passed");
   assert.equal(field(WORKS_ENTRY_FIELDS, "body").wide, true);
+  assert.equal(field(WORKS_ENTRY_FIELDS, "period").control, "month-range");
+});
+
+test("work period month ranges parse and format existing content", () => {
+  assert.deepEqual(parseMonthRangePeriod("Nov 2025 - Feb 2026"), {
+    start: "2025-11",
+    end: "2026-02",
+    ongoing: false,
+    valid: true,
+  });
+  assert.deepEqual(parseMonthRangePeriod("September 2019 – Now"), {
+    start: "2019-09",
+    end: "",
+    ongoing: true,
+    valid: true,
+  });
+  assert.equal(
+    formatMonthRangePeriod({ start: "2025-11", end: "2026-02", ongoing: false }),
+    "Nov 2025 – Feb 2026",
+  );
+  assert.equal(
+    formatMonthRangePeriod({ start: "2019-09", end: "", ongoing: true }),
+    "Sep 2019 – Now",
+  );
 });
 
 test("publication schema preserves rich authors and non-primary venues", () => {
