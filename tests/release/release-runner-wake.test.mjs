@@ -5,6 +5,7 @@ import { wakeReleaseRunnerForJob } from "../../lib/server/release-runner-wake.ts
 import {
   isWakeAuthorized,
   normalizeWakePayload,
+  syncRepo,
   wakeHealthPayload,
 } from "../../scripts/release/release-agent.mjs";
 
@@ -89,4 +90,47 @@ test("release agent health: hides runner details without wake token", () => {
   assert.deepEqual(wakeHealthPayload(snapshot, "", "secret-token"), { ok: true });
   assert.deepEqual(wakeHealthPayload(snapshot, "Bearer wrong", "secret-token"), { ok: true });
   assert.deepEqual(wakeHealthPayload(snapshot, "Bearer secret-token", "secret-token"), snapshot);
+});
+
+test("release agent sync: executes the immutable origin/main revision", () => {
+  const calls = [];
+  const lines = [];
+  const outputs = ["", "fetched\n", "HEAD is now at abc1234\n", "abc1234\n"];
+  syncRepo({
+    onLine: (_stream, line) => lines.push(line),
+    repo: "/runner/repo",
+    spawnSyncImpl: (command, args, options) => {
+      calls.push({ args, command, cwd: options.cwd });
+      return { status: 0, stderr: "", stdout: outputs[calls.length - 1] };
+    },
+  });
+  assert.deepEqual(
+    calls.map((call) => call.args),
+    [
+      ["status", "--porcelain", "--untracked-files=no"],
+      ["fetch", "--prune", "origin", "main"],
+      ["switch", "--detach", "origin/main"],
+      ["rev-parse", "--short", "HEAD"],
+    ],
+  );
+  assert.equal(calls.every((call) => call.command === "git"), true);
+  assert.equal(calls.every((call) => call.cwd === "/runner/repo"), true);
+  assert.equal(lines.at(-1), "Release runner source: origin/main abc1234");
+});
+
+test("release agent sync: refuses tracked runner changes before fetching", () => {
+  const calls = [];
+  assert.throws(
+    () =>
+      syncRepo({
+        onLine: () => undefined,
+        repo: "/runner/repo",
+        spawnSyncImpl: (_command, args) => {
+          calls.push(args);
+          return { status: 0, stderr: "", stdout: " M package.json\n" };
+        },
+      }),
+    /tracked changes/,
+  );
+  assert.deepEqual(calls, [["status", "--porcelain", "--untracked-files=no"]]);
 });

@@ -256,9 +256,8 @@ async function isJobCanceled(baseUrl, token, agentId, jobId) {
   return job?.status === "canceled";
 }
 
-function syncRepo({ repo, onLine }) {
-  onLine("status", "Syncing release runner repo: git pull --ff-only origin main");
-  const result = spawnSync("git", ["pull", "--ff-only", "origin", "main"], {
+function runRunnerGit({ args, onLine, repo, spawnSyncImpl }) {
+  const result = spawnSyncImpl("git", args, {
     cwd: repo,
     encoding: "utf8",
     env: process.env,
@@ -268,8 +267,44 @@ function syncRepo({ repo, onLine }) {
     onLine("status", line);
   }
   if (result.status !== 0) {
-    throw new Error(`git pull --ff-only origin main failed with status ${result.status}`);
+    throw new Error(`git ${args.join(" ")} failed with status ${result.status}`);
   }
+  return output;
+}
+
+export function syncRepo({ repo, onLine, spawnSyncImpl = spawnSync }) {
+  const trackedChanges = runRunnerGit({
+    args: ["status", "--porcelain", "--untracked-files=no"],
+    onLine: () => undefined,
+    repo,
+    spawnSyncImpl,
+  });
+  if (trackedChanges) {
+    throw new Error(
+      "Release runner repo has tracked changes; refusing to replace its execution source.",
+    );
+  }
+
+  onLine("status", "Syncing release runner repo: fetch origin/main and use detached HEAD");
+  runRunnerGit({
+    args: ["fetch", "--prune", "origin", "main"],
+    onLine,
+    repo,
+    spawnSyncImpl,
+  });
+  runRunnerGit({
+    args: ["switch", "--detach", "origin/main"],
+    onLine,
+    repo,
+    spawnSyncImpl,
+  });
+  const sha = runRunnerGit({
+    args: ["rev-parse", "--short", "HEAD"],
+    onLine: () => undefined,
+    repo,
+    spawnSyncImpl,
+  });
+  onLine("status", `Release runner source: origin/main ${sha}`);
 }
 
 function runCommand({ action, repo, dryRun, onLine, isCancelled }) {

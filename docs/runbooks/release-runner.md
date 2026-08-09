@@ -93,14 +93,20 @@ cd /Users/jinnkunn/Services/jinnkunn-release-runner/repo
 RELEASE_AGENT_HTTP_PORT=8789 RELEASE_AGENT_POLL_MS=60000 npm run release:agent
 ```
 
-Before executing a claimed job, the agent runs:
+Before executing a claimed job, the agent verifies that its tracked worktree is
+clean, fetches the canonical branch, and executes that immutable remote revision:
 
 ```bash
-git pull --ff-only origin main
+git status --porcelain --untracked-files=no
+git fetch --prune origin main
+git switch --detach origin/main
 ```
 
-This keeps the Mac mini release source aligned with GitHub `main`. Use
-`npm run release:agent -- --no-sync` only for local dry-run debugging.
+Detached execution prevents old runner-generated commits from making the
+dedicated clone diverge from GitHub `main`; any historical local branch remains
+available for inspection. The agent refuses to switch revisions when tracked
+files are dirty. Use `npm run release:agent -- --no-sync` only for local dry-run
+debugging.
 
 ## Mac mini LaunchAgent
 
@@ -130,7 +136,9 @@ Manually inspect or repair the runner repo if sync fails:
 
 ```bash
 cd ~/Services/jinnkunn-release-runner/repo
-git pull --ff-only origin main
+git status --short
+git fetch --prune origin main
+git switch --detach origin/main
 ```
 
 Dry-run execution for validating the queue without deploying:
