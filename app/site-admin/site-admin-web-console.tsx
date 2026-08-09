@@ -856,15 +856,17 @@ export function SiteAdminWebConsole({
     };
   }, [inspectorOpen]);
 
+  const selectedContentKey = selected ? `${selected.kind}:${selected.id}` : "";
+
   useEffect(() => {
-    if (!selected) return;
+    if (!selectedContentKey) return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById("site-admin-editor-panel")?.scrollIntoView({
         block: "start",
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [selected?.id, selected?.kind]);
+  }, [selectedContentKey]);
 
   const currentItems = useMemo(
     () => contentItems({ kind: documentKind, pages, posts, components }),
