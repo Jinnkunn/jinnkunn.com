@@ -344,8 +344,13 @@ test("public-web-style-guardrails: data-page files split between pages (shortcod
   const worksComponent = await read("content/components/works.mdx");
   assertIncludes(
     worksComponent,
-    "<WorksEntry category=",
+    "<WorksEntry",
     "components/works.mdx contains WorksEntry blocks",
+  );
+  assertIncludes(
+    worksComponent,
+    'category="',
+    "components/works.mdx categorizes WorksEntry blocks",
   );
 
   const teaching = await read("content/pages/teaching.mdx");
