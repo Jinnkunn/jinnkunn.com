@@ -22,15 +22,21 @@
  * language as the navbar rather than the raw Super defaults. */
 .super-root .super-footer {
   box-shadow: none;
-  /* Without a shadow and on the same background as the page, the footer read as
-   * a detached block. A hairline is the quietest way to close the page. */
-  border-top: 1px solid var(--ds-border-subtle);
+  border-top: 0;
+  /* Separate the footer through rhythm rather than a full-width rule. This
+   * keeps the public surface reading as one continuous editorial page. */
+  padding-block: var(--ds-space-8) var(--ds-space-7);
   /* Super puts the page gutters on the footer element itself
    * (`padding: 48px var(--padding-right) 48px var(--padding-left)`), which makes
    * the footer full-bleed while body copy sits inside a 900px column. Move the
-   * gutters onto `__content` below so the two share one measure; vertical
-   * padding (48px desktop / 40px at <=768px) is left to Super. */
+   * gutters onto `__content` below so the two share one measure. */
   padding-inline: 0;
+}
+
+@media (max-width: 768px) {
+  .super-root .super-footer {
+    padding-block: var(--ds-space-7) 40px;
+  }
 }
 
 /* Put the footer on the content grid: same box model as `.notion-root` +
