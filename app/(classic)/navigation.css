@@ -82,14 +82,14 @@
 }
 
 .super-root:has(.page__index) .super-navbar__item[href="/"],
-.super-root:has(.page__blog) .super-navbar__list,
-.super-root:has(.page__blog-post) .super-navbar__list,
+.super-root:has(.page__blog) .super-navbar__item[href="/blog"],
+.super-root:has(.page__blog-post) .super-navbar__item[href="/blog"],
 .super-root:has(.page__calendar) .super-navbar__item[href="/calendar"],
 .super-root:has(.page__calendar-event) .super-navbar__item[href="/calendar"],
 .super-root:has(.super-navbar__breadcrumbs a[href="/news"]) .super-navbar__item[href="/news"],
 .super-root:has(.super-navbar__breadcrumbs a[href="/publications"]) .super-navbar__item[href="/publications"],
 .super-root:has(.super-navbar__breadcrumbs a[href="/works"]) .super-navbar__item[href="/works"],
-.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__list,
+.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__item[href="/blog"],
 .super-root:has(.super-navbar__breadcrumbs a[href="/teaching"]) .super-navbar__list,
 .super-root:has(.super-navbar__breadcrumbs a[href="/bio"]) .super-navbar__list,
 .super-root:has(.super-navbar__breadcrumbs a[href="/notice"]) .super-navbar__list {
@@ -98,14 +98,14 @@
 }
 
 .super-root:has(.page__index) .super-navbar__item[href="/"]::after,
-.super-root:has(.page__blog) .super-navbar__list::after,
-.super-root:has(.page__blog-post) .super-navbar__list::after,
+.super-root:has(.page__blog) .super-navbar__item[href="/blog"]::after,
+.super-root:has(.page__blog-post) .super-navbar__item[href="/blog"]::after,
 .super-root:has(.page__calendar) .super-navbar__item[href="/calendar"]::after,
 .super-root:has(.page__calendar-event) .super-navbar__item[href="/calendar"]::after,
 .super-root:has(.super-navbar__breadcrumbs a[href="/news"]) .super-navbar__item[href="/news"]::after,
 .super-root:has(.super-navbar__breadcrumbs a[href="/publications"]) .super-navbar__item[href="/publications"]::after,
 .super-root:has(.super-navbar__breadcrumbs a[href="/works"]) .super-navbar__item[href="/works"]::after,
-.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__list::after,
+.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__item[href="/blog"]::after,
 .super-root:has(.super-navbar__breadcrumbs a[href="/teaching"]) .super-navbar__list::after,
 .super-root:has(.super-navbar__breadcrumbs a[href="/bio"]) .super-navbar__list::after,
 .super-root:has(.super-navbar__breadcrumbs a[href="/notice"]) .super-navbar__list::after {
@@ -113,9 +113,6 @@
   transform: scaleX(1);
 }
 
-.super-root:has(.page__blog) .super-navbar__list-item[href="/blog"],
-.super-root:has(.page__blog-post) .super-navbar__list-item[href="/blog"],
-.super-root:has(.super-navbar__breadcrumbs a[href="/blog"]) .super-navbar__list-item[href="/blog"],
 .super-root:has(.super-navbar__breadcrumbs a[href="/teaching"]) .super-navbar__list-item[href="/teaching"],
 .super-root:has(.super-navbar__breadcrumbs a[href="/bio"]) .super-navbar__list-item[href="/bio"],
 .super-root:has(.super-navbar__breadcrumbs a[href="/notice"]) .super-navbar__list-item[href="/notice"] {
