@@ -24,7 +24,7 @@
   /* The grid contributes an 8px row gap; this extra offset keeps the visible
    * icon-to-hair distance around 18–22px across viewport sizes. */
   --footer-mascot-gap: clamp(10px, 1vw, 14px);
-  --footer-mascot-width: clamp(116px, 12vw, 148px);
+  --footer-mascot-width: clamp(96px, 9vw, 116px);
   box-shadow: none;
   border-top: 0;
   overflow: hidden;
@@ -40,7 +40,7 @@
 
 @media (max-width: 768px) {
   .super-root .super-footer {
-    --footer-mascot-width: clamp(112px, 31vw, 138px);
+    --footer-mascot-width: clamp(92px, 26vw, 110px);
     padding-block: var(--ds-space-7) 0;
   }
 }
