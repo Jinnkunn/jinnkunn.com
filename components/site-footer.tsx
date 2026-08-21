@@ -115,6 +115,17 @@ export default function SiteFooter() {
             </svg>
           </a>
         </div>
+
+        <div className="super-footer__mascot" aria-hidden="true">
+          <Image
+            alt=""
+            src="/brand/jinnkunn/jinnkunn-footer-mascot.svg"
+            width={1175}
+            height={1104}
+            loading="lazy"
+            draggable={false}
+          />
+        </div>
       </div>
     </footer>
   );
