@@ -1,7 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { extractNextBuildIdFromHtml } from "../../scripts/content/publish-content.mjs";
+import {
+  extractNextBuildIdFromHtml,
+  extractNextStaticRefs,
+} from "../../scripts/content/publish-content.mjs";
+
+test("content publish keeps route-group chunks in the static asset set", () => {
+  assert.deepEqual(
+    extractNextStaticRefs(
+      '<script src="/_next/static/chunks/app/(classic)/layout-f527bdab78160e01.js"></script>',
+    ),
+    ["/_next/static/chunks/app/(classic)/layout-f527bdab78160e01.js"],
+  );
+});
 
 test("content publish reads a Pages Router build id from static manifests", () => {
   assert.equal(

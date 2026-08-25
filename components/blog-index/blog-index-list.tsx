@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import type { BlogPostIndexItem } from "@/lib/blog";
 
 function blockId(entry: BlogPostIndexItem): string {
@@ -44,7 +42,7 @@ export function BlogIndexList({ entries }: { entries: BlogPostIndexItem[] }) {
         )}
         {entries.map((entry) => (
           // The id belongs to the wrapper only — it is the `#block-list-*`
-          // anchor target. Repeating it on the overlay <Link> produced eight
+          // anchor target. Repeating it on the overlay link produced eight
           // duplicate ids on this page.
           <div
             id={blockId(entry)}
@@ -53,7 +51,7 @@ export function BlogIndexList({ entries }: { entries: BlogPostIndexItem[] }) {
           >
             {/* aria-label already supplies the accessible name, so the
               * .sr-only span it used to wrap was unreachable payload. */}
-            <Link
+            <a
               href={entry.href}
               className="notion-link notion-collection-list__item-anchor"
               aria-label={entry.title}

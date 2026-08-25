@@ -569,10 +569,10 @@ function collectReferencedNextStaticFiles({ files, root = ROOT }) {
   return out;
 }
 
-function extractNextStaticRefs(source) {
+export function extractNextStaticRefs(source) {
   return [
     ...new Set(
-      [...String(source || "").matchAll(/\/_next\/static\/[^"'()\s\\]+/g)]
+      [...String(source || "").matchAll(/\/_next\/static\/[^"'\s<>\\]+/g)]
         .map((match) => match[0])
         .map((ref) => ref.replace(/[?#].*$/, ""))
         .filter((ref) => /\.[a-z0-9]+$/i.test(ref))
@@ -1133,27 +1133,35 @@ async function applyOverlayDiff({ env, diff, git, dryRun }) {
     git,
     note: "before content overlay publish",
   });
-  if (diff.deleted.length > 0) {
-    logPhase(`deleting ${diff.deleted.length} stale overlay file${diff.deleted.length === 1 ? "" : "s"}`);
-    await deleteOverlayPaths(env, diff.deleted);
-  }
-  if (diff.changedRows.length > 0) {
-    logPhase(`uploading ${diff.changedRows.length} changed overlay file${diff.changedRows.length === 1 ? "" : "s"}`);
-    await insertRows({
-      env,
-      table: "static_shell_overlays",
-      columns: [
-        "asset_path",
-        "body",
-        "content_type",
-        "content_sha",
-        "source_sha",
-        "source_branch",
-        "updated_at",
-      ],
-      rows: diff.changedRows,
-      chunkSize: 5,
-    });
+  try {
+    if (diff.deleted.length > 0) {
+      logPhase(`deleting ${diff.deleted.length} stale overlay file${diff.deleted.length === 1 ? "" : "s"}`);
+      await deleteOverlayPaths(env, diff.deleted);
+    }
+    if (diff.changedRows.length > 0) {
+      logPhase(`uploading ${diff.changedRows.length} changed overlay file${diff.changedRows.length === 1 ? "" : "s"}`);
+      await insertRows({
+        env,
+        table: "static_shell_overlays",
+        columns: [
+          "asset_path",
+          "body",
+          "content_type",
+          "content_sha",
+          "source_sha",
+          "source_branch",
+          "updated_at",
+        ],
+        rows: diff.changedRows,
+        chunkSize: 5,
+      });
+    }
+  } catch (error) {
+    await rollbackFailedOverlayWrite({ env, backupSnapshot });
+    throw new Error(
+      `Content overlay write failed and the previous ${env} overlay was restored: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
   return {
     backupSnapshot,
@@ -1189,6 +1197,29 @@ async function readSnapshotRows(env, snapshotId) {
     source_branch: String(row.source_branch || ""),
     updated_at: Number(row.updated_at || 0),
   })).filter((row) => row.asset_path);
+}
+
+async function rollbackFailedOverlayWrite({ env, backupSnapshot }) {
+  const rows = backupSnapshot?.id
+    ? await readSnapshotRows(env, backupSnapshot.id)
+    : [];
+  await cfD1Query({ env, sql: "DELETE FROM static_shell_overlays" });
+  if (rows.length === 0) return;
+  await insertRows({
+    env,
+    table: "static_shell_overlays",
+    columns: [
+      "asset_path",
+      "body",
+      "content_type",
+      "content_sha",
+      "source_sha",
+      "source_branch",
+      "updated_at",
+    ],
+    rows,
+    chunkSize: 5,
+  });
 }
 
 async function restoreOverlaySnapshot({ env, git, requestedSnapshotId, dryRun }) {
@@ -1615,14 +1646,30 @@ async function main() {
     git: buildSource,
     dryRun: args.dryRun,
   });
-  const serving =
-    args.dryRun || args.skipVerify || (upload.uploaded === 0 && upload.deleted === 0)
-      ? null
-      : await verifyOverlayServing(args.env);
-  const assets =
-    args.dryRun || args.skipVerify
-      ? { checked: nextStaticFiles.length }
-      : await assertReferencedAssetsExist({ env: args.env, files: shellFiles });
+  let serving = null;
+  let assets = { checked: nextStaticFiles.length };
+  try {
+    serving =
+      args.dryRun || args.skipVerify || (upload.uploaded === 0 && upload.deleted === 0)
+        ? null
+        : await verifyOverlayServing(args.env);
+    assets =
+      args.dryRun || args.skipVerify
+        ? assets
+        : await assertReferencedAssetsExist({ env: args.env, files: shellFiles });
+  } catch (error) {
+    if (!args.dryRun && (upload.uploaded > 0 || upload.deleted > 0)) {
+      await rollbackFailedOverlayWrite({
+        env: args.env,
+        backupSnapshot: upload.backupSnapshot,
+      });
+      throw new Error(
+        `Content overlay verification failed and the previous ${args.env} overlay was restored: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
 
   if (!args.dryRun) {
     appendReleaseHistory({

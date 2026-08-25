@@ -1,7 +1,7 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- Public pages use static-shell document navigation on Cloudflare Workers Free. */
 import "server-only";
 
 import { Fragment } from "react";
-import Link from "next/link";
 
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { getPageEntry } from "@/lib/pages/index";
@@ -65,21 +65,21 @@ export async function PageView({
       beforeHeader={
         <div className="super-navbar__breadcrumbs">
           <div className="notion-breadcrumb">
-            <Link href="/" className="notion-link notion-breadcrumb__item">
+            <a href="/" className="notion-link notion-breadcrumb__item">
               <div className="notion-navbar__title notion-breadcrumb__title">Home</div>
-            </Link>
+            </a>
             {trail.map((item, index) => (
               <Fragment key={`${item.href ?? "noref"}-${index}`}>
                 <span className="notion-breadcrumb__divider">/</span>
                 {item.href ? (
-                  <Link
+                  <a
                     href={item.href}
                     className="notion-link notion-breadcrumb__item"
                   >
                     <div className="notion-navbar__title notion-breadcrumb__title">
                       {item.label}
                     </div>
-                  </Link>
+                  </a>
                 ) : (
                   <div className="notion-breadcrumb__item notion-breadcrumb__item--placeholder">
                     <div className="notion-navbar__title notion-breadcrumb__title">

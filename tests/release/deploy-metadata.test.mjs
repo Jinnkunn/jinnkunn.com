@@ -104,6 +104,7 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   assert.match(script, /collectReferencedNextStaticFiles/);
   assert.match(script, /text\/javascript/);
   assert.match(script, /assertReferencedAssetsExist/);
+  assert.match(script, /rollbackFailedOverlayWrite/);
   assert.match(script, /static_shell_overlays/);
   assert.match(script, /static_shell_overlay_snapshots/);
   assert.match(script, /prepareOverlayDiff/);

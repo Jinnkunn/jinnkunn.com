@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Fragment } from "react";
 
 export type ClassicBreadcrumb = {
@@ -18,11 +17,11 @@ export function ClassicBreadcrumbs({
       <div className="notion-breadcrumb">
         {crumbs.map((crumb, index) => (
           <Fragment key={`${crumb.href}:${index}`}>
-            <Link href={crumb.href} className="notion-link notion-breadcrumb__item">
+            <a href={crumb.href} className="notion-link notion-breadcrumb__item">
               <div className="notion-navbar__title notion-breadcrumb__title">
                 {crumb.label}
               </div>
-            </Link>
+            </a>
             {index < crumbs.length - 1 ? (
               <span className="notion-breadcrumb__divider">/</span>
             ) : null}

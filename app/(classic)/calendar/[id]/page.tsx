@@ -1,5 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- Public pages use static-shell document navigation on Cloudflare Workers Free. */
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
@@ -137,7 +137,7 @@ export default async function CalendarEventPage({
       <article className="public-calendar-event">
         <header className="public-calendar-event__header">
           <p className="public-calendar-event__breadcrumb">
-            <Link href="/calendar">← Back to calendar</Link>
+            <a href="/calendar">← Back to calendar</a>
           </p>
           <h1 className="public-calendar-event__title">{event.title}</h1>
           <p className="public-calendar-event__range">{formatRange(event)}</p>

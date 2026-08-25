@@ -115,6 +115,21 @@ test("public-web-style-guardrails: public content links keep Notion link classes
   );
 });
 
+test("public-web-style-guardrails: static public navigation uses document requests", async () => {
+  const sources = await Promise.all([
+    read("components/site-nav.tsx"),
+    read("components/ui/nav-item.tsx"),
+    read("components/blog-index/blog-index-list.tsx"),
+    read("components/classic/classic-breadcrumbs.tsx"),
+    read("components/posts-mdx/post-view.tsx"),
+    read("components/posts-mdx/page-view.tsx"),
+  ]);
+
+  for (const source of sources) {
+    assertExcludes(source, 'from "next/link"', "Public static navigation");
+  }
+});
+
 test("public-web-style-guardrails: visual contracts cover the public route matrix", async () => {
   const classicContract = await read("scripts/qa/classic-style-contract.mjs");
   const productionContract = await read("scripts/qa/production-style-regression.mjs");

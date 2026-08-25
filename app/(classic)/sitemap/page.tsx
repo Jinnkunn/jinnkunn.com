@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { getHierarchicalSitemapRoutes, type SitemapRoute } from "@/lib/server/sitemap-routes";
 import { buildPageMetadata } from "@/lib/seo/metadata";
@@ -43,10 +42,10 @@ function renderTree(parentRoutePath: string, byParent: ChildrenMap): React.React
         const hasChildren = (byParent.get(item.routePath) || []).length > 0;
         return (
           <li key={item.routePath} className={styles.item}>
-            <Link href={item.routePath} className={styles.link}>
+            <a href={item.routePath} className={styles.link}>
               <span className={styles.title}>{item.title}</span>
               <span className={styles.path}>{item.routePath}</span>
-            </Link>
+            </a>
             {hasChildren ? renderTree(item.routePath, byParent) : null}
           </li>
         );

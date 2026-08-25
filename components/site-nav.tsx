@@ -1,5 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- Public pages use static-shell document navigation on Cloudflare Workers Free. */
 import { Suspense } from "react";
-import Link from "next/link";
 import ThemeToggle from "@/components/design-system/theme-toggle";
 import SiteNavEnhancers from "@/components/site-nav-enhancers";
 import { NavItem } from "@/components/ui/nav-item";
@@ -27,11 +27,11 @@ export default function SiteNav() {
       <SiteNavEnhancers />
 
       <div className="super-navbar__content">
-        <Link href="/" className="notion-link super-navbar__logo">
+        <a href="/" className="notion-link super-navbar__logo">
           <span className="super-navbar__logo-text" style={{ fontSize: 16 }}>
             {cfg.siteName}
           </span>
-        </Link>
+        </a>
 
         <div style={{ position: "relative" }}>
           <ul

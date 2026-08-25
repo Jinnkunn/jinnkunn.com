@@ -1,6 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- Public pages use static-shell document navigation on Cloudflare Workers Free. */
 import "server-only";
-
-import Link from "next/link";
 
 import { ClassicLink } from "@/components/classic/classic-link";
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
@@ -31,19 +30,19 @@ export async function PostView({
       beforeHeader={
         <div className="super-navbar__breadcrumbs">
           <div className="notion-breadcrumb">
-            <Link href="/" className="notion-link notion-breadcrumb__item">
+            <a href="/" className="notion-link notion-breadcrumb__item">
               <div className="notion-navbar__title notion-breadcrumb__title">Home</div>
-            </Link>
+            </a>
             <span className="notion-breadcrumb__divider">/</span>
-            <Link href="/blog" className="notion-link notion-breadcrumb__item">
+            <a href="/blog" className="notion-link notion-breadcrumb__item">
               <div className="notion-navbar__title notion-breadcrumb__title">Blog</div>
-            </Link>
+            </a>
             <span className="notion-breadcrumb__divider">/</span>
-            <Link href={entry.href} className="notion-link notion-breadcrumb__item">
+            <a href={entry.href} className="notion-link notion-breadcrumb__item">
               <div className="notion-navbar__title notion-breadcrumb__title">
                 {entry.title}
               </div>
-            </Link>
+            </a>
           </div>
         </div>
       }
