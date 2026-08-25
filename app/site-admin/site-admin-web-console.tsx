@@ -27,6 +27,7 @@ import {
   createSelectionGate,
   editorialStatus,
   liveSyncStatus,
+  releaseJobOutcome,
   visibilityLabel,
 } from "./site-admin-console-model";
 import {
@@ -775,6 +776,7 @@ export function SiteAdminWebConsole({
   const [blockingMutation, setBlockingMutation] = useState(false);
   const [releaseSaving, setReleaseSaving] = useState(false);
   const [releaseWatchUntil, setReleaseWatchUntil] = useState(0);
+  const [releaseWatchJobId, setReleaseWatchJobId] = useState("");
   const [releaseActivity, setReleaseActivity] =
     useState<ReleaseJobsPayload | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -1338,10 +1340,6 @@ export function SiteAdminWebConsole({
       const next = await readJson<SummaryPayload>("/api/site-admin/mobile/summary");
       setSummary(next.summary);
       setSummaryError("");
-      const action = next.summary.release.recommendedAction.kind;
-      if (action === "noop" || action === "smart-release") {
-        setReleaseWatchUntil(0);
-      }
       return next.summary;
     } catch (err) {
       setSummaryError(err instanceof Error ? err.message : String(err));
@@ -1351,7 +1349,7 @@ export function SiteAdminWebConsole({
 
   useEffect(() => {
     const watchDeadline = releaseWatchUntil;
-    if (!releaseIsRunning && watchDeadline <= Date.now()) return;
+    if (!releaseWatchJobId && !releaseIsRunning && watchDeadline <= Date.now()) return;
     let cancelled = false;
     let timer: number | undefined;
 
@@ -1361,8 +1359,36 @@ export function SiteAdminWebConsole({
           "/api/site-admin/release-jobs?limit=30",
         );
         if (cancelled) return;
+        const watchedJob = releaseWatchJobId
+          ? next.jobs.find((job) => job.id === releaseWatchJobId) || null
+          : null;
+        const watchedOutcome = watchedJob ? releaseJobOutcome(watchedJob) : null;
+        if (watchedOutcome && watchedOutcome.state !== "active") {
+          setReleaseActivity(null);
+          setReleaseWatchUntil(0);
+          setReleaseWatchJobId("");
+          if (watchedOutcome.state === "succeeded") {
+            setPendingPublishCount(0);
+            setError("");
+            setNotice("Published successfully. The public site is current.");
+          } else {
+            setNotice("");
+            setError(
+              `${watchedOutcome.state === "canceled" ? "Publish canceled" : "Publish failed"}: ${
+                watchedOutcome.message
+              }`,
+            );
+          }
+          await refreshSummaryOnly();
+          return;
+        }
         const nextJob = selectActiveReleaseJob(next.jobs);
         if (!nextJob) {
+          if (releaseWatchJobId && watchDeadline > Date.now()) {
+            setReleaseActivity(null);
+            timer = window.setTimeout(refreshReleaseActivity, 3_000);
+            return;
+          }
           const nextSummary = await refreshSummaryOnly();
           if (cancelled) return;
           setReleaseActivity(null);
@@ -1374,6 +1400,7 @@ export function SiteAdminWebConsole({
             watchDeadline <= Date.now()
           ) {
             setReleaseWatchUntil(0);
+            setReleaseWatchJobId("");
             return;
           }
           timer = window.setTimeout(refreshReleaseActivity, 4_000);
@@ -1405,7 +1432,7 @@ export function SiteAdminWebConsole({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [refreshSummaryOnly, releaseIsRunning, releaseWatchUntil]);
+  }, [refreshSummaryOnly, releaseIsRunning, releaseWatchJobId, releaseWatchUntil]);
 
   function applySelectedDetail(
     nextKind: EditableKind,
@@ -1869,7 +1896,10 @@ export function SiteAdminWebConsole({
           },
         },
       );
-      const jobId = payload.job?.id ? ` (${payload.job.id})` : "";
+      if (!payload.job?.id) {
+        throw new Error("The release API did not return a job to track.");
+      }
+      const jobId = ` (${payload.job.id})`;
       const wakeNotice =
         payload.wake?.configured && !payload.wake.ok
           ? ` Runner wake failed: ${payload.wake.error || `HTTP ${payload.wake.status}`}.`
@@ -1878,8 +1908,8 @@ export function SiteAdminWebConsole({
             : "";
       setNotice(`Publish job created${jobId}.${wakeNotice}`);
       setReleaseActivity(null);
+      setReleaseWatchJobId(payload.job.id);
       setReleaseWatchUntil(Date.now() + 15 * 60 * 1000);
-      setPendingPublishCount(0);
       await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1907,10 +1937,13 @@ export function SiteAdminWebConsole({
           },
         },
       );
+      if (!payload.job?.id) {
+        throw new Error("The release API did not return a job to track.");
+      }
       setReleaseActivity(null);
+      setReleaseWatchJobId(payload.job.id);
       setReleaseWatchUntil(Date.now() + 15 * 60 * 1000);
-      setPendingPublishCount(0);
-      const jobId = payload.job?.id ? ` Job ${payload.job.id}.` : "";
+      const jobId = ` Job ${payload.job.id}.`;
       if (payload.wake?.configured && !payload.wake.ok) {
         setWarning(
           `Content was queued, but the release runner did not wake: ${
@@ -1928,6 +1961,23 @@ export function SiteAdminWebConsole({
         }`,
       );
       return "";
+    }
+  }
+
+  async function publishSavedContent() {
+    if (pendingPublishCount <= 0) {
+      await runSmartRelease();
+      return;
+    }
+    setReleaseSaving(true);
+    setError("");
+    setWarning("");
+    setNotice("");
+    try {
+      const publishNotice = await queueSavedContentPublish("content:publish-saved");
+      if (publishNotice) setNotice(`Publish queued.${publishNotice}`);
+    } finally {
+      setReleaseSaving(false);
     }
   }
 
@@ -3289,7 +3339,7 @@ export function SiteAdminWebConsole({
                       </Button>
                     ) : liveSync.state !== "live" ? (
                       <Button
-                        onClick={() => void runSmartRelease()}
+                        onClick={() => void publishSavedContent()}
                         tone="accent"
                         size="sm"
                         disabled={selectedDirty || publishBlocked}

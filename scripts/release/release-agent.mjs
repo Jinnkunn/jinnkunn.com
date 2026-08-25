@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import { createServer } from "node:http";
 import { hostname } from "node:os";
 import path from "node:path";
@@ -323,45 +324,80 @@ function runRunnerGit({ args, onLine, repo, spawnSyncImpl }) {
   return output;
 }
 
-export function syncRepo({ repo, onLine, spawnSyncImpl = spawnSync }) {
-  const trackedChanges = runRunnerGit({
-    args: ["status", "--porcelain", "--untracked-files=no"],
-    onLine: () => undefined,
-    repo,
-    spawnSyncImpl,
-  });
-  if (trackedChanges) {
-    throw new Error(
-      "Release runner repo has tracked changes; refusing to replace its execution source.",
-    );
-  }
-
-  onLine("status", "Syncing release runner repo: fetch and fast-forward main");
+export function syncRepo({
+  repo,
+  jobId = "manual",
+  onLine,
+  spawnSyncImpl = spawnSync,
+  fsImpl = fs,
+}) {
+  // The long-lived clone is an object/dependency cache, not an execution
+  // worktree. Content builds can materialize D1 files and generated indexes;
+  // running the next job in that same tree makes harmless leftovers block all
+  // future publishes. A fresh local clone keeps every job on canonical main
+  // without resetting or deleting anything in the runner's persistent tree.
+  onLine("status", "Preparing isolated release source from origin/main");
   runRunnerGit({
     args: ["fetch", "--prune", "origin", "main"],
     onLine,
     repo,
     spawnSyncImpl,
   });
-  runRunnerGit({
-    args: ["switch", "main"],
-    onLine,
-    repo,
-    spawnSyncImpl,
-  });
-  runRunnerGit({
-    args: ["merge", "--ff-only", "origin/main"],
-    onLine,
-    repo,
-    spawnSyncImpl,
-  });
-  const sha = runRunnerGit({
-    args: ["rev-parse", "--short", "HEAD"],
+  const canonicalSha = runRunnerGit({
+    args: ["rev-parse", "origin/main"],
     onLine: () => undefined,
     repo,
     spawnSyncImpl,
-  });
-  onLine("status", `Release runner source: main ${sha}`);
+  }).trim();
+  const remoteUrl = runRunnerGit({
+    args: ["remote", "get-url", "origin"],
+    onLine: () => undefined,
+    repo,
+    spawnSyncImpl,
+  }).trim();
+  const safeJobId = String(jobId || "manual").replace(/[^a-z0-9._-]+/gi, "-");
+  const executionParent = path.join(repo, ".cache", "release", "agent-execution");
+  const executionRepo = path.join(executionParent, safeJobId);
+  fsImpl.mkdirSync(executionParent, { recursive: true });
+  fsImpl.rmSync(executionRepo, { force: true, recursive: true });
+
+  try {
+    runRunnerGit({
+      args: ["clone", "--shared", "--no-checkout", repo, executionRepo],
+      onLine,
+      repo,
+      spawnSyncImpl,
+    });
+    runRunnerGit({
+      args: ["switch", "-C", "main", canonicalSha],
+      onLine,
+      repo: executionRepo,
+      spawnSyncImpl,
+    });
+    runRunnerGit({
+      args: ["remote", "set-url", "origin", remoteUrl],
+      onLine: () => undefined,
+      repo: executionRepo,
+      spawnSyncImpl,
+    });
+
+    const nodeModules = path.join(repo, "node_modules");
+    if (!fsImpl.existsSync(nodeModules)) {
+      throw new Error("Release runner dependencies are missing; node_modules was not found.");
+    }
+    fsImpl.symlinkSync(nodeModules, path.join(executionRepo, "node_modules"), "dir");
+    onLine("status", `Release runner source: main ${canonicalSha.slice(0, 12)} (isolated)`);
+  } catch (error) {
+    fsImpl.rmSync(executionRepo, { force: true, recursive: true });
+    throw error;
+  }
+
+  return {
+    repo: executionRepo,
+    cleanup() {
+      fsImpl.rmSync(executionRepo, { force: true, recursive: true });
+    },
+  };
 }
 
 export function runCommand({ action, repo, dryRun, onLine, abortStatus, spawnImpl = spawn }) {
@@ -455,11 +491,21 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
       }),
     );
   };
+  let executionRepo = repo;
+  let cleanupExecutionRepo = () => undefined;
   try {
-    if (!noSync) syncRepo({ repo, onLine: pushLine("sync") });
+    if (!noSync) {
+      const execution = syncRepo({
+        repo,
+        jobId: id,
+        onLine: pushLine("sync"),
+      });
+      executionRepo = execution.repo;
+      cleanupExecutionRepo = execution.cleanup;
+    }
     const result = await runCommand({
       action,
-      repo,
+      repo: executionRepo,
       dryRun,
       abortStatus: () => jobAbortStatus(baseUrl, token, agentId, id),
       onLine: pushLine("running"),
@@ -504,6 +550,8 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
       },
     });
     return false;
+  } finally {
+    cleanupExecutionRepo();
   }
 }
 

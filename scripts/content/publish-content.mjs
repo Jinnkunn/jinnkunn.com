@@ -591,6 +591,21 @@ function extractBuildIdFromStaticRefs(refs) {
   return "";
 }
 
+export function extractNextBuildIdFromHtml(source) {
+  const html = String(source || "");
+  const refsBuildId = extractBuildIdFromStaticRefs(extractNextStaticRefs(html));
+  if (refsBuildId) return refsBuildId;
+
+  // App Router pages no longer reference `_buildManifest.js`. Next embeds the
+  // active build id as the `b` field in the escaped RSC bootstrap payload.
+  const escapedRscBuildId = /\\\"b\\\":\\\"([^"\\]+)\\\"/.exec(html)?.[1];
+  if (escapedRscBuildId) return escapedRscBuildId;
+
+  // Keep the parser useful for unescaped bootstrap payloads used by some
+  // Next output modes and fixtures.
+  return /["']b["']\s*:\s*["']([^"']+)["']/.exec(html)?.[1] || "";
+}
+
 function normalizeOrigin(env) {
   if (env === "staging") {
     return (
@@ -655,7 +670,7 @@ async function fetchLiveBuildId(env, workerCodeSha) {
     );
   }
   const refs = extractNextStaticRefs(text);
-  const liveBuildId = extractBuildIdFromStaticRefs(refs);
+  const liveBuildId = extractNextBuildIdFromHtml(text);
   if (liveBuildId) return liveBuildId;
   const fallback =
     readEnv("NEXT_BUILD_ID") || cachedBuildIdForWorker(workerCodeSha);

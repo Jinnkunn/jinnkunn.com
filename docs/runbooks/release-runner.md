@@ -93,21 +93,20 @@ cd /Users/jinnkunn/Services/jinnkunn-release-runner/repo
 RELEASE_AGENT_HTTP_PORT=8789 RELEASE_AGENT_POLL_MS=60000 npm run release:agent
 ```
 
-Before executing a claimed job, the agent verifies that its tracked worktree is
-clean, fetches the canonical branch, and fast-forwards its dedicated `main`:
+Before executing a claimed job, the agent fetches canonical `origin/main` and
+creates a disposable local clone under `.cache/release/agent-execution/`:
 
 ```bash
-git status --porcelain --untracked-files=no
 git fetch --prune origin main
-git switch main
-git merge --ff-only origin/main
+git clone --shared --no-checkout <runner-repo> <execution-repo>
+git -C <execution-repo> switch -C main <origin-main-sha>
 ```
 
-The dedicated runner no longer creates content commits, so `main` remains a
-read-only execution branch while release guards continue to recognize it as the
-canonical production branch. The agent refuses to sync tracked changes or a
-diverged branch instead of discarding either. Use `npm run release:agent --
---no-sync` only for local dry-run debugging.
+The persistent clone is only an object and dependency cache. D1 materialization
+and generated build indexes stay inside the per-job clone, which is deleted
+after completion. This means a previous content build cannot dirty the next
+job's source, while every release guard still sees a clean canonical `main`.
+Use `npm run release:agent -- --no-sync` only for local dry-run debugging.
 
 ## Mac mini LaunchAgent
 
@@ -133,15 +132,16 @@ launchctl bootout gui/501/com.jinnkunn.release-runner
 tail -f ~/Services/jinnkunn-release-runner/logs/release-agent.out.log
 ```
 
-Manually inspect or repair the runner repo if sync fails:
+Manually inspect the persistent cache repo if source preparation fails:
 
 ```bash
 cd ~/Services/jinnkunn-release-runner/repo
 git status --short
 git fetch --prune origin main
-git switch main
-git merge --ff-only origin/main
 ```
+
+Tracked changes in this persistent cache no longer block jobs. They are kept
+for inspection and never copied into the disposable execution clone.
 
 Dry-run execution for validating the queue without deploying:
 

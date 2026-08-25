@@ -69,6 +69,33 @@ export function contentSaveEffects(
 
 export type LiveSyncState = "live" | "pending" | "publishing" | "unknown";
 
+export type ReleaseJobOutcome =
+  | { state: "active"; message: "" }
+  | { state: "succeeded"; message: "" }
+  | { state: "failed" | "canceled"; message: string };
+
+/**
+ * A release that left the active queue still has to be surfaced to the
+ * author. Treating every missing active job as "current" hid failed runner
+ * jobs and made a completed progress animation look like a successful publish.
+ */
+export function releaseJobOutcome(job: {
+  status?: unknown;
+  error?: unknown;
+}): ReleaseJobOutcome {
+  const status = String(job.status || "").trim().toLowerCase();
+  if (status === "succeeded") return { state: "succeeded", message: "" };
+  if (status === "failed" || status === "canceled") {
+    return {
+      state: status,
+      message:
+        String(job.error || "").trim() ||
+        (status === "canceled" ? "Publish was canceled." : "Publish failed."),
+    };
+  }
+  return { state: "active", message: "" };
+}
+
 export type LiveSyncStatus = {
   state: LiveSyncState;
   label: string;

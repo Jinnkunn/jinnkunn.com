@@ -122,46 +122,108 @@ test("release agent health: hides runner details without wake token", () => {
   assert.deepEqual(wakeHealthPayload(snapshot, "Bearer secret-token", "secret-token"), snapshot);
 });
 
-test("release agent sync: executes fast-forwarded main", () => {
+test("release agent sync: executes canonical main from an isolated clone", () => {
   const calls = [];
+  const fileCalls = [];
   const lines = [];
-  const outputs = ["", "fetched\n", "Switched to branch main\n", "Fast-forward\n", "abc1234\n"];
-  syncRepo({
+  const execution = syncRepo({
+    fsImpl: {
+      existsSync(file) {
+        return file === "/runner/repo/node_modules";
+      },
+      mkdirSync(file, options) {
+        fileCalls.push(["mkdir", file, options]);
+      },
+      rmSync(file, options) {
+        fileCalls.push(["rm", file, options]);
+      },
+      symlinkSync(target, file, type) {
+        fileCalls.push(["symlink", target, file, type]);
+      },
+    },
+    jobId: "job-123",
     onLine: (_stream, line) => lines.push(line),
     repo: "/runner/repo",
     spawnSyncImpl: (command, args, options) => {
       calls.push({ args, command, cwd: options.cwd });
-      return { status: 0, stderr: "", stdout: outputs[calls.length - 1] };
+      const key = args.join(" ");
+      const stdout =
+        key === "rev-parse origin/main"
+          ? "abc1234567890\n"
+          : key === "remote get-url origin"
+            ? "https://github.com/example/site.git\n"
+            : "";
+      return { status: 0, stderr: "", stdout };
     },
   });
   assert.deepEqual(
     calls.map((call) => call.args),
     [
-      ["status", "--porcelain", "--untracked-files=no"],
       ["fetch", "--prune", "origin", "main"],
-      ["switch", "main"],
-      ["merge", "--ff-only", "origin/main"],
-      ["rev-parse", "--short", "HEAD"],
+      ["rev-parse", "origin/main"],
+      ["remote", "get-url", "origin"],
+      [
+        "clone",
+        "--shared",
+        "--no-checkout",
+        "/runner/repo",
+        "/runner/repo/.cache/release/agent-execution/job-123",
+      ],
+      ["switch", "-C", "main", "abc1234567890"],
+      ["remote", "set-url", "origin", "https://github.com/example/site.git"],
     ],
   );
   assert.equal(calls.every((call) => call.command === "git"), true);
-  assert.equal(calls.every((call) => call.cwd === "/runner/repo"), true);
-  assert.equal(lines.at(-1), "Release runner source: main abc1234");
+  assert.equal(calls.slice(0, 4).every((call) => call.cwd === "/runner/repo"), true);
+  assert.equal(
+    calls.slice(4).every(
+      (call) => call.cwd === "/runner/repo/.cache/release/agent-execution/job-123",
+    ),
+    true,
+  );
+  assert.equal(
+    lines.at(-1),
+    "Release runner source: main abc123456789 (isolated)",
+  );
+  assert.equal(execution.repo, "/runner/repo/.cache/release/agent-execution/job-123");
+  assert.deepEqual(fileCalls.at(-1), [
+    "symlink",
+    "/runner/repo/node_modules",
+    "/runner/repo/.cache/release/agent-execution/job-123/node_modules",
+    "dir",
+  ]);
+  execution.cleanup();
+  assert.deepEqual(fileCalls.at(-1), [
+    "rm",
+    "/runner/repo/.cache/release/agent-execution/job-123",
+    { force: true, recursive: true },
+  ]);
 });
 
-test("release agent sync: refuses tracked runner changes before fetching", () => {
+test("release agent sync: never inspects or rewrites the persistent worktree", () => {
   const calls = [];
-  assert.throws(
-    () =>
-      syncRepo({
-        onLine: () => undefined,
-        repo: "/runner/repo",
-        spawnSyncImpl: (_command, args) => {
-          calls.push(args);
-          return { status: 0, stderr: "", stdout: " M package.json\n" };
-        },
-      }),
-    /tracked changes/,
-  );
-  assert.deepEqual(calls, [["status", "--porcelain", "--untracked-files=no"]]);
+  const execution = syncRepo({
+    fsImpl: {
+      existsSync: () => true,
+      mkdirSync: () => undefined,
+      rmSync: () => undefined,
+      symlinkSync: () => undefined,
+    },
+    jobId: "dirty-safe",
+    onLine: () => undefined,
+    repo: "/runner/repo",
+    spawnSyncImpl: (_command, args) => {
+      calls.push(args);
+      if (args.join(" ") === "rev-parse origin/main") {
+        return { status: 0, stderr: "", stdout: "abc1234\n" };
+      }
+      if (args.join(" ") === "remote get-url origin") {
+        return { status: 0, stderr: "", stdout: "https://example.com/site.git\n" };
+      }
+      return { status: 0, stderr: "", stdout: "" };
+    },
+  });
+  assert.equal(calls.some((args) => args[0] === "status"), false);
+  assert.equal(calls.some((args) => args[0] === "reset" || args[0] === "restore"), false);
+  execution.cleanup();
 });

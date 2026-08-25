@@ -8,6 +8,7 @@ import {
   createSelectionGate,
   editorialStatus,
   liveSyncStatus,
+  releaseJobOutcome,
   settingsDraftDirty,
   visibilityLabel,
 } from "../../app/site-admin/site-admin-console-model.ts";
@@ -80,6 +81,25 @@ test("an explicit save publishes, reconciles, and reports back", () => {
     assert.equal(effects.reconcileLists, true);
     assert.equal(effects.announce, true);
   }
+});
+
+test("release outcome: failed jobs stay failed instead of becoming live", () => {
+  assert.deepEqual(
+    releaseJobOutcome({ status: "failed", error: "Runner worktree is dirty." }),
+    { state: "failed", message: "Runner worktree is dirty." },
+  );
+  assert.deepEqual(releaseJobOutcome({ status: "canceled", error: "" }), {
+    state: "canceled",
+    message: "Publish was canceled.",
+  });
+  assert.deepEqual(releaseJobOutcome({ status: "succeeded", error: "ignored" }), {
+    state: "succeeded",
+    message: "",
+  });
+  assert.deepEqual(releaseJobOutcome({ status: "running", error: "" }), {
+    state: "active",
+    message: "",
+  });
 });
 
 test("live sync: unpublished autosaves are counted and named", () => {
