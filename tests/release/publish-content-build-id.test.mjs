@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  decodeNextStaticAssetPath,
   extractNextBuildIdFromHtml,
   extractNextStaticRefs,
 } from "../../scripts/content/publish-content.mjs";
@@ -12,6 +13,22 @@ test("content publish keeps route-group chunks in the static asset set", () => {
       '<script src="/_next/static/chunks/app/(classic)/layout-f527bdab78160e01.js"></script>',
     ),
     ["/_next/static/chunks/app/(classic)/layout-f527bdab78160e01.js"],
+  );
+});
+
+test("content publish resolves encoded dynamic route chunks on disk", () => {
+  assert.equal(
+    decodeNextStaticAssetPath(
+      "/_next/static/chunks/app/(classic)/blog/%5Bslug%5D/page-123.js",
+    ),
+    "static/chunks/app/(classic)/blog/[slug]/page-123.js",
+  );
+});
+
+test("content publish rejects malformed encoded static asset paths", () => {
+  assert.throws(
+    () => decodeNextStaticAssetPath("/_next/static/chunks/%E0%A4%A.js"),
+    /invalid encoded asset/,
   );
 });
 

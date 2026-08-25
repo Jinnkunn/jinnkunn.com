@@ -555,8 +555,12 @@ function collectReferencedNextStaticFiles({ files, root = ROOT }) {
   const out = [];
   for (const assetPath of [...refs].sort()) {
     if (!/\.(?:css|js|json|svg)$/i.test(assetPath)) continue;
-    const rel = assetPath.replace(/^\/_next\//, "");
-    const abs = path.join(root, ".next", rel);
+    const staticRoot = path.resolve(root, ".next");
+    const rel = decodeNextStaticAssetPath(assetPath);
+    const abs = path.resolve(staticRoot, rel);
+    if (!abs.startsWith(`${staticRoot}${path.sep}`)) {
+      throw new Error(`Built HTML references an invalid local asset: ${assetPath}`);
+    }
     if (!fs.existsSync(abs)) {
       throw new Error(`Built HTML references a missing local asset: ${assetPath}`);
     }
@@ -567,6 +571,15 @@ function collectReferencedNextStaticFiles({ files, root = ROOT }) {
     });
   }
   return out;
+}
+
+export function decodeNextStaticAssetPath(assetPath) {
+  const rel = String(assetPath || "").replace(/^\/_next\//, "");
+  try {
+    return decodeURIComponent(rel);
+  } catch {
+    throw new Error(`Built HTML references an invalid encoded asset: ${assetPath}`);
+  }
 }
 
 export function extractNextStaticRefs(source) {
