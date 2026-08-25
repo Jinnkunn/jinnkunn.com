@@ -2,28 +2,25 @@
 
 ## TL;DR
 
-- **Staging D1 is the source of truth** for every operator-edited file
-  (nav, page bodies, blog posts, link audit, etc.).
-- **Production D1 is not the editing source.** Both staging *and* production
-  full builds dump from staging D1 (`scripts/release/release-cloudflare.mjs` for the
-  local path, `.github/workflows/release-from-dispatch.yml` for fallback).
-  After a production promotion, `release:prod:from-staging` mirrors staging
-  `content_files` into production D1 so production runtime admin/mobile APIs
-  report the same content counts as the promoted site.
+- **Staging D1 is the Draft content source** used to preview edits before a
+  code or content promotion.
+- **Production D1 is the Live content source.** Content saved in the
+  production Site Admin remains authoritative and is published through the
+  production static overlay without a Worker rebuild.
+- Full production code promotion may reuse the staging build artifact, but it
+  never copies staging `content_files` over production. After the Worker is
+  deployed, `release:prod:from-staging` rebuilds the public overlay from the
+  existing production D1.
 - **We don't delete production D1** — leaving it bound costs $0 and
-  removing the binding would break wrangler config without any benefit.
-  Just don't trust its contents for anything.
+  removing the binding would break Live editing and overlay publishing.
 
 ## Why two D1s if only one matters
 
 Cloudflare Workers bind a D1 per `[env.<name>]` block in `wrangler.toml`.
 Production worker has its own binding (`SITE_ADMIN_DB`) pointing at a
-*production* D1 instance. Originally each instance was meant to be
-edited independently; in practice the operator only ever connects the
-workspace app to the staging worker. Production D1 therefore remains a
-non-authoritative content source, but it is kept as a read-only runtime mirror
-for production admin/mobile reads and can store static-shell overlay rows for
-content-only publishes.
+*production* D1 instance. Staging and production are intentionally separate:
+staging supports draft review, while production stores production-authored
+content and the static-shell overlay currently served to visitors.
 
 The `2026-04-29` Calendar nav incident exposed the gap:
 
@@ -63,20 +60,13 @@ operator just looked at on staging.
   succeeded but the result looks wrong" failures the dispatch path's
   CI checks no longer cover.
 
-## When the production D1 binding *will* matter
+## Production D1 safety boundary
 
-If we ever:
-
-- expose a "preview a draft on production-only" feature, or
-- build a production-only content surface that the workspace can target
-  (currently it can't), or
-- run a "Recover production worker without redeploying" flow that reads
-  D1 at runtime,
-
-the promote workflow can keep production D1 in sync by copying staging
-`content_files` after a successful production Worker deploy. Production-only
-editing is also supported: `npm run publish:content:prod` now reads production
-D1 directly and writes the production static overlay without involving staging.
+Production Site Admin writes directly to production D1. Normal code promotion
+preserves those rows and runs `npm run publish:content:prod` after deployment,
+so the bundled staging snapshot cannot hide newer Live content. The
+`db:copy:staging-to-production` command remains available only for deliberate
+recovery or migration; it is never called by the promotion script.
 
 ## Content-only overlay table
 
@@ -109,7 +99,7 @@ does not shadow the freshly deployed bundle.
 | --- | --- |
 | Show what's edited in staging D1 vs. git | `npm run db:diff:staging` |
 | Same, machine-readable | `npm run db:diff:staging:json` |
-| Mirror staging D1 content into production D1 | `npm run db:copy:staging-to-production` |
+| Replace production D1 from staging during deliberate recovery | `npm run db:copy:staging-to-production` |
 | Force a fresh git snapshot of staging D1 | dispatch `Snapshot staging D1 to git` workflow |
 | Publish content-only staging HTML without Worker deploy | `npm run publish:content:staging` |
 | Publish production D1 content to production static overlay without Worker deploy | `npm run publish:content:prod` |

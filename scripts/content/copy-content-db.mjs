@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Mirror D1 `content_files` rows from one environment to another.
 //
-// Staging remains the operator-editing source of truth. Production keeps a
-// runtime mirror so production admin/mobile APIs can read the same content
-// that was just promoted, without making production an editing target.
+// This is an explicit migration/recovery utility, not part of normal code
+// promotion. Production-authored content is authoritative for the live site
+// and must not be replaced automatically when staging code is promoted.
 
 import fs from "node:fs";
 import path from "node:path";

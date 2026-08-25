@@ -26,8 +26,9 @@
 //      already proved the same code SHA passes lint/tests/etc. When the
 //      staging build cache has the same content SHA, production reuses
 //      that artifact instead of rebuilding.
-//   8. Mirror staging D1 `content_files` into production D1 so production
-//      runtime admin/mobile APIs read the same content that was promoted.
+//   8. Rebuild the production static overlay from production D1. Code
+//      promotion must never replace production-authored content with the
+//      staging database.
 //   9. After success, snapshot the new production version too — gives
 //      a continuous history without an extra command.
 //
@@ -302,7 +303,8 @@ async function main() {
               expectedContentSha: staging.meta?.contentSha || "",
               expectProductionVersion: productionVersionId || "(none)",
             },
-            syncProductionD1FromStaging: true,
+            preserveProductionD1: true,
+            publishProductionOverlayFromProductionD1: true,
             snapshotNewProduction: true,
           },
           git,
@@ -388,18 +390,12 @@ async function main() {
     env: productionReleaseEnv,
   });
 
-  console.log(`[release-from-staging] syncing production D1 content mirror from staging`);
-  run(
-    "node",
-    [
-      "scripts/content/copy-content-db.mjs",
-      "--remote",
-      "--source-env=staging",
-      "--target-env=production",
-      "--quiet",
-    ],
-    { label: "copy staging D1 content to production D1" },
+  console.log(
+    `[release-from-staging] preserving production D1 and rebuilding its public content overlay`,
   );
+  run("npm", ["run", "publish:content:prod"], {
+    label: "publish production D1 content overlay",
+  });
 
   console.log(`[release-from-staging] snapshotting new production version`);
   run(

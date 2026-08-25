@@ -886,10 +886,13 @@ test("tauri-ui-engineering: staging D1 snapshot workflow is manual-only", async 
   assert.match(snapshotWorkflow, /schedule is intentionally\s+disabled/i);
   assert.match(d1Runbook, /manual-only/);
   assert.match(d1Runbook, /schedule stays disabled/);
-  assert.match(d1Runbook, /read-only runtime mirror/);
+  assert.match(d1Runbook, /production-authored\s+content/);
   assert.match(packageJson, /db:copy:staging-to-production/);
-  assert.match(releaseFromStaging, /copy-content-db\.mjs/);
-  assert.match(releaseFromStaging, /syncProductionD1FromStaging/);
+  assert.doesNotMatch(releaseFromStaging, /copy-content-db\.mjs/);
+  assert.doesNotMatch(releaseFromStaging, /syncProductionD1FromStaging/);
+  assert.match(releaseFromStaging, /preserveProductionD1/);
+  assert.match(releaseFromStaging, /publishProductionOverlayFromProductionD1/);
+  assert.match(releaseFromStaging, /publish:content:prod/);
   assert.match(wrangler, /\[env\.production\.vars\][\s\S]*SITE_ADMIN_STORAGE = "db"/);
 });
 

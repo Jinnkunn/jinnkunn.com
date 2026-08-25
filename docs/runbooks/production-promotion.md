@@ -37,8 +37,10 @@ Release Center or the dry-run commands below.
   outgoing production version into
   [production-version-history.md](./production-version-history.md), then
   invokes `release:prod --skip-checks` with the confirmation env vars
-  pre-populated. Fall back to the long-form path below if you need
-  finer-grained control or are recovering from a partial release.
+  pre-populated, preserves production D1, and rebuilds the production static
+  overlay from production D1 after the Worker deploy. Fall back to the
+  long-form path below if you need finer-grained control or are recovering
+  from a partial release.
 
 ## Content-from-D1 sync
 
@@ -118,8 +120,10 @@ npm run publish:content:prod:clear
 ```
 
 Full Worker releases (`release:staging` / `release:prod:from-staging`) clear
-the target content overlay after deploying the code bundle. That keeps an old
-overlay from shadowing newly deployed HTML or referencing a stale build id.
+the target content overlay after deploying the code bundle. Production
+promotion then immediately rebuilds that overlay from production D1, preserving
+content authored in the production Site Admin while adopting the new code and
+static assets.
 
 ## Routine Release (recommended)
 
