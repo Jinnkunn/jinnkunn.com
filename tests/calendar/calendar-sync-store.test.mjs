@@ -6,6 +6,7 @@ import path from "node:path";
 import { createClient } from "@libsql/client";
 
 import {
+  cleanupCalendarCollectorObservations,
   publishCalendarObservationsToLive,
   readCalendarSyncHealth,
   writeCalendarObservationSync,
@@ -13,7 +14,11 @@ import {
 
 async function makeCalendarSyncDb() {
   const client = createClient({ url: ":memory:" });
-  for (const migration of ["003_calendar_public.sql", "007_calendar_observations.sql"]) {
+  for (const migration of [
+    "003_calendar_public.sql",
+    "007_calendar_observations.sql",
+    "008_calendar_collector_cleanup.sql",
+  ]) {
     const schema = await readFile(
       path.join(process.cwd(), "migrations", migration),
       "utf8",
@@ -22,6 +27,18 @@ async function makeCalendarSyncDb() {
   }
   return client;
 }
+
+test("calendar-sync-store: collector cleanup index migration is applied", async () => {
+  const client = await makeCalendarSyncDb();
+  const indexes = await client.execute({
+    sql: `SELECT name FROM sqlite_master
+          WHERE type = 'index' AND name = ?`,
+    args: ["idx_calendar_event_observations_collector_range"],
+  });
+  assert.deepEqual(indexes.rows, [
+    { name: "idx_calendar_event_observations_collector_range" },
+  ]);
+});
 
 test("calendar-sync-store: writes observations and deduped entities", async () => {
   const client = await makeCalendarSyncDb();
@@ -117,14 +134,51 @@ test("calendar-sync-store: batches writes under D1 SQL variable limit", async ()
   assert.equal(result.observationsWritten, observations.length);
 });
 
-test("calendar-sync-store: snapshot stale deletion is scoped to source", async () => {
+test("calendar-sync-store: snapshot stale deletion is scoped to collector and range", async () => {
   const client = await makeCalendarSyncDb();
   await writeCalendarObservationSync(
     {
-      collector: { id: "mac", kind: "tauri-macos" },
+      collector: { id: "mac-a", kind: "tauri-macos" },
       sources: [
-        { id: "google", provider: "google", title: "Google" },
-        { id: "outlook", provider: "outlook", title: "Outlook" },
+        { id: "mac-a:google", provider: "google", title: "Google" },
+        { id: "mac-a:outlook", provider: "outlook", title: "Outlook" },
+      ],
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-20T00:00:00Z",
+      },
+      observations: [
+        {
+          sourceId: "mac-a:google",
+          sourceEventId: "a-google-kept",
+          title: "Google meeting",
+          startsAt: "2026-05-17T14:00:00Z",
+          endsAt: "2026-05-17T15:00:00Z",
+        },
+        {
+          sourceId: "mac-a:outlook",
+          sourceEventId: "a-outlook-stale",
+          title: "Outlook meeting",
+          startsAt: "2026-05-17T16:00:00Z",
+          endsAt: "2026-05-17T17:00:00Z",
+        },
+        {
+          sourceId: "mac-a:outlook",
+          sourceEventId: "a-outside-range",
+          title: "Later Outlook meeting",
+          startsAt: "2026-05-19T16:00:00Z",
+          endsAt: "2026-05-19T17:00:00Z",
+        },
+      ],
+    },
+    client,
+  );
+
+  await writeCalendarObservationSync(
+    {
+      collector: { id: "mac-b", kind: "tauri-macos" },
+      sources: [
+        { id: "mac-a:outlook", provider: "outlook", title: "Outlook B" },
       ],
       range: {
         startsAt: "2026-05-17T00:00:00Z",
@@ -132,18 +186,11 @@ test("calendar-sync-store: snapshot stale deletion is scoped to source", async (
       },
       observations: [
         {
-          sourceId: "google",
-          sourceEventId: "google-kept",
-          title: "Google meeting",
-          startsAt: "2026-05-17T14:00:00Z",
-          endsAt: "2026-05-17T15:00:00Z",
-        },
-        {
-          sourceId: "outlook",
-          sourceEventId: "outlook-kept",
-          title: "Outlook meeting",
-          startsAt: "2026-05-17T16:00:00Z",
-          endsAt: "2026-05-17T17:00:00Z",
+          sourceId: "mac-a:outlook",
+          sourceEventId: "b-outlook-kept",
+          title: "Other collector meeting",
+          startsAt: "2026-05-17T18:00:00Z",
+          endsAt: "2026-05-17T19:00:00Z",
         },
       ],
     },
@@ -152,13 +199,21 @@ test("calendar-sync-store: snapshot stale deletion is scoped to source", async (
 
   const result = await writeCalendarObservationSync(
     {
-      collector: { id: "ios", kind: "ios" },
-      sources: [{ id: "outlook", provider: "outlook", title: "Outlook" }],
+      collector: { id: "mac-a", kind: "tauri-macos" },
+      sources: [{ id: "mac-a:google", provider: "google", title: "Google" }],
       range: {
         startsAt: "2026-05-17T00:00:00Z",
         endsAt: "2026-05-18T00:00:00Z",
       },
-      observations: [],
+      observations: [
+        {
+          sourceId: "mac-a:google",
+          sourceEventId: "a-google-kept",
+          title: "Google meeting",
+          startsAt: "2026-05-17T14:00:00Z",
+          endsAt: "2026-05-17T15:00:00Z",
+        },
+      ],
     },
     client,
   );
@@ -167,15 +222,272 @@ test("calendar-sync-store: snapshot stale deletion is scoped to source", async (
   assert.equal(result.skipped, false);
   assert.equal(result.staleObservations, 1);
 
-  const active = await client.execute({
-    sql: `SELECT source_id FROM calendar_event_observations
-          WHERE deleted_at IS NULL
-          ORDER BY source_id ASC`,
+  const firstPass = await client.execute({
+    sql: `SELECT collector_id, source_event_id, deleted_at
+          FROM calendar_event_observations
+          ORDER BY source_event_id ASC`,
   });
-  assert.deepEqual(
-    active.rows.map((row) => row.source_id),
-    ["google"],
+  assert.deepEqual(firstPass.rows, [
+    {
+      collector_id: "mac-a",
+      source_event_id: "a-google-kept",
+      deleted_at: null,
+    },
+    {
+      collector_id: "mac-a",
+      source_event_id: "a-outlook-stale",
+      deleted_at: firstPass.rows[1].deleted_at,
+    },
+    {
+      collector_id: "mac-a",
+      source_event_id: "a-outside-range",
+      deleted_at: null,
+    },
+    {
+      collector_id: "mac-b",
+      source_event_id: "b-outlook-kept",
+      deleted_at: null,
+    },
+  ]);
+  assert.equal(typeof firstPass.rows[1].deleted_at, "string");
+
+  const emptySnapshot = await writeCalendarObservationSync(
+    {
+      collector: { id: "mac-a", kind: "tauri-macos" },
+      sources: [],
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-18T00:00:00Z",
+      },
+      observations: [],
+    },
+    client,
   );
+  assert.equal(emptySnapshot.staleObservations, 1);
+
+  const incremental = await writeCalendarObservationSync(
+    {
+      collector: { id: "mac-b", kind: "tauri-macos" },
+      syncMode: "incremental",
+      sources: [],
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-18T00:00:00Z",
+      },
+      observations: [],
+    },
+    client,
+  );
+  assert.equal(incremental.staleObservations, 0);
+
+  const active = await client.execute({
+    sql: `SELECT collector_id, source_event_id
+          FROM calendar_event_observations
+          WHERE deleted_at IS NULL
+          ORDER BY source_event_id ASC`,
+  });
+  assert.deepEqual(active.rows, [
+    { collector_id: "mac-a", source_event_id: "a-outside-range" },
+    { collector_id: "mac-b", source_event_id: "b-outlook-kept" },
+  ]);
+});
+
+test("calendar-sync-store: collector cleanup is scoped, range-aware, and idempotent", async () => {
+  const client = await makeCalendarSyncDb();
+  const source = { id: "eventkit:icloud", provider: "apple", title: "iCloud" };
+  await writeCalendarObservationSync(
+    {
+      collector: { id: "mac-a", kind: "tauri-macos" },
+      sources: [source],
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-20T00:00:00Z",
+      },
+      observations: [
+        {
+          sourceId: source.id,
+          sourceEventId: "a-clean-now",
+          title: "A inside cleanup range",
+          startsAt: "2026-05-17T14:00:00Z",
+          endsAt: "2026-05-17T15:00:00Z",
+        },
+        {
+          sourceId: source.id,
+          sourceEventId: "a-keep-for-now",
+          title: "A outside cleanup range",
+          startsAt: "2026-05-19T14:00:00Z",
+          endsAt: "2026-05-19T15:00:00Z",
+        },
+      ],
+    },
+    client,
+  );
+  await writeCalendarObservationSync(
+    {
+      collector: { id: "mac-b", kind: "tauri-macos" },
+      sources: [source],
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-20T00:00:00Z",
+      },
+      observations: [
+        {
+          sourceId: source.id,
+          sourceEventId: "b-never-touch",
+          title: "Other collector",
+          startsAt: "2026-05-17T16:00:00Z",
+          endsAt: "2026-05-17T17:00:00Z",
+        },
+      ],
+    },
+    client,
+  );
+
+  const firstCleanup = await cleanupCalendarCollectorObservations(
+    {
+      collectorId: "mac-a",
+      range: {
+        startsAt: "2026-05-17T00:00:00.000Z",
+        endsAt: "2026-05-18T00:00:00.000Z",
+      },
+    },
+    client,
+  );
+  assert.equal(firstCleanup.ok, true);
+  assert.equal(firstCleanup.skipped, false);
+  assert.equal(firstCleanup.tombstonedObservations, 1);
+
+  const afterRangeCleanup = await client.execute({
+    sql: `SELECT collector_id, source_event_id, deleted_at
+          FROM calendar_event_observations
+          ORDER BY source_event_id ASC`,
+  });
+  assert.equal(typeof afterRangeCleanup.rows[0].deleted_at, "string");
+  assert.deepEqual(afterRangeCleanup.rows.slice(1), [
+    {
+      collector_id: "mac-a",
+      source_event_id: "a-keep-for-now",
+      deleted_at: null,
+    },
+    {
+      collector_id: "mac-b",
+      source_event_id: "b-never-touch",
+      deleted_at: null,
+    },
+  ]);
+
+  const repeatedCleanup = await cleanupCalendarCollectorObservations(
+    {
+      collectorId: "mac-a",
+      range: {
+        startsAt: "2026-05-17T00:00:00.000Z",
+        endsAt: "2026-05-18T00:00:00.000Z",
+      },
+    },
+    client,
+  );
+  assert.equal(repeatedCleanup.ok, true);
+  assert.equal(repeatedCleanup.skipped, false);
+  assert.equal(repeatedCleanup.tombstonedObservations, 0);
+
+  const fullCleanup = await cleanupCalendarCollectorObservations(
+    { collectorId: "mac-a" },
+    client,
+  );
+  assert.equal(fullCleanup.ok, true);
+  assert.equal(fullCleanup.skipped, false);
+  assert.equal(fullCleanup.tombstonedObservations, 1);
+
+  const remaining = await client.execute({
+    sql: `SELECT collector_id, source_event_id
+          FROM calendar_event_observations
+          WHERE deleted_at IS NULL`,
+  });
+  assert.deepEqual(remaining.rows, [
+    { collector_id: "mac-b", source_event_id: "b-never-touch" },
+  ]);
+  const entities = await client.execute({
+    sql: "SELECT COUNT(*) AS count FROM calendar_event_entities",
+  });
+  assert.equal(Number(entities.rows[0].count), 1);
+
+  const states = await client.execute({
+    sql: `SELECT collector_id, event_count
+          FROM calendar_sync_state
+          WHERE source_id = ?
+          ORDER BY collector_id ASC`,
+    args: [source.id],
+  });
+  assert.deepEqual(states.rows, [
+    { collector_id: "mac-a", event_count: 0 },
+    { collector_id: "mac-b", event_count: 1 },
+  ]);
+});
+
+test("calendar-sync-store: collector cleanup retry repairs a partial derived-state failure", async () => {
+  const client = await makeCalendarSyncDb();
+  await writeCalendarObservationSync(
+    {
+      collector: { id: "mac-retry", kind: "tauri-macos" },
+      sources: [{ id: "eventkit:retry", provider: "apple", title: "Retry" }],
+      range: {
+        startsAt: "2026-05-17T00:00:00Z",
+        endsAt: "2026-05-18T00:00:00Z",
+      },
+      observations: [
+        {
+          sourceId: "eventkit:retry",
+          sourceEventId: "retry-event",
+          title: "Retry cleanup",
+          startsAt: "2026-05-17T14:00:00Z",
+          endsAt: "2026-05-17T15:00:00Z",
+        },
+      ],
+    },
+    client,
+  );
+
+  let injected = false;
+  const flakyExecutor = {
+    async execute(opts) {
+      if (
+        !injected &&
+        /SELECT body_json[\s\S]*FROM calendar_event_observations/.test(opts.sql)
+      ) {
+        injected = true;
+        throw new Error("injected post-tombstone failure");
+      }
+      return client.execute(opts);
+    },
+  };
+  const failed = await cleanupCalendarCollectorObservations(
+    { collectorId: "mac-retry" },
+    flakyExecutor,
+  );
+  assert.deepEqual(failed, { ok: false, error: "injected post-tombstone failure" });
+
+  const partial = await client.execute({
+    sql: `SELECT deleted_at FROM calendar_event_observations
+          WHERE collector_id = ?`,
+    args: ["mac-retry"],
+  });
+  assert.equal(typeof partial.rows[0].deleted_at, "string");
+  const staleEntities = await client.execute({
+    sql: "SELECT COUNT(*) AS count FROM calendar_event_entities",
+  });
+  assert.equal(Number(staleEntities.rows[0].count), 1);
+
+  const retried = await cleanupCalendarCollectorObservations(
+    { collectorId: "mac-retry" },
+    client,
+  );
+  assert.equal(retried.ok, true);
+  assert.equal(retried.skipped, false);
+  assert.equal(retried.tombstonedObservations, 0);
+  const repairedEntities = await client.execute({
+    sql: "SELECT COUNT(*) AS count FROM calendar_event_entities",
+  });
+  assert.equal(Number(repairedEntities.rows[0].count), 0);
 });
 
 test("calendar-sync-store: publishes only observation tables to live", async () => {

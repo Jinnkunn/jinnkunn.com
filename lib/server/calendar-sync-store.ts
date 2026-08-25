@@ -11,6 +11,10 @@ import {
   type CalendarObservation,
   type CalendarObservationSyncPayload,
 } from "../shared/calendar-core.ts";
+import type {
+  CalendarCollectorCleanupCommand,
+  CalendarCollectorCleanupRange,
+} from "../site-admin/calendar-observation-commands.ts";
 
 // Cloudflare D1 currently rejects statements with too many bound SQL variables
 // much earlier than local SQLite/libSQL. Keep batch statements comfortably below
@@ -39,6 +43,19 @@ export type CalendarObservationSyncResult =
       entitiesWritten: number;
       staleObservations: number;
       skipped: false;
+    }
+  | { ok: true; skipped: true; reason: "no_executor" }
+  | { ok: false; error: string };
+
+export type CalendarCollectorCleanupResult =
+  | {
+      ok: true;
+      skipped: false;
+      collectorId: string;
+      range: CalendarCollectorCleanupRange | null;
+      tombstonedObservations: number;
+      entitiesWritten: number;
+      syncedAt: string;
     }
   | { ok: true; skipped: true; reason: "no_executor" }
   | { ok: false; error: string };
@@ -301,34 +318,34 @@ async function markStaleSnapshotObservations(
   now: number,
 ): Promise<number> {
   if (payload.syncMode !== "snapshot") return 0;
-  let stale = 0;
   const activeIds = new Set(payload.observations.map((entry) => entry.observationId));
-  for (const source of payload.sources) {
-    const existing = await executor.execute({
-      sql: `SELECT observation_id
-            FROM calendar_event_observations
-            WHERE source_id = ?
-              AND deleted_at IS NULL
-              AND starts_at < ?
-              AND ends_at > ?`,
-      args: [source.id, payload.range.endsAt, payload.range.startsAt],
+  const existing = await executor.execute({
+    sql: `SELECT observation_id
+          FROM calendar_event_observations
+          WHERE collector_id = ?
+            AND deleted_at IS NULL
+            AND starts_at < ?
+            AND ends_at > ?`,
+    args: [
+      payload.collector.id,
+      payload.range.endsAt,
+      payload.range.startsAt,
+    ],
+  });
+  const staleIds = existing.rows
+    .map((row) =>
+      typeof row.observation_id === "string" ? row.observation_id : "",
+    )
+    .filter((id) => id && !activeIds.has(id));
+  for (const id of staleIds) {
+    await executor.execute({
+      sql: `UPDATE calendar_event_observations
+            SET deleted_at = ?, updated_at = ?
+            WHERE observation_id = ?`,
+      args: [payload.observedAt, now, id],
     });
-    const staleIds = existing.rows
-      .map((row) =>
-        typeof row.observation_id === "string" ? row.observation_id : "",
-      )
-      .filter((id) => id && !activeIds.has(id));
-    for (const id of staleIds) {
-      await executor.execute({
-        sql: `UPDATE calendar_event_observations
-              SET deleted_at = ?, updated_at = ?
-              WHERE observation_id = ?`,
-        args: [payload.observedAt, now, id],
-      });
-      stale += 1;
-    }
   }
-  return stale;
+  return staleIds.length;
 }
 
 function decodeObservation(raw: unknown): CalendarObservation | null {
@@ -651,6 +668,182 @@ export async function writeCalendarObservationSync(
       message: "write failed",
       detail: err,
       meta: { eventCount: payload.observations.length },
+    });
+    return { ok: false, error: message };
+  }
+}
+
+async function readCollectorCleanupScope(
+  executor: DbExecutor,
+  input: CalendarCollectorCleanupCommand,
+): Promise<{
+  range: CalendarCollectorCleanupRange | null;
+  sourceIds: string[];
+}> {
+  const rangeFilter = input.range
+    ? `AND starts_at < ?
+       AND ends_at > ?`
+    : "";
+  const result = await executor.execute({
+    sql: `SELECT source_id,
+                 MIN(starts_at) AS starts_at,
+                 MAX(ends_at) AS ends_at
+          FROM calendar_event_observations
+          WHERE collector_id = ?
+            ${rangeFilter}
+          GROUP BY source_id
+          ORDER BY source_id ASC`,
+    args: input.range
+      ? [input.collectorId, input.range.endsAt, input.range.startsAt]
+      : [input.collectorId],
+  });
+  const sourceIds = result.rows
+    .map((row) => (typeof row.source_id === "string" ? row.source_id : ""))
+    .filter(Boolean);
+  if (input.range) return { range: input.range, sourceIds };
+  if (!result.rows.length) return { range: null, sourceIds };
+
+  const startsAt = result.rows.reduce<string | null>((earliest, row) => {
+    const value = typeof row.starts_at === "string" ? row.starts_at : "";
+    if (!value) return earliest;
+    return earliest === null || value < earliest ? value : earliest;
+  }, null);
+  const endsAt = result.rows.reduce<string | null>((latest, row) => {
+    const value = typeof row.ends_at === "string" ? row.ends_at : "";
+    if (!value) return latest;
+    return latest === null || value > latest ? value : latest;
+  }, null);
+  return startsAt && endsAt && Date.parse(endsAt) > Date.parse(startsAt)
+    ? { range: { startsAt, endsAt }, sourceIds }
+    : { range: null, sourceIds };
+}
+
+async function refreshCollectorCleanupSyncState(
+  executor: DbExecutor,
+  input: {
+    collectorId: string;
+    sourceIds: readonly string[];
+    range: CalendarCollectorCleanupRange;
+    syncedAt: string;
+    now: number;
+  },
+): Promise<void> {
+  for (const sourceId of input.sourceIds) {
+    const remaining = await executor.execute({
+      sql: `SELECT COUNT(*) AS event_count
+            FROM calendar_event_observations
+            WHERE collector_id = ?
+              AND source_id = ?
+              AND deleted_at IS NULL`,
+      args: [input.collectorId, sourceId],
+    });
+    const eventCount = Number(remaining.rows[0]?.event_count ?? 0);
+    const stateId = `${input.collectorId}:${sourceId}`;
+    await executor.execute({
+      sql: `INSERT INTO calendar_sync_state
+            (id, collector_id, source_id, sync_mode, range_starts_at,
+             range_ends_at, event_count, synced_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              event_count = excluded.event_count,
+              synced_at = excluded.synced_at,
+              updated_at = excluded.updated_at`,
+      args: [
+        stateId,
+        input.collectorId,
+        sourceId,
+        "snapshot",
+        input.range.startsAt,
+        input.range.endsAt,
+        eventCount,
+        input.syncedAt,
+        input.now,
+      ],
+    });
+    await executor.execute({
+      sql: `UPDATE calendar_sync_sources
+            SET last_synced_at = ?, updated_at = ?
+            WHERE id = ? AND collector_id = ?`,
+      args: [input.syncedAt, input.now, sourceId, input.collectorId],
+    });
+  }
+}
+
+/**
+ * Tombstone one collector's observations and rebuild the derived entity view.
+ *
+ * This deliberately reuses the empty-snapshot path used by normal sync rather
+ * than maintaining a second deletion algorithm. `markStaleSnapshotObservations`
+ * is collector + range scoped, so observations reported by another device are
+ * never selected. Reading historical rows (including already-tombstoned rows)
+ * makes a retry repair derived entities even if an earlier request stopped
+ * between the tombstone and rebuild steps.
+ */
+export async function cleanupCalendarCollectorObservations(
+  input: CalendarCollectorCleanupCommand,
+  executor = tryGetD1Executor(),
+): Promise<CalendarCollectorCleanupResult> {
+  if (!executor) {
+    return { ok: true, skipped: true, reason: "no_executor" };
+  }
+  const syncedAt = new Date().toISOString();
+  const now = Date.now();
+  try {
+    const scope = await readCollectorCleanupScope(executor, input);
+    if (!scope.range) {
+      return {
+        ok: true,
+        skipped: false,
+        collectorId: input.collectorId,
+        range: null,
+        tombstonedObservations: 0,
+        entitiesWritten: 0,
+        syncedAt,
+      };
+    }
+
+    const syncResult = await writeCalendarObservationSync(
+      {
+        schemaVersion: 1,
+        collector: {
+          id: input.collectorId,
+          kind: "manual",
+          title: "Collector cleanup",
+        },
+        sources: [],
+        range: scope.range,
+        syncMode: "snapshot",
+        observedAt: syncedAt,
+        observations: [],
+      },
+      executor,
+    );
+    if (!syncResult.ok) return syncResult;
+    if (syncResult.skipped) return syncResult;
+
+    await refreshCollectorCleanupSyncState(executor, {
+      collectorId: input.collectorId,
+      sourceIds: scope.sourceIds,
+      range: scope.range,
+      syncedAt,
+      now,
+    });
+    return {
+      ok: true,
+      skipped: false,
+      collectorId: input.collectorId,
+      range: scope.range,
+      tombstonedObservations: syncResult.staleObservations,
+      entitiesWritten: syncResult.entitiesWritten,
+      syncedAt,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logWarn({
+      source: "calendar-sync-store",
+      message: "collector cleanup failed",
+      detail: err,
+      meta: { collectorId: input.collectorId },
     });
     return { ok: false, error: message };
   }
