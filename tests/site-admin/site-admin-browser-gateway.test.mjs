@@ -266,6 +266,10 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(css.includes(".componentEntryGrid"));
   assert.ok(css.includes(".componentContextBar"));
   assert.ok(css.includes(".componentCollectionHeader"));
+  assert.match(
+    css,
+    /\.editorPanel:has\(\.newsEditor\) \.editorChrome\s*\{[^}]*position:\s*static;/s,
+  );
   assert.ok(css.includes(".entryReadiness"));
   assert.ok(css.includes(".collectionGroupHeading"));
   assert.ok(css.includes(".componentDragHandle"));

@@ -2916,6 +2916,14 @@ button.statusPill:disabled {
   isolation: isolate;
 }
 
+.editorPanel:has(.newsEditor) .editorChrome {
+  position: static;
+  z-index: auto;
+  top: auto;
+  box-shadow: none;
+  isolation: auto;
+}
+
 .editorStatusBar {
   min-height: 38px;
   padding: 6px 8px;
