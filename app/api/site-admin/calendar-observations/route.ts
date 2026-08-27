@@ -10,6 +10,7 @@ import {
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import {
   cleanupCalendarCollectorObservations,
+  publishCalendarObservationsToLive,
   readCalendarSyncHealth,
   writeCalendarObservationSync,
 } from "@/lib/server/calendar-sync-store";
@@ -31,6 +32,55 @@ const CLEANUP_RATE_LIMIT = {
 };
 const CALENDAR_OBSERVATION_SYNC_MAX_BYTES = 4 * 1024 * 1024;
 const CALENDAR_OBSERVATION_CLEANUP_MAX_BYTES = 4 * 1024;
+
+async function publishLiveAfterObservationMutation(
+  actor: string,
+  trigger: "sync" | "cleanup",
+) {
+  const result = await publishCalendarObservationsToLive();
+  if (!result.ok || result.skipped) {
+    const reason = result.ok ? result.reason : result.error;
+    await writeSiteAdminAuditLog({
+      actor,
+      action: "calendar.observations.publish-live",
+      endpoint: "/api/site-admin/calendar-observations",
+      method: trigger === "sync" ? "POST" : "DELETE",
+      status: result.ok ? 200 : 502,
+      result: result.ok ? "success" : "error",
+      code: result.ok ? "LIVE_DB_NOT_CONFIGURED" : "LIVE_DB_WRITE_FAILED",
+      message: reason,
+      metadata: { trigger },
+    });
+    return result;
+  }
+
+  await writeSiteAdminAuditLog({
+    actor,
+    action: "calendar.observations.publish-live",
+    endpoint: "/api/site-admin/calendar-observations",
+    method: trigger === "sync" ? "POST" : "DELETE",
+    status: 200,
+    result: "success",
+    code: "OK",
+    metadata: {
+      trigger,
+      rowsWritten: result.rowsWritten,
+      rowsDeleted: result.rowsDeleted,
+      tables: result.tables,
+    },
+  });
+  return result;
+}
+
+function revalidatePublicCalendar() {
+  try {
+    revalidatePath("/calendar");
+    revalidatePath("/api/public/calendar");
+    revalidatePath("/api/public/calendar/calendar.ics");
+  } catch {
+    // Public calendar responses also have bounded cache lifetimes.
+  }
+}
 
 function parseObservationSyncCommand(
   raw: Record<string, unknown>,
@@ -109,12 +159,32 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      const livePublish = await publishLiveAfterObservationMutation(
+        ctx.login,
+        "sync",
+      );
+      if (!livePublish.ok) {
+        return apiError(
+          "Calendar observations reached staging, but the Live calendar update failed. Retrying is safe.",
+          { status: 502, code: "LIVE_DB_WRITE_FAILED" },
+        );
+      }
+      revalidatePublicCalendar();
+
       return apiPayloadOk({
         sourcesWritten: result.sourcesWritten,
         observationsWritten: result.observationsWritten,
         entitiesWritten: result.entitiesWritten,
         staleObservations: result.staleObservations,
         syncedAt: parsed.value.observedAt,
+        livePublish: livePublish.skipped
+          ? { status: "not_configured", reason: livePublish.reason }
+          : {
+              status: "published",
+              rowsWritten: livePublish.rowsWritten,
+              rowsDeleted: livePublish.rowsDeleted,
+              publishedAt: livePublish.publishedAt,
+            },
       });
     },
     { rateLimit: RATE_LIMIT },
@@ -162,13 +232,17 @@ export async function DELETE(req: NextRequest) {
         });
       }
 
-      try {
-        revalidatePath("/calendar");
-        revalidatePath("/api/public/calendar");
-        revalidatePath("/api/public/calendar/calendar.ics");
-      } catch {
-        // Public calendar responses also have bounded cache lifetimes.
+      const livePublish = await publishLiveAfterObservationMutation(
+        ctx.login,
+        "cleanup",
+      );
+      if (!livePublish.ok) {
+        return apiError(
+          "Calendar cleanup reached staging, but the Live calendar update failed. Retrying is safe.",
+          { status: 502, code: "LIVE_DB_WRITE_FAILED" },
+        );
       }
+      revalidatePublicCalendar();
 
       await writeSiteAdminAuditLog({
         actor: ctx.login,
@@ -192,6 +266,14 @@ export async function DELETE(req: NextRequest) {
         tombstonedObservations: result.tombstonedObservations,
         entitiesWritten: result.entitiesWritten,
         syncedAt: result.syncedAt,
+        livePublish: livePublish.skipped
+          ? { status: "not_configured", reason: livePublish.reason }
+          : {
+              status: "published",
+              rowsWritten: livePublish.rowsWritten,
+              rowsDeleted: livePublish.rowsDeleted,
+              publishedAt: livePublish.publishedAt,
+            },
       });
     },
     { rateLimit: CLEANUP_RATE_LIMIT },

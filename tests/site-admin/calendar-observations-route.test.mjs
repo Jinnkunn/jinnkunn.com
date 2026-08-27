@@ -21,5 +21,16 @@ test("calendar observations route exposes authenticated collector-scoped cleanup
   assert.match(source, /cleanupCalendarCollectorObservations\(parsed\.value\)/);
   assert.match(source, /CALENDAR_OBSERVATION_CLEANUP_MAX_BYTES = 4 \* 1024/);
   assert.match(source, /calendar\.observations\.cleanup/);
-  assert.doesNotMatch(source, /DELETE[\s\S]*publishCalendarObservationsToLive/);
+  assert.match(source, /publishLiveAfterObservationMutation\([\s\S]*"cleanup"/);
+});
+
+test("calendar observations route mirrors successful syncs to Live", async () => {
+  const source = await readFile(
+    new URL("../../app/api/site-admin/calendar-observations/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /publishCalendarObservationsToLive/);
+  assert.match(source, /publishLiveAfterObservationMutation\([\s\S]*"sync"/);
+  assert.match(source, /LIVE_DB_WRITE_FAILED/);
+  assert.match(source, /livePublish:/);
 });
