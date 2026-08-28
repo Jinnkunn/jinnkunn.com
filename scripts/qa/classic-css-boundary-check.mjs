@@ -18,6 +18,7 @@ const EXPECTED_LAYOUT_IMPORTS = [
   "teaching.css",
   "works.css",
   "home.css",
+  "bio.css",
   "posts-mdx.css",
   "page-overrides.css",
   "notion-blocks.css",

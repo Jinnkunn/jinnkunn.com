@@ -102,9 +102,15 @@ const ROUTES = [
     pageClass: "page__mdx-page",
     titleIncludes: "BIO",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
+    compareReadableStyle: false,
     required: [
       [".super-navbar__breadcrumbs .notion-breadcrumb__item", 2],
       [".mdx-post__body", 1],
+      [".bio-intro", 1],
+      [".bio-focus-grid", 1],
+      [".bio-timeline", 1],
+      [".bio-experience", 1],
+      [".bio-intro__links a", 3],
     ],
   },
   {
@@ -185,13 +191,6 @@ const LINK_STYLE_PROBES = [
     route: "/teaching",
     name: "Teaching archive link",
     selector: 'a[href="/teaching/archive"].notion-link.link',
-    icon: false,
-  },
-  {
-    route: "/bio",
-    name: "Bio certification link",
-    selector:
-      'a[href="https://ethics.gc.ca/eng/policy-politique_tcps2-eptc2_2018.html"].notion-link.link',
     icon: false,
   },
   {
@@ -647,7 +646,7 @@ function compareRoute(route, local, production, viewportName) {
     },
   );
 
-  if (!route.grayTextColor) {
+  if (!route.grayTextColor && route.compareReadableStyle !== false) {
     compareTextStyle(local.firstReadableStyle, production.firstReadableStyle, route.path, {
       expectedColor: route.readableColor,
     });
