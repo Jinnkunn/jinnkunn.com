@@ -475,6 +475,7 @@ const TABLE_DIVIDER_RE = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|\s*$/;
 // is a single rich-text body, not nested children) while letting
 // authors freely use **bold**, links, etc. Closed by `</blockquote>`.
 const BLOCKQUOTE_OPEN_RE = /^<blockquote(?:\s+className="([^"]*)")?\s*>$/;
+const RAW_DIV_OPEN_RE = /^<div\b[^>]*>\s*$/i;
 const SELF_CLOSING_TAG_RE = /^<(\w+)([\s\S]*?)\/>$/;
 const LEGACY_HEADING_ANCHOR_RE = /<span\b[^>]*\bnotion-heading__anchor\b[^>]*\/>\s*/gi;
 const LEGACY_HEADING_RE = /^(?:<span\b[^>]*\bnotion-heading__anchor\b[^>]*\/>\s*)?<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1>$/i;
@@ -784,6 +785,28 @@ function parseBlocksAtDepth(source: string, depth: number): MdxBlock[] {
     if (!trimmedLine) {
       index += 1;
       blankLinesBefore += 1;
+      continue;
+    }
+
+    // Preserve unsupported multi-line layout wrappers as one atomic raw
+    // block. Parsing their nested HTML/MDX as ordinary paragraphs strips
+    // closing tags and class hooks on the next editor save. Known structured
+    // components use dedicated parsers below; a lowercase <div> is an escape
+    // hatch for bespoke page layouts such as BIO.
+    if (RAW_DIV_OPEN_RE.test(trimmedLine)) {
+      const rawLines = [line];
+      const divDelta = (value: string) =>
+        (value.match(/<div\b(?![^>]*\/>)[^>]*>/gi)?.length ?? 0) -
+        (value.match(/<\/div\s*>/gi)?.length ?? 0);
+      let openDivs = divDelta(line);
+      index += 1;
+      while (index < lines.length && openDivs > 0) {
+        const rawLine = lines[index] ?? "";
+        rawLines.push(rawLine);
+        openDivs += divDelta(rawLine);
+        index += 1;
+      }
+      pushBlock(makeBlock("raw", { text: rawLines.join("\n") }));
       continue;
     }
 

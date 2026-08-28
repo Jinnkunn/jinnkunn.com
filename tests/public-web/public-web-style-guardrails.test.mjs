@@ -164,7 +164,7 @@ test("public-web-style-guardrails: visual contracts cover the public route matri
     "Toggle block",
     "News inline link",
     "Works internal link",
-    "Bio certification link",
+    "bio-intro__links a",
     "Connect profile link",
   ]) {
     assertIncludes(productionContract, expected, "Production style regression probes");
