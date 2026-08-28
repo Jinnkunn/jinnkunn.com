@@ -3,6 +3,7 @@ import { Children, isValidElement } from "react";
 import type { MDXComponents } from "mdx/types";
 
 import { ClassicLink } from "@/components/classic/classic-link";
+import { BioExperienceBlock } from "./bio-experience-block";
 import { Bookmark } from "./bookmark";
 import { Callout } from "./callout";
 import { Color } from "./color";
@@ -245,6 +246,7 @@ export const postMdxComponents: MDXComponents = {
   pre: MdxPre,
   span: MdxSpan,
   table: MdxTable,
+  BioExperienceBlock,
   Bookmark,
   Callout,
   Color,

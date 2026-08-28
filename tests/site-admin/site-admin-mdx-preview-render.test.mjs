@@ -58,6 +58,15 @@ test("site-admin mdx preview renderer detects Cloudflare codegen failures", () =
   assert.equal(isMdxRuntimeCodeGenerationError(new Error("ordinary MDX syntax error")), false);
 });
 
+test("site-admin mdx preview renderer explains the BIO experience shortcode", () => {
+  const html = renderMdxPreviewHtml(
+    '<BioExperienceBlock teachingLimit={3} worksLimit={3} />',
+  );
+
+  assert.match(html, /Teaching and experience summary/);
+  assert.doesNotMatch(html, /BioExperienceBlock/);
+});
+
 test("site-admin generic mdx preview endpoint prefers the published renderer with a static fallback", () => {
   const source = fs.readFileSync("app/api/site-admin/preview/mdx/route.ts", "utf8");
   assert.ok(source.includes("compilePostMdx"));

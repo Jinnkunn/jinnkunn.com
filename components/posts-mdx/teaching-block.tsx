@@ -1,11 +1,8 @@
 import "server-only";
 
 import type { ReactElement } from "react";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 
-import { parseTeachingEntries } from "@/lib/components/parse";
-import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
+import { loadTeachingEntries } from "@/lib/components/source";
 
 import { TeachingEntry } from "./teaching-entry";
 
@@ -13,21 +10,6 @@ interface TeachingBlockProps {
   /** Cap rendered teaching entries (top of the list first). Omit for
    * all entries. The page MDX already orders entries newest-first. */
   limit?: number;
-}
-
-const TEACHING_SOURCE_PATH = resolve(
-  process.cwd(),
-  getSiteComponentDefinition("teaching").sourcePath,
-);
-
-async function loadEntries() {
-  let raw = "";
-  try {
-    raw = await readFile(TEACHING_SOURCE_PATH, "utf8");
-  } catch {
-    return [];
-  }
-  return parseTeachingEntries(raw);
 }
 
 /** Embeddable view over content/components/teaching.mdx — the
@@ -41,7 +23,7 @@ async function loadEntries() {
 export async function TeachingBlock({
   limit,
 }: TeachingBlockProps): Promise<ReactElement> {
-  const entries = await loadEntries();
+  const entries = await loadTeachingEntries();
   const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
   const visible = cap ? entries.slice(0, cap) : entries;
 

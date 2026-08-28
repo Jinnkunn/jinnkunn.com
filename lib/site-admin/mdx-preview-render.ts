@@ -268,9 +268,14 @@ function renderSelfClosingJsx(trimmed: string): string {
     tag === "NewsBlock" ||
     tag === "PublicationsBlock" ||
     tag === "WorksBlock" ||
-    tag === "TeachingBlock"
+    tag === "TeachingBlock" ||
+    tag === "BioExperienceBlock"
   ) {
-    return `<div class="notion-callout mdx-preview-card">${escapeHtml(tag.replace(/Block$/, ""))}</div>`;
+    const label =
+      tag === "BioExperienceBlock"
+        ? "Teaching and experience summary"
+        : tag.replace(/Block$/, "");
+    return `<div class="notion-callout mdx-preview-card">${escapeHtml(label)}</div>`;
   }
   if (tag === "FileLink") {
     const href = safeUrl(attrs.href || "");

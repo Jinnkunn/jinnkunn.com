@@ -2,12 +2,10 @@ import "server-only";
 
 import { Fragment } from "react";
 import type { ReactElement } from "react";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 
-import { parseWorksEntries, type WorksComponentEntry } from "@/lib/components/parse";
+import type { WorksComponentEntry } from "@/lib/components/parse";
+import { loadWorksEntries } from "@/lib/components/source";
 import { compilePostMdx } from "@/lib/posts/compile";
-import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
 
 import { postMdxComponents } from "./components";
 import { WorksEntry } from "./works-entry";
@@ -15,21 +13,6 @@ import { WorksEntry } from "./works-entry";
 interface WorksBlockProps {
   /** Optional cap applied to each category (recent / past) independently. */
   limit?: number;
-}
-
-const WORKS_SOURCE_PATH = resolve(
-  process.cwd(),
-  getSiteComponentDefinition("works").sourcePath,
-);
-
-async function loadEntries() {
-  let raw = "";
-  try {
-    raw = await readFile(WORKS_SOURCE_PATH, "utf8");
-  } catch {
-    return [];
-  }
-  return parseWorksEntries(raw);
 }
 
 function NotionSpacer() {
@@ -45,7 +28,7 @@ function NotionSpacer() {
  * emitted by the block itself, so the embed always reproduces those
  * section dividers regardless of which page hosts it. */
 export async function WorksBlock({ limit }: WorksBlockProps): Promise<ReactElement> {
-  const entries = await loadEntries();
+  const entries = await loadWorksEntries();
   const cap = typeof limit === "number" && limit > 0 ? Math.trunc(limit) : undefined;
   const recent = entries.filter((e) => e.category === "recent");
   const passed = entries.filter((e) => e.category === "passed");

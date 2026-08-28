@@ -127,7 +127,7 @@ const NOTION_BLOCK_SPACING_PROBES = [
   {
     name: "Notion text",
     selector:
-      ".notion-root .notion-text__content, .notion-root .mdx-post__body > p",
+      ".notion-root .notion-text__content, .notion-root .mdx-post__body > p, .notion-root .bio-page > p:not(.bio-section__intro)",
   },
   {
     name: "Notion bulleted list item",
@@ -249,7 +249,7 @@ async function readRouteContract(page, pageClass) {
         {
           name: "Notion text",
           selector:
-            ".notion-root .notion-text__content, .notion-root .mdx-post__body > p",
+            ".notion-root .notion-text__content, .notion-root .mdx-post__body > p, .notion-root .bio-page > p:not(.bio-section__intro)",
         },
         {
           name: "Notion bulleted list item",

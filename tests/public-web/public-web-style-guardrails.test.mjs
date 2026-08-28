@@ -335,6 +335,26 @@ test("public-web-style-guardrails: data-page entry components are registered for
   }
 });
 
+test("public-web-style-guardrails: bio experience summary uses shared structured data", async () => {
+  const bio = await read("content/pages/bio.mdx");
+  const components = await read("components/posts-mdx/components.tsx");
+  const block = await read("components/posts-mdx/bio-experience-block.tsx");
+
+  assertIncludes(bio, "<BioExperienceBlock", "BIO embeds the experience summary");
+  assertIncludes(
+    components,
+    'import { BioExperienceBlock }',
+    "postMdxComponents imports BioExperienceBlock",
+  );
+  assertIncludes(
+    components,
+    "\n  BioExperienceBlock,",
+    "postMdxComponents registers BioExperienceBlock",
+  );
+  assertIncludes(block, "loadTeachingEntries()", "BIO summary loads Teaching data");
+  assertIncludes(block, "loadWorksEntries()", "BIO summary loads Works data");
+});
+
 test("public-web-style-guardrails: data-page files split between pages (shortcode) and components (entries)", async () => {
   // After the Components migration: each public route page MDX
   // contains a single `<{Name}Block />` shortcode (no inline entries),
@@ -455,13 +475,11 @@ test("public-web-style-guardrails: data-page embed blocks read from components, 
   // `content/components/{name}.mdx` (the dedicated component file
   // edited via the admin Components panel). Catch any regression that
   // re-points at the public page MDX or re-imports the deleted JSON.
-  const blocks = {
+  const directBlocks = {
     news: await read("components/posts-mdx/news-block.tsx"),
-    works: await read("components/posts-mdx/works-block.tsx"),
-    teaching: await read("components/posts-mdx/teaching-block.tsx"),
     publications: await read("components/posts-mdx/publications-block.tsx"),
   };
-  for (const [name, source] of Object.entries(blocks)) {
+  for (const [name, source] of Object.entries(directBlocks)) {
     assertIncludes(
       source,
       `getSiteComponentDefinition("${name}")`,
@@ -470,6 +488,31 @@ test("public-web-style-guardrails: data-page embed blocks read from components, 
     assertIncludes(
       source,
       "@/lib/components/parse",
+      `${name}-block uses the shared component parser`,
+    );
+    assertExcludes(
+      source,
+      `@/content/${name}.json`,
+      `${name}-block must not import the deleted JSON`,
+    );
+  }
+
+  const sharedSource = await read("lib/components/source.ts");
+  const sharedBlocks = {
+    works: await read("components/posts-mdx/works-block.tsx"),
+    teaching: await read("components/posts-mdx/teaching-block.tsx"),
+  };
+  for (const [name, source] of Object.entries(sharedBlocks)) {
+    const loader = `load${name[0].toUpperCase()}${name.slice(1)}Entries`;
+    assertIncludes(source, loader, `${name}-block uses the shared component source`);
+    assertIncludes(
+      sharedSource,
+      `getSiteComponentDefinition(name).sourcePath`,
+      `${name}-block resolves its source through the component registry`,
+    );
+    assertIncludes(
+      sharedSource,
+      `parse${name[0].toUpperCase()}${name.slice(1)}Entries`,
       `${name}-block uses the shared component parser`,
     );
     assertExcludes(
