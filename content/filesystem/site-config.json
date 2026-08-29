@@ -19,22 +19,14 @@
     "googleAnalyticsId": "G-QJVQ934892"
   },
   "lang": "en",
-  "memorial": {
-    "enabled": true,
-    "scope": "all-public",
-    "eyebrow": "",
-    "title": "日喀则 · 吉隆",
-    "context": "Shigatse · Gyirong",
-    "englishTitle": "In memory of those who lost their lives in the Gyirong mudslide.",
-    "message": "On August 26, 2026, a mudslide struck the Gyirong Port area in Gyirong County, Shigatse.\n\nMay those who lost their lives rest in peace. May those still missing return safely. May the search and rescue proceed safely, and may everyone taking part return home safe.\n\nOur thoughts are also with those who work and serve at Gyirong Port, and with everyone affected by the disaster and their families.\n\nRescue efforts are ongoing. Please refer to official updates for the latest information.",
-    "chineseTitle": "谨悼日喀则吉隆泥石流灾害遇难者。",
-    "chineseMessage": "2026年8月26日，日喀则市吉隆县吉隆口岸区域发生泥石流灾害。\n\n愿逝者安息。愿失联者早日平安归来，也愿搜救顺利，所有参与救援的人平安。\n\n也牵挂那些在吉隆口岸工作和驻守的人们，以及所有受灾群众和他们的家人。愿他们平安。\n\n救援仍在进行，相关信息请以官方通报为准。",
-    "sourceLabel": "Latest Updates",
-    "sourceUrl": "https://so.news.cn/?lang=en#search/0/Gyirong/1/",
-    "sourceChineseLabel": "最新消息",
-    "sourceChineseUrl": "https://so.news.cn/#search/0/%E6%97%A5%E5%96%80%E5%88%99/1/0",
-    "startsAt": "2026-08-29",
-    "endsAt": ""
+  "appearance": {
+    "monochrome": {
+      "enabled": true,
+      "scope": "all-public",
+      "desaturateMedia": true,
+      "startsAt": "2026-08-29",
+      "endsAt": ""
+    }
   },
   "nav": {
     "more": [

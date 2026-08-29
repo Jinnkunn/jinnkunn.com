@@ -74,28 +74,26 @@
   --ds-duration-normal: 180ms;
   --ds-ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* Temporary public memorial state. The light defaults live here and the
-   * dark counterparts are overridden in the dark theme below. Keeping both
-   * palettes centralized makes memorial mode a semantic site state rather
-   * than a collection of page-specific color patches. */
-  --ds-memorial-surface-page: #f3f2ee;
-  --ds-memorial-surface-elevated: #f8f7f3;
-  --ds-memorial-banner-surface: #e9e7e1;
-  --ds-memorial-surface-soft: rgba(55, 53, 47, 0.045);
-  --ds-memorial-surface-soft-strong: rgba(55, 53, 47, 0.075);
-  --ds-memorial-text-primary: #302f2c;
-  --ds-memorial-text-secondary: rgba(48, 47, 44, 0.78);
-  --ds-memorial-text-muted: rgba(48, 47, 44, 0.66);
-  --ds-memorial-text-faint: rgba(48, 47, 44, 0.55);
-  --ds-memorial-text-subtle: rgba(48, 47, 44, 0.42);
-  --ds-memorial-border-subtle: rgba(48, 47, 44, 0.13);
-  --ds-memorial-border-strong: rgba(48, 47, 44, 0.2);
-  --ds-memorial-border-emphasis: rgba(48, 47, 44, 0.28);
-  --ds-memorial-accent: #4a4946;
-  --ds-memorial-link-underline: rgba(48, 47, 44, 0.42);
-  --ds-memorial-link-underline-hover: rgba(48, 47, 44, 0.74);
-  --ds-memorial-link-highlight: rgba(48, 47, 44, 0.08);
-  --ds-memorial-nav-hover: #ececea;
+  /* Optional monochrome public appearance. Announcement surfaces are separate
+   * so a normal notice never changes the color treatment of the whole site. */
+  --ds-monochrome-surface-page: #f3f2ee;
+  --ds-monochrome-surface-elevated: #f8f7f3;
+  --ds-monochrome-surface-soft: rgba(55, 53, 47, 0.045);
+  --ds-monochrome-surface-soft-strong: rgba(55, 53, 47, 0.075);
+  --ds-monochrome-text-primary: #302f2c;
+  --ds-monochrome-text-secondary: rgba(48, 47, 44, 0.78);
+  --ds-monochrome-text-muted: rgba(48, 47, 44, 0.66);
+  --ds-monochrome-text-faint: rgba(48, 47, 44, 0.55);
+  --ds-monochrome-text-subtle: rgba(48, 47, 44, 0.42);
+  --ds-monochrome-border-subtle: rgba(48, 47, 44, 0.13);
+  --ds-monochrome-border-strong: rgba(48, 47, 44, 0.2);
+  --ds-monochrome-border-emphasis: rgba(48, 47, 44, 0.28);
+  --ds-monochrome-accent: #4a4946;
+  --ds-monochrome-link-underline: rgba(48, 47, 44, 0.42);
+  --ds-monochrome-link-underline-hover: rgba(48, 47, 44, 0.74);
+  --ds-monochrome-link-highlight: rgba(48, 47, 44, 0.08);
+  --ds-monochrome-nav-hover: #ececea;
+  --ds-announcement-surface: #e9e7e1;
 }
 
 :root,
@@ -220,24 +218,24 @@ html[data-theme="light"] {
 html[data-theme="dark"] {
   color-scheme: dark;
 
-  --ds-memorial-surface-page: #181817;
-  --ds-memorial-surface-elevated: #222220;
-  --ds-memorial-banner-surface: #242321;
-  --ds-memorial-surface-soft: rgba(242, 240, 234, 0.05);
-  --ds-memorial-surface-soft-strong: rgba(242, 240, 234, 0.09);
-  --ds-memorial-text-primary: #efede7;
-  --ds-memorial-text-secondary: rgba(239, 237, 231, 0.8);
-  --ds-memorial-text-muted: rgba(239, 237, 231, 0.68);
-  --ds-memorial-text-faint: rgba(239, 237, 231, 0.56);
-  --ds-memorial-text-subtle: rgba(239, 237, 231, 0.43);
-  --ds-memorial-border-subtle: rgba(239, 237, 231, 0.14);
-  --ds-memorial-border-strong: rgba(239, 237, 231, 0.22);
-  --ds-memorial-border-emphasis: rgba(239, 237, 231, 0.3);
-  --ds-memorial-accent: #cfcdc7;
-  --ds-memorial-link-underline: rgba(239, 237, 231, 0.42);
-  --ds-memorial-link-underline-hover: rgba(239, 237, 231, 0.78);
-  --ds-memorial-link-highlight: rgba(239, 237, 231, 0.09);
-  --ds-memorial-nav-hover: #2b2a27;
+  --ds-monochrome-surface-page: #181817;
+  --ds-monochrome-surface-elevated: #222220;
+  --ds-monochrome-surface-soft: rgba(242, 240, 234, 0.05);
+  --ds-monochrome-surface-soft-strong: rgba(242, 240, 234, 0.09);
+  --ds-monochrome-text-primary: #efede7;
+  --ds-monochrome-text-secondary: rgba(239, 237, 231, 0.8);
+  --ds-monochrome-text-muted: rgba(239, 237, 231, 0.68);
+  --ds-monochrome-text-faint: rgba(239, 237, 231, 0.56);
+  --ds-monochrome-text-subtle: rgba(239, 237, 231, 0.43);
+  --ds-monochrome-border-subtle: rgba(239, 237, 231, 0.14);
+  --ds-monochrome-border-strong: rgba(239, 237, 231, 0.22);
+  --ds-monochrome-border-emphasis: rgba(239, 237, 231, 0.3);
+  --ds-monochrome-accent: #cfcdc7;
+  --ds-monochrome-link-underline: rgba(239, 237, 231, 0.42);
+  --ds-monochrome-link-underline-hover: rgba(239, 237, 231, 0.78);
+  --ds-monochrome-link-highlight: rgba(239, 237, 231, 0.09);
+  --ds-monochrome-nav-hover: #2b2a27;
+  --ds-announcement-surface: #242321;
 
   /* Elevation reads differently on a dark page: the light shadows are tuned to
    * darken a white surface, which is invisible here. Dark needs a deeper, more

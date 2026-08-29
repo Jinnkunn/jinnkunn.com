@@ -4,8 +4,10 @@ import SiteFooter from "@/components/site-footer";
 import SiteNav from "@/components/site-nav";
 import NotionBlockBehavior from "@/components/notion-block-behavior";
 import ViewportCssVars from "@/components/viewport-css-vars";
-import { MemorialNotice } from "@/components/memorial-notice";
-import { getActiveMemorial } from "@/lib/memorial";
+import { SiteAnnouncement } from "@/components/site-announcement";
+import { getAnnouncementsDocument } from "@/lib/announcements";
+import { getActiveMonochromeAppearance } from "@/lib/appearance";
+import { getActiveAnnouncement } from "@/lib/shared/announcements";
 import { getSiteConfig } from "@/lib/site-config";
 
 // Route-scoped global CSS for the classic (1:1) version.
@@ -29,19 +31,25 @@ import "./page-overrides.css";
 import "./notion-blocks.css";
 import "./navigation.css";
 import "./runtime-polish.css";
-import "./memorial.css";
+import "./announcement.css";
+import "./monochrome.css";
 
-export default function ClassicLayout({
+export default async function ClassicLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const memorial = getActiveMemorial(getSiteConfig().memorial);
+  const config = getSiteConfig();
+  const announcement = getActiveAnnouncement(getAnnouncementsDocument());
+  const monochrome = getActiveMonochromeAppearance(config.appearance.monochrome);
   return (
     <>
       <div
         className="super-root"
-        data-memorial-mode={memorial ? "true" : undefined}
+        data-announcement-active={announcement ? "true" : undefined}
+        data-monochrome-mode={monochrome ? "true" : undefined}
+        data-monochrome-scope={monochrome?.scope}
+        data-monochrome-media={monochrome?.desaturateMedia ? "true" : undefined}
       >
         <a className="skip-link" href="#main-content">
           Skip to content
@@ -51,7 +59,7 @@ export default function ClassicLayout({
         <ViewportCssVars />
         {/* Lightweight JS to restore Notion interactions that otherwise require client hydration. */}
         <NotionBlockBehavior />
-        {memorial ? <MemorialNotice memorial={memorial} /> : null}
+        {announcement ? <SiteAnnouncement announcement={announcement} /> : null}
         <div id="content-wrapper" className="super-content-wrapper">
           {children}
         </div>

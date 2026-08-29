@@ -237,7 +237,7 @@ async function readRouteContract(page, pageClass) {
       mainIds: document.querySelectorAll("#main-content").length,
       mainClassName: document.querySelector("#main-content")?.className || "",
       hasTargetPageClass: Boolean(document.querySelector(`#main-content.${targetClass}`)),
-      hasHomeMemorial: Boolean(document.querySelector(".memorial-notice--home")),
+      hasHomeAnnouncement: Boolean(document.querySelector(".site-announcement--expanded")),
       titleText:
         document.querySelector(".notion-header__title")?.textContent?.trim() || "",
       root: rectOf(`.${targetClass} .notion-root.max-width`),
@@ -383,7 +383,7 @@ function assertClassicRoute(route, contract) {
     901,
     `${route.path} header width drifted on large screens`,
   );
-  const coverHeightRange = contract.hasHomeMemorial ? [27, 29] : [139, 141];
+  const coverHeightRange = contract.hasHomeAnnouncement ? [27, 29] : [139, 141];
   assertBetween(
     contract.cover?.height ?? 0,
     coverHeightRange[0],

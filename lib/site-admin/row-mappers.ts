@@ -52,24 +52,13 @@ export function mapSiteSettingsRow(row: NotionPageLike | null | undefined): Site
     seoPageOverrides: getPropString(row, "SEO Page Overrides"),
     googleAnalyticsId: getPropString(row, "Google Analytics ID"),
     contentGithubUsers: getPropString(row, "Content GitHub Users"),
-    memorialEnabled: getPropCheckbox(row, "Memorial Enabled") ?? false,
-    memorialScope:
-      getPropString(row, "Memorial Scope") === "all-public" ? "all-public" : "home",
-    memorialEyebrow: getPropString(row, "Memorial Eyebrow") || "In remembrance",
-    memorialTitle: getPropString(row, "Memorial Title"),
-    memorialContext: getPropString(row, "Memorial Context"),
-    memorialEnglishTitle: getPropString(row, "Memorial English Title"),
-    memorialMessage: getPropString(row, "Memorial Message"),
-    memorialChineseTitle: getPropString(row, "Memorial Chinese Title"),
-    memorialChineseMessage: getPropString(row, "Memorial Chinese Message"),
-    memorialSourceLabel:
-      getPropString(row, "Memorial Source Label") || "Latest Updates",
-    memorialSourceUrl: getPropString(row, "Memorial Source URL"),
-    memorialSourceChineseLabel:
-      getPropString(row, "Memorial Source Chinese Label") || "最新消息",
-    memorialSourceChineseUrl: getPropString(row, "Memorial Source Chinese URL"),
-    memorialStartsAt: getPropString(row, "Memorial Starts At"),
-    memorialEndsAt: getPropString(row, "Memorial Ends At"),
+    monochromeEnabled: getPropCheckbox(row, "Monochrome Enabled") ?? false,
+    monochromeScope:
+      getPropString(row, "Monochrome Scope") === "home" ? "home" : "all-public",
+    monochromeDesaturateMedia:
+      getPropCheckbox(row, "Monochrome Desaturate Media") ?? true,
+    monochromeStartsAt: getPropString(row, "Monochrome Starts At"),
+    monochromeEndsAt: getPropString(row, "Monochrome Ends At"),
     sitemapExcludes: getPropString(row, "Sitemap Excludes"),
     sitemapAutoExcludeEnabled: autoExcludeBool ?? autoExcludeText ?? true,
     sitemapAutoExcludeSections: getPropString(row, "Sitemap Auto Exclude Sections"),

@@ -138,33 +138,26 @@ export function parseSiteAdminConfigCommand(
     if (patch.contentGithubUsers !== undefined) {
       outPatch.contentGithubUsers = getString(patch, "contentGithubUsers", { maxLen: 800 });
     }
-    if (patch.memorialEnabled !== undefined) {
-      outPatch.memorialEnabled = getBoolean(patch, "memorialEnabled") ?? false;
+    if (patch.monochromeEnabled !== undefined) {
+      outPatch.monochromeEnabled = getBoolean(patch, "monochromeEnabled") ?? false;
     }
-    if (patch.memorialScope !== undefined) {
-      outPatch.memorialScope = getEnum(
+    if (patch.monochromeScope !== undefined) {
+      outPatch.monochromeScope = getEnum(
         patch,
-        "memorialScope",
+        "monochromeScope",
         ["home", "all-public"] as const,
-        "home",
+        "all-public",
       );
     }
-    const memorialTextLimits = {
-      memorialEyebrow: 120,
-      memorialTitle: 300,
-      memorialContext: 300,
-      memorialEnglishTitle: 300,
-      memorialMessage: 1200,
-      memorialChineseTitle: 300,
-      memorialChineseMessage: 1200,
-      memorialSourceLabel: 160,
-      memorialSourceUrl: 1000,
-      memorialSourceChineseLabel: 160,
-      memorialSourceChineseUrl: 1000,
-      memorialStartsAt: 40,
-      memorialEndsAt: 40,
+    if (patch.monochromeDesaturateMedia !== undefined) {
+      outPatch.monochromeDesaturateMedia =
+        getBoolean(patch, "monochromeDesaturateMedia") ?? true;
+    }
+    const appearanceTextLimits = {
+      monochromeStartsAt: 40,
+      monochromeEndsAt: 40,
     } as const;
-    for (const [field, maxLen] of Object.entries(memorialTextLimits)) {
+    for (const [field, maxLen] of Object.entries(appearanceTextLimits)) {
       if (patch[field] !== undefined) {
         (outPatch as Record<string, unknown>)[field] = getString(patch, field, { maxLen });
       }

@@ -24,10 +24,11 @@ test("site-admin web UI keeps the visual editor and mobile content navigation co
 });
 
 test("site-admin web UI exposes explicit draft and navigation controls", async () => {
-  const [settingsPanel, settingsForm, collectionEditor] = await Promise.all([
+  const [settingsPanel, settingsForm, collectionEditor, announcementsPanel] = await Promise.all([
     read("app/site-admin/site-admin-settings-panel.tsx"),
     read("components/site-admin/config/settings-form.tsx"),
     read("app/site-admin/site-admin-structured-collection-editor.tsx"),
+    read("app/site-admin/site-admin-announcements-panel.tsx"),
   ]);
 
   assert.match(settingsPanel, /Move .* up/);
@@ -35,6 +36,11 @@ test("site-admin web UI exposes explicit draft and navigation controls", async (
   assert.doesNotMatch(settingsPanel, />\s*Save row\s*</);
   assert.match(settingsForm, /Changes are ready to save/);
   assert.match(settingsForm, /Search preview/);
+  assert.match(settingsPanel, /Appearance/);
+  assert.match(settingsForm, /Monochrome appearance/);
+  assert.match(announcementsPanel, /SiteAdminMarkdownEditor/);
+  assert.match(announcementsPanel, /Single flexible flow/);
+  assert.match(announcementsPanel, /Two columns/);
   assert.match(collectionEditor, /Changes remain in this draft until you use Save/);
   assert.match(collectionEditor, /aria-hidden="true"/);
 });

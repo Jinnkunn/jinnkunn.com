@@ -36,22 +36,14 @@ export type SiteConfig = {
   security?: {
     contentGithubUsers?: string[];
   };
-  memorial: {
-    enabled: boolean;
-    scope: "home" | "all-public";
-    eyebrow: string;
-    title: string;
-    context: string;
-    englishTitle: string;
-    message: string;
-    chineseTitle: string;
-    chineseMessage: string;
-    sourceLabel: string;
-    sourceUrl: string;
-    sourceChineseLabel: string;
-    sourceChineseUrl: string;
-    startsAt: string;
-    endsAt: string;
+  appearance: {
+    monochrome: {
+      enabled: boolean;
+      scope: "home" | "all-public";
+      desaturateMedia: boolean;
+      startsAt: string;
+      endsAt: string;
+    };
   };
   nav: {
     top: NavItem[];
@@ -89,7 +81,7 @@ function asBoolean(x: unknown): boolean | undefined {
   return typeof x === "boolean" ? x : undefined;
 }
 
-function asMemorialScope(x: unknown): "home" | "all-public" | undefined {
+function asPublicScope(x: unknown): "home" | "all-public" | undefined {
   return x === "home" || x === "all-public" ? x : undefined;
 }
 
@@ -136,10 +128,7 @@ function normalizeConfig(input: unknown): SiteConfig {
   if (!isObject(input)) return DEFAULT_CONFIG;
 
   const cfg: SiteConfig = structuredClone(DEFAULT_CONFIG);
-  // Older generated bundles and persisted site-config rows predate memorial
-  // mode. Keep normalization tolerant even when the compiled default object
-  // is restored from one of those snapshots during development or rollback.
-  cfg.memorial = cfg.memorial ?? structuredClone(DEFAULT_SITE_CONFIG.memorial);
+  cfg.appearance = cfg.appearance ?? structuredClone(DEFAULT_SITE_CONFIG.appearance);
 
   cfg.siteName = asString(input.siteName) ?? cfg.siteName;
   cfg.lang = asString(input.lang) ?? cfg.lang;
@@ -168,31 +157,30 @@ function normalizeConfig(input: unknown): SiteConfig {
     cfg.security.contentGithubUsers = normalizeGithubUserList(input.security.contentGithubUsers);
   }
 
-  if (isObject(input.memorial)) {
-    cfg.memorial.enabled = asBoolean(input.memorial.enabled) ?? cfg.memorial.enabled;
-    cfg.memorial.scope = asMemorialScope(input.memorial.scope) ?? cfg.memorial.scope;
-    cfg.memorial.eyebrow = asOptionalText(input.memorial.eyebrow) ?? cfg.memorial.eyebrow;
-    cfg.memorial.title = asOptionalText(input.memorial.title) ?? cfg.memorial.title;
-    cfg.memorial.context = asOptionalText(input.memorial.context) ?? cfg.memorial.context;
-    cfg.memorial.englishTitle =
-      asOptionalText(input.memorial.englishTitle) ?? cfg.memorial.englishTitle;
-    cfg.memorial.message = asOptionalText(input.memorial.message) ?? cfg.memorial.message;
-    cfg.memorial.chineseTitle =
-      asOptionalText(input.memorial.chineseTitle) ?? cfg.memorial.chineseTitle;
-    cfg.memorial.chineseMessage =
-      asOptionalText(input.memorial.chineseMessage) ?? cfg.memorial.chineseMessage;
-    cfg.memorial.sourceLabel =
-      asOptionalText(input.memorial.sourceLabel) ?? cfg.memorial.sourceLabel;
-    cfg.memorial.sourceUrl =
-      asOptionalText(input.memorial.sourceUrl) ?? cfg.memorial.sourceUrl;
-    cfg.memorial.sourceChineseLabel =
-      asOptionalText(input.memorial.sourceChineseLabel) ??
-      cfg.memorial.sourceChineseLabel;
-    cfg.memorial.sourceChineseUrl =
-      asOptionalText(input.memorial.sourceChineseUrl) ?? cfg.memorial.sourceChineseUrl;
-    cfg.memorial.startsAt =
-      asOptionalText(input.memorial.startsAt) ?? cfg.memorial.startsAt;
-    cfg.memorial.endsAt = asOptionalText(input.memorial.endsAt) ?? cfg.memorial.endsAt;
+  if (isObject(input.appearance) && isObject(input.appearance.monochrome)) {
+    const monochrome = input.appearance.monochrome;
+    cfg.appearance.monochrome.enabled =
+      asBoolean(monochrome.enabled) ?? cfg.appearance.monochrome.enabled;
+    cfg.appearance.monochrome.scope =
+      asPublicScope(monochrome.scope) ?? cfg.appearance.monochrome.scope;
+    cfg.appearance.monochrome.desaturateMedia =
+      asBoolean(monochrome.desaturateMedia) ?? cfg.appearance.monochrome.desaturateMedia;
+    cfg.appearance.monochrome.startsAt =
+      asOptionalText(monochrome.startsAt) ?? cfg.appearance.monochrome.startsAt;
+    cfg.appearance.monochrome.endsAt =
+      asOptionalText(monochrome.endsAt) ?? cfg.appearance.monochrome.endsAt;
+  } else if (isObject(input.memorial)) {
+    // One-time data migration for existing D1 rows. The old content fields are
+    // intentionally ignored; only their appearance state survives until the
+    // next settings save writes the new `appearance.monochrome` object.
+    cfg.appearance.monochrome.enabled =
+      asBoolean(input.memorial.enabled) ?? cfg.appearance.monochrome.enabled;
+    cfg.appearance.monochrome.scope =
+      asPublicScope(input.memorial.scope) ?? cfg.appearance.monochrome.scope;
+    cfg.appearance.monochrome.startsAt =
+      asOptionalText(input.memorial.startsAt) ?? cfg.appearance.monochrome.startsAt;
+    cfg.appearance.monochrome.endsAt =
+      asOptionalText(input.memorial.endsAt) ?? cfg.appearance.monochrome.endsAt;
   }
 
   if (isObject(input.nav)) {

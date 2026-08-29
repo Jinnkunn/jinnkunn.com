@@ -32,7 +32,7 @@ export function SiteAdminSettingsPanel({
     saveAllNavRows,
     addNavRow,
   } = useSiteAdminConfigData();
-  const [section, setSection] = useState<"site" | "navigation">("site");
+  const [section, setSection] = useState<"site" | "appearance" | "navigation">("site");
   const pendingNavCount = Object.keys(navDraft).length;
 
   useEffect(() => {
@@ -71,6 +71,14 @@ export function SiteAdminSettingsPanel({
           </button>
           <button
             type="button"
+            data-active={section === "appearance"}
+            onClick={() => setSection("appearance")}
+          >
+            <strong>Appearance</strong>
+            <small>Monochrome scope and schedule</small>
+          </button>
+          <button
+            type="button"
             data-active={section === "navigation"}
             onClick={() => setSection("navigation")}
           >
@@ -80,12 +88,16 @@ export function SiteAdminSettingsPanel({
         </nav>
 
         <div className={styles.settingsContent}>
-          {section === "site" ? (
+          {section === "site" || section === "appearance" ? (
             <section className={styles.settingsSection}>
               <div className={styles.settingsHeader}>
                 <div>
-                  <p className={styles.cardLabel}>Site settings</p>
-                  <h2 className={styles.panelTitle}>Identity and discovery</h2>
+                  <p className={styles.cardLabel}>
+                    {section === "appearance" ? "Appearance" : "Site settings"}
+                  </p>
+                  <h2 className={styles.panelTitle}>
+                    {section === "appearance" ? "Public presentation" : "Identity and discovery"}
+                  </h2>
                 </div>
                 <span
                   className={styles.statusPill}
@@ -100,6 +112,7 @@ export function SiteAdminSettingsPanel({
                     draftSettings={draftSettings}
                     busy={busy}
                     dirty={settingsDirty}
+                    view={section}
                     setDraftSettings={setDraftSettings}
                     onSaveSettings={() => void saveSettings()}
                   />

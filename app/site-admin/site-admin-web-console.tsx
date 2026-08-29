@@ -92,6 +92,7 @@ import {
   type SiteAdminAsset,
 } from "./site-admin-media-library";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
+import { SiteAdminAnnouncementsPanel } from "./site-admin-announcements-panel";
 import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
 import { SiteAdminVersionHistory } from "./site-admin-version-history";
@@ -280,7 +281,14 @@ type HomePostPayload = {
   sourceVersion: SourceVersion;
 };
 
-type Area = "content" | "media" | "release" | "settings" | "home" | "now";
+type Area =
+  | "content"
+  | "media"
+  | "release"
+  | "settings"
+  | "home"
+  | "now"
+  | "announcements";
 type ContentMode = "browse" | "edit" | "create";
 
 type ComponentReturnTarget = {
@@ -791,6 +799,7 @@ export function SiteAdminWebConsole({
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingPublishCount, setPendingPublishCount] = useState(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
+  const [announcementDirty, setAnnouncementDirty] = useState(false);
   const [releaseJobs, setReleaseJobs] = useState<SiteAdminReleaseJobLike[] | null>(
     null,
   );
@@ -1043,7 +1052,8 @@ export function SiteAdminWebConsole({
   const homeDirty = Boolean(home && `${homeTitle}\n${homeBody}` !== homeBaseline);
   const nowComparable = `${nowText}\n${nowContext}\n${nowLocation}\n${nowDate}`;
   const nowDirty = Boolean(now && nowComparable !== nowBaseline);
-  const hasUnsavedChanges = selectedDirty || homeDirty || nowDirty || settingsDirty;
+  const hasUnsavedChanges =
+    selectedDirty || homeDirty || nowDirty || settingsDirty || announcementDirty;
   const slugDirty = Boolean(
     selected &&
       (selected.kind === "posts" || selected.kind === "pages") &&
@@ -2964,7 +2974,7 @@ export function SiteAdminWebConsole({
   }
 
   function changeContentPicker(value: string) {
-    if (value === "home" || value === "now") {
+    if (value === "home" || value === "now" || value === "announcements") {
       changeArea(value);
       return;
     }
@@ -2979,7 +2989,7 @@ export function SiteAdminWebConsole({
 
   function renderContentLibrary() {
     const pickerValue =
-      area === "home" || area === "now"
+      area === "home" || area === "now" || area === "announcements"
         ? area
         : selected?.kind === "components"
           ? `component:${selected.id}`
@@ -3002,6 +3012,7 @@ export function SiteAdminWebConsole({
             <optgroup label="Site">
               <option value="home">Home</option>
               <option value="now">Now</option>
+              <option value="announcements">Announcements</option>
             </optgroup>
             <optgroup label="Documents">
               <option value="posts">Posts</option>
@@ -3036,6 +3047,15 @@ export function SiteAdminWebConsole({
           >
             <span>Now</span>
             <small>Current status</small>
+          </button>
+          <button
+            type="button"
+            className={styles.contentNavButton}
+            data-active={area === "announcements"}
+            onClick={() => changeArea("announcements")}
+          >
+            <span>Announcements</span>
+            <small>Notices and banners</small>
           </button>
         </div>
 
@@ -3208,7 +3228,7 @@ export function SiteAdminWebConsole({
               className={styles.adminTab}
               data-active={
                 id === "content"
-                  ? area === "content" || area === "home" || area === "now"
+                  ? area === "content" || area === "home" || area === "now" || area === "announcements"
                   : area === id
               }
               onClick={() => changeArea(id as Area)}
@@ -4150,6 +4170,25 @@ export function SiteAdminWebConsole({
             </details>
           ) : null}
           </Card>
+        </section>
+      ) : null}
+
+      {area === "announcements" ? (
+        <section className={`${styles.workspaceGrid} ${styles.contentWorkspaceSimple}`}>
+          {renderContentLibrary()}
+          <SiteAdminAnnouncementsPanel
+            onDirtyChange={setAnnouncementDirty}
+            onSaved={(action) => {
+              setPendingPublishCount((count) => count + 1);
+              void (async () => {
+                const publishNotice = await queueSavedContentPublish(
+                  `announcement:${action}`,
+                );
+                await refreshSummaryOnly();
+                setNotice(`Announcement ${action === "delete" ? "deleted" : "saved"}.${publishNotice}`);
+              })();
+            }}
+          />
         </section>
       ) : null}
 

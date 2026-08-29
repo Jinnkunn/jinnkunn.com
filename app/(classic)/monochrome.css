@@ -1,0 +1,60 @@
+.super-root[data-monochrome-mode="true"][data-monochrome-scope="all-public"],
+.super-root[data-monochrome-mode="true"][data-monochrome-scope="home"]:has(.page__index) {
+  --ds-surface-page: var(--ds-monochrome-surface-page);
+  --ds-surface-panel: var(--ds-monochrome-surface-page);
+  --ds-surface-elevated: var(--ds-monochrome-surface-elevated);
+  --ds-surface-soft: var(--ds-monochrome-surface-soft);
+  --ds-surface-soft-strong: var(--ds-monochrome-surface-soft-strong);
+  --ds-text-primary: var(--ds-monochrome-text-primary);
+  --ds-text-secondary: var(--ds-monochrome-text-secondary);
+  --ds-text-muted: var(--ds-monochrome-text-muted);
+  --ds-text-faint: var(--ds-monochrome-text-faint);
+  --ds-text-subtle: var(--ds-monochrome-text-subtle);
+  --ds-border-subtle: var(--ds-monochrome-border-subtle);
+  --ds-border-strong: var(--ds-monochrome-border-strong);
+  --ds-border-emphasis: var(--ds-monochrome-border-emphasis);
+  --ds-accent: var(--ds-monochrome-accent);
+  --ds-link-underline: var(--ds-monochrome-link-underline);
+  --ds-link-underline-hover: var(--ds-monochrome-link-underline-hover);
+  --ds-link-highlight: var(--ds-monochrome-link-highlight);
+  --ds-nav-surface: var(--ds-monochrome-surface-page);
+  --ds-nav-surface-hover: var(--ds-monochrome-nav-hover);
+  --ds-nav-text: var(--ds-monochrome-text-primary);
+  --ds-footer-surface: var(--ds-monochrome-surface-page);
+  --color-bg-default: var(--ds-monochrome-surface-page);
+  --color-bg-surface: var(--ds-monochrome-surface-page);
+  --color-bg-subtle: var(--ds-monochrome-surface-soft);
+  --color-card-bg: var(--ds-monochrome-surface-page);
+  --color-card-bg-hover: var(--ds-monochrome-surface-soft);
+  --color-ui-hover-bg: var(--ds-monochrome-nav-hover);
+  --color-checkbox-bg: var(--ds-monochrome-accent);
+  --navbar-background-color: var(--ds-monochrome-surface-page);
+  --navbar-background-color-hover: var(--ds-monochrome-nav-hover);
+  --navbar-menu-background-color: var(--ds-monochrome-surface-page);
+  --navbar-button-background-color: var(--ds-monochrome-accent);
+  --footer-background-color: var(--ds-monochrome-surface-page);
+  --mobile-menu-bg: var(--ds-monochrome-surface-page);
+  min-height: 100vh;
+  background: var(--ds-surface-page);
+  color: var(--ds-text-primary);
+}
+
+html:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="all-public"]),
+body:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="all-public"]),
+html:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="home"] .page__index),
+body:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="home"] .page__index),
+.super-root[data-monochrome-mode="true"][data-monochrome-scope="all-public"] :is(.super-content-wrapper, .super-content, .notion-header, .notion-root, footer.super-footer),
+.super-root[data-monochrome-mode="true"][data-monochrome-scope="home"]:has(.page__index) :is(.super-content-wrapper, .super-content, .notion-header, .notion-root, footer.super-footer) {
+  background-color: var(--ds-monochrome-surface-page);
+}
+
+.super-root[data-monochrome-media="true"][data-monochrome-scope="all-public"]
+  :is(a, button, img, video, svg, canvas, .notion-icon),
+.super-root[data-monochrome-media="true"][data-monochrome-scope="home"]:has(.page__index)
+  :is(a, button, img, video, svg, canvas, .notion-icon) {
+  filter: grayscale(1) saturate(0) contrast(0.96);
+}
+
+.super-root[data-monochrome-mode="true"] :is(a, button, img, svg) {
+  transition-duration: 0ms !important;
+}

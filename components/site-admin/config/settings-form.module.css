@@ -67,7 +67,7 @@
   background: var(--ds-surface-soft);
 }
 
-.host :global(.site-admin-form__memorial-note) {
+.host :global(.site-admin-form__appearance-note) {
   grid-column: 1 / -1;
   display: grid;
   gap: 3px;
@@ -78,7 +78,7 @@
   line-height: 1.45;
 }
 
-.host :global(.site-admin-form__memorial-note strong) {
+.host :global(.site-admin-form__appearance-note strong) {
   color: var(--ds-text-primary);
 }
 

@@ -41,6 +41,8 @@ type SiteAdminAuditAction =
   | "teaching.save"
   | "works.save"
   | "home.save"
+  | "announcement.save"
+  | "announcement.delete"
   | "now.save"
   | "now.history.update"
   | "now.history.delete"

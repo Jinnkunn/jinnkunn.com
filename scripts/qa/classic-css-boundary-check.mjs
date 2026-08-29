@@ -24,7 +24,8 @@ const EXPECTED_LAYOUT_IMPORTS = [
   "notion-blocks.css",
   "navigation.css",
   "runtime-polish.css",
-  "memorial.css",
+  "announcement.css",
+  "monochrome.css",
 ];
 
 const EXPECTED_CLASSIC_IMPORTS = [
@@ -88,8 +89,10 @@ function main() {
     { layoutImports },
   );
   assert(
-    layoutImports.at(-2) === "runtime-polish.css" && layoutImports.at(-1) === "memorial.css",
-    "memorial.css must stay after the final regular classic CSS layer",
+    layoutImports.at(-3) === "runtime-polish.css" &&
+      layoutImports.at(-2) === "announcement.css" &&
+      layoutImports.at(-1) === "monochrome.css",
+    "announcement and monochrome CSS must stay after the regular classic CSS layers",
     { layoutImports },
   );
 

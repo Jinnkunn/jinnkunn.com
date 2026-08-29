@@ -30,22 +30,14 @@ export type DefaultSiteConfig = {
   security: {
     contentGithubUsers: string[];
   };
-  memorial: {
-    enabled: boolean;
-    scope: "home" | "all-public";
-    eyebrow: string;
-    title: string;
-    context: string;
-    englishTitle: string;
-    message: string;
-    chineseTitle: string;
-    chineseMessage: string;
-    sourceLabel: string;
-    sourceUrl: string;
-    sourceChineseLabel: string;
-    sourceChineseUrl: string;
-    startsAt: string;
-    endsAt: string;
+  appearance: {
+    monochrome: {
+      enabled: boolean;
+      scope: "home" | "all-public";
+      desaturateMedia: boolean;
+      startsAt: string;
+      endsAt: string;
+    };
   };
   nav: {
     top: DefaultNavItem[];
@@ -77,22 +69,14 @@ export const DEFAULT_SITE_CONFIG: DefaultSiteConfig = {
   security: {
     contentGithubUsers: [],
   },
-  memorial: {
-    enabled: false,
-    scope: "home",
-    eyebrow: "In remembrance",
-    title: "",
-    context: "",
-    englishTitle: "",
-    message: "",
-    chineseTitle: "",
-    chineseMessage: "",
-    sourceLabel: "Latest Updates",
-    sourceUrl: "",
-    sourceChineseLabel: "最新消息",
-    sourceChineseUrl: "",
-    startsAt: "",
-    endsAt: "",
+  appearance: {
+    monochrome: {
+      enabled: false,
+      scope: "all-public",
+      desaturateMedia: true,
+      startsAt: "",
+      endsAt: "",
+    },
   },
   nav: {
     top: [

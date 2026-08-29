@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "shigatse-gyirong-2026",
+      "title": "Shigatse · Gyirong remembrance",
+      "status": "published",
+      "scope": "all-public",
+      "routes": [],
+      "layout": "columns",
+      "initialState": "route-aware",
+      "collapsible": true,
+      "compactMdx": "Shigatse · Gyirong / 日喀则 · 吉隆\n\n[Latest Updates](https://so.news.cn/?lang=en#search/0/Gyirong/1/) · [最新消息](https://so.news.cn/#search/0/%E6%97%A5%E5%96%80%E5%88%99/1/0)",
+      "bodyMdx": "## Shigatse · Gyirong\n\n### In memory of those who lost their lives in the Gyirong mudslide.\n\nOn August 26, 2026, a mudslide struck the Gyirong Port area in Gyirong County, Shigatse.\n\nMay those who lost their lives rest in peace. May those still missing return safely. May the search and rescue proceed safely, and may everyone taking part return home safe.\n\nOur thoughts are also with those who work and serve at Gyirong Port, and with everyone affected by the disaster and their families.\n\nRescue efforts are ongoing. Please refer to official updates for the latest information.\n\n[Latest Updates](https://so.news.cn/?lang=en#search/0/Gyirong/1/)\n\n---\n\n## 日喀则 · 吉隆\n\n### 谨悼日喀则吉隆泥石流灾害遇难者。\n\n2026年8月26日，日喀则市吉隆县吉隆口岸区域发生泥石流灾害。\n\n愿逝者安息。愿失联者早日平安归来，也愿搜救顺利，所有参与救援的人平安。\n\n也牵挂那些在吉隆口岸工作和驻守的人们，以及所有受灾群众和他们的家人。愿他们平安。\n\n救援仍在进行，相关信息请以官方通报为准。\n\n[最新消息](https://so.news.cn/#search/0/%E6%97%A5%E5%96%80%E5%88%99/1/0)",
+      "startsAt": "2026-08-29",
+      "endsAt": "",
+      "updatedAt": "2026-08-29T12:00:00-03:00"
+    }
+  ]
+}
