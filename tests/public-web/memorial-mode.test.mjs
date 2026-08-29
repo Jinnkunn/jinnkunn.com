@@ -34,8 +34,12 @@ test("memorial mode observes its configured date window", () => {
   );
 });
 
-test("active site memorial identifies the event without freezing casualty figures", async () => {
+test("active site memorial identifies the event without freezing casualty figures", async (t) => {
   const config = JSON.parse(await fs.readFile("content/filesystem/site-config.json", "utf8"));
+  if (!config.memorial?.englishTitle && process.env.SITE_ADMIN_STORAGE === "db") {
+    t.skip("staging release tests use the live D1 content snapshot");
+    return;
+  }
   assert.equal(config.memorial.enabled, true);
   assert.equal(config.memorial.eyebrow, "");
   assert.equal(config.memorial.title, "日喀则 · 吉隆");
