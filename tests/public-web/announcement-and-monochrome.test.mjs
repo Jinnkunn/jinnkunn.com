@@ -98,6 +98,14 @@ test("classic layout renders announcements and monochrome appearance independent
   assert.match(frame, /site-announcement__panel-shell--compact/);
   assert.match(frame, /site-announcement__panel-shell--expanded/);
   assert.match(announcementCss, /site-announcement__layout/);
+  assert.match(
+    announcementCss,
+    /\.site-announcement__mdx--compact\s*\{[^}]*display:\s*grid/s,
+  );
+  assert.match(
+    announcementCss,
+    /\.site-announcement__mdx\.site-announcement__mdx--compact p\s*\{[^}]*margin:\s*0/s,
+  );
   assert.match(announcementCss, /grid-template-rows 420ms/);
   assert.match(announcementCss, /prefers-reduced-motion: reduce/);
   assert.doesNotMatch(
