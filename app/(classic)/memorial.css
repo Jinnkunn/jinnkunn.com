@@ -254,8 +254,31 @@ body:has(.super-root[data-memorial-mode="true"]),
 
 @media (max-width: 700px) {
   .memorial-notice__layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 24px;
+  }
+
+  .memorial-notice__primary,
+  .memorial-notice__secondary {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    justify-self: stretch;
+  }
+
+  .memorial-notice__primary > p,
+  .memorial-notice__secondary > p {
+    max-width: none;
+  }
+
+  /* `pretty` wrapping is tuned for word-based prose and can leave CJK copy
+   * looking like a narrow column. Let the browser use strict Chinese line
+   * breaking while preserving the full available measure. */
+  .memorial-notice__secondary > p {
+    line-break: strict;
+    overflow-wrap: break-word;
+    text-wrap: wrap;
+    word-break: normal;
   }
 
   .memorial-notice__inner--compact {
@@ -286,8 +309,8 @@ body:has(.super-root[data-memorial-mode="true"]),
 
 @media (max-width: 546px) {
   .memorial-notice__inner {
-    padding-left: var(--padding-left-mobile);
-    padding-right: var(--padding-right-mobile);
+    padding-left: calc(env(safe-area-inset-left) + 20px);
+    padding-right: calc(env(safe-area-inset-right) + 20px);
   }
 
   .memorial-notice__compact-title {

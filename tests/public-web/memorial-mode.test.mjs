@@ -79,6 +79,9 @@ test("classic public layout scopes memorial mode away from Site Admin", async ()
   assert.match(css, /:is\(img, video, svg, canvas, \.notion-icon\)/);
   assert.match(css, /--ds-memorial-banner-surface/);
   assert.match(css, /max-width: 1120px/);
+  assert.match(css, /grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /line-break: strict/);
+  assert.match(css, /safe-area-inset-left\) \+ 20px/);
   assert.match(css, /\.notion-header__cover\.no-cover/);
   assert.match(css, /body:has\(\.super-root\[data-memorial-mode="true"\]\)/);
   assert.match(css, /footer\.super-footer/);
