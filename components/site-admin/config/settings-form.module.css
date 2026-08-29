@@ -67,6 +67,21 @@
   background: var(--ds-surface-soft);
 }
 
+.host :global(.site-admin-form__memorial-note) {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--ds-text-muted);
+  color: var(--ds-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.host :global(.site-admin-form__memorial-note strong) {
+  color: var(--ds-text-primary);
+}
+
 .host :global(.site-admin-form__search-preview small),
 .host :global(.site-admin-form__search-preview strong),
 .host :global(.site-admin-form__search-preview span),

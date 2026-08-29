@@ -165,6 +165,37 @@ export function parseSiteAdminConfigCommand(
     if (patch.contentGithubUsers !== undefined) {
       outPatch.contentGithubUsers = getString(patch, "contentGithubUsers", { maxLen: 800 });
     }
+    if (patch.memorialEnabled !== undefined) {
+      outPatch.memorialEnabled = getBoolean(patch, "memorialEnabled") ?? false;
+    }
+    if (patch.memorialScope !== undefined) {
+      outPatch.memorialScope = getEnum(
+        patch,
+        "memorialScope",
+        ["home", "all-public"] as const,
+        "home",
+      );
+    }
+    const memorialTextLimits = {
+      memorialEyebrow: 120,
+      memorialTitle: 300,
+      memorialContext: 300,
+      memorialEnglishTitle: 300,
+      memorialMessage: 1200,
+      memorialChineseTitle: 300,
+      memorialChineseMessage: 1200,
+      memorialSourceLabel: 160,
+      memorialSourceUrl: 1000,
+      memorialSourceChineseLabel: 160,
+      memorialSourceChineseUrl: 1000,
+      memorialStartsAt: 40,
+      memorialEndsAt: 40,
+    } as const;
+    for (const [field, maxLen] of Object.entries(memorialTextLimits)) {
+      if (patch[field] !== undefined) {
+        (outPatch as Record<string, unknown>)[field] = getString(patch, field, { maxLen });
+      }
+    }
     if (patch.sitemapExcludes !== undefined) {
       outPatch.sitemapExcludes = getString(patch, "sitemapExcludes", { maxLen: 3000 });
     }

@@ -36,6 +36,23 @@ export type SiteConfig = {
   security?: {
     contentGithubUsers?: string[];
   };
+  memorial: {
+    enabled: boolean;
+    scope: "home" | "all-public";
+    eyebrow: string;
+    title: string;
+    context: string;
+    englishTitle: string;
+    message: string;
+    chineseTitle: string;
+    chineseMessage: string;
+    sourceLabel: string;
+    sourceUrl: string;
+    sourceChineseLabel: string;
+    sourceChineseUrl: string;
+    startsAt: string;
+    endsAt: string;
+  };
   nav: {
     top: NavItem[];
     more: NavItem[];
@@ -59,9 +76,21 @@ function asString(x: unknown): string | undefined {
   return typeof x === "string" && x.trim() ? x : undefined;
 }
 
+function asOptionalText(x: unknown): string | undefined {
+  return typeof x === "string" ? x.trim() : undefined;
+}
+
 function asNullableString(x: unknown): string | null | undefined {
   if (x === null) return null;
   return asString(x);
+}
+
+function asBoolean(x: unknown): boolean | undefined {
+  return typeof x === "boolean" ? x : undefined;
+}
+
+function asMemorialScope(x: unknown): "home" | "all-public" | undefined {
+  return x === "home" || x === "all-public" ? x : undefined;
 }
 
 function asRouteOverrides(x: unknown): Record<string, string> | null | undefined {
@@ -107,6 +136,10 @@ function normalizeConfig(input: unknown): SiteConfig {
   if (!isObject(input)) return DEFAULT_CONFIG;
 
   const cfg: SiteConfig = structuredClone(DEFAULT_CONFIG);
+  // Older generated bundles and persisted site-config rows predate memorial
+  // mode. Keep normalization tolerant even when the compiled default object
+  // is restored from one of those snapshots during development or rollback.
+  cfg.memorial = cfg.memorial ?? structuredClone(DEFAULT_SITE_CONFIG.memorial);
 
   cfg.siteName = asString(input.siteName) ?? cfg.siteName;
   cfg.lang = asString(input.lang) ?? cfg.lang;
@@ -133,6 +166,33 @@ function normalizeConfig(input: unknown): SiteConfig {
   if (isObject(input.security)) {
     cfg.security = cfg.security ?? { contentGithubUsers: [] };
     cfg.security.contentGithubUsers = normalizeGithubUserList(input.security.contentGithubUsers);
+  }
+
+  if (isObject(input.memorial)) {
+    cfg.memorial.enabled = asBoolean(input.memorial.enabled) ?? cfg.memorial.enabled;
+    cfg.memorial.scope = asMemorialScope(input.memorial.scope) ?? cfg.memorial.scope;
+    cfg.memorial.eyebrow = asOptionalText(input.memorial.eyebrow) ?? cfg.memorial.eyebrow;
+    cfg.memorial.title = asOptionalText(input.memorial.title) ?? cfg.memorial.title;
+    cfg.memorial.context = asOptionalText(input.memorial.context) ?? cfg.memorial.context;
+    cfg.memorial.englishTitle =
+      asOptionalText(input.memorial.englishTitle) ?? cfg.memorial.englishTitle;
+    cfg.memorial.message = asOptionalText(input.memorial.message) ?? cfg.memorial.message;
+    cfg.memorial.chineseTitle =
+      asOptionalText(input.memorial.chineseTitle) ?? cfg.memorial.chineseTitle;
+    cfg.memorial.chineseMessage =
+      asOptionalText(input.memorial.chineseMessage) ?? cfg.memorial.chineseMessage;
+    cfg.memorial.sourceLabel =
+      asOptionalText(input.memorial.sourceLabel) ?? cfg.memorial.sourceLabel;
+    cfg.memorial.sourceUrl =
+      asOptionalText(input.memorial.sourceUrl) ?? cfg.memorial.sourceUrl;
+    cfg.memorial.sourceChineseLabel =
+      asOptionalText(input.memorial.sourceChineseLabel) ??
+      cfg.memorial.sourceChineseLabel;
+    cfg.memorial.sourceChineseUrl =
+      asOptionalText(input.memorial.sourceChineseUrl) ?? cfg.memorial.sourceChineseUrl;
+    cfg.memorial.startsAt =
+      asOptionalText(input.memorial.startsAt) ?? cfg.memorial.startsAt;
+    cfg.memorial.endsAt = asOptionalText(input.memorial.endsAt) ?? cfg.memorial.endsAt;
   }
 
   if (isObject(input.nav)) {

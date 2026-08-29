@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { HTMLInputTypeAttribute, ReactNode } from "react";
 
 import { CheckboxRow, Field, Textarea } from "@/components/ui/field";
 import { asString } from "./utils";
@@ -26,6 +26,7 @@ type TextFieldRowProps = {
   onChange: (next: string) => void;
   placeholder?: string;
   mono?: boolean;
+  type?: HTMLInputTypeAttribute;
 };
 
 export function SiteAdminTextFieldRow({
@@ -34,12 +35,14 @@ export function SiteAdminTextFieldRow({
   onChange,
   placeholder,
   mono = false,
+  type = "text",
 }: TextFieldRowProps) {
   return (
     <SiteAdminFormRow label={label}>
       <Field
         className={`site-admin-form__input${mono ? " site-admin-form__input--mono" : ""}`}
         mono={mono}
+        type={type}
         value={asString(value)}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

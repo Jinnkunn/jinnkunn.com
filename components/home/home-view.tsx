@@ -3,7 +3,9 @@ import "server-only";
 import type { ReactElement } from "react";
 
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
+import { MemorialNotice } from "@/components/memorial-notice";
 import { postMdxComponents } from "@/components/posts-mdx/components";
+import type { MemorialConfig } from "@/lib/memorial";
 import { compilePostMdx } from "@/lib/posts/compile";
 import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
 
@@ -15,8 +17,10 @@ import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
  * cleared Home shouldn't crash, the user fixes it in the admin). */
 export async function HomeView({
   data,
+  memorial,
 }: {
   data: SiteAdminHomeData;
+  memorial?: MemorialConfig | null;
 }): Promise<ReactElement> {
   const body = data.bodyMdx?.trim() ?? "";
   const Content = body ? (await compilePostMdx(body)).Content : null;
@@ -24,6 +28,9 @@ export async function HomeView({
     <ClassicPageShell
       title={data.title}
       className="super-content page__index parent-page__index"
+      beforeHeader={
+        memorial ? <MemorialNotice memorial={memorial} variant="home" /> : undefined
+      }
     >
       {Content ? (
         <div className="mdx-post__body">

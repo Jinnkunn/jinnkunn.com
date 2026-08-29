@@ -1,0 +1,300 @@
+/* A temporary, configurable public-site state. It stays editorial and
+ * unframed: hierarchy, restraint, and verified context carry the message. */
+.super-root[data-memorial-mode="true"] {
+  --ds-surface-page: var(--ds-memorial-surface-page);
+  --ds-surface-panel: var(--ds-memorial-surface-page);
+  --ds-surface-elevated: var(--ds-memorial-surface-elevated);
+  --ds-surface-soft: var(--ds-memorial-surface-soft);
+  --ds-surface-soft-strong: var(--ds-memorial-surface-soft-strong);
+  --ds-text-primary: var(--ds-memorial-text-primary);
+  --ds-text-secondary: var(--ds-memorial-text-secondary);
+  --ds-text-muted: var(--ds-memorial-text-muted);
+  --ds-text-faint: var(--ds-memorial-text-faint);
+  --ds-text-subtle: var(--ds-memorial-text-subtle);
+  --ds-border-subtle: var(--ds-memorial-border-subtle);
+  --ds-border-strong: var(--ds-memorial-border-strong);
+  --ds-border-emphasis: var(--ds-memorial-border-emphasis);
+  --ds-accent: var(--ds-memorial-accent);
+  --ds-link-underline: var(--ds-memorial-link-underline);
+  --ds-link-underline-hover: var(--ds-memorial-link-underline-hover);
+  --ds-link-highlight: var(--ds-memorial-link-highlight);
+  --ds-nav-surface: var(--ds-memorial-surface-page);
+  --ds-nav-surface-hover: var(--ds-memorial-nav-hover);
+  --ds-nav-text: var(--ds-memorial-text-primary);
+  --ds-footer-surface: var(--ds-memorial-surface-page);
+  /* The imported Super stylesheet still reads these legacy variables directly.
+   * Rebind them on the memorial root so the navbar, menus, content shell, and
+   * footer share one continuous paper surface instead of leaving white bands. */
+  --color-bg-default: var(--ds-memorial-surface-page);
+  --color-bg-surface: var(--ds-memorial-surface-page);
+  --color-bg-subtle: var(--ds-memorial-surface-soft);
+  --color-card-bg: var(--ds-memorial-surface-page);
+  --color-card-bg-hover: var(--ds-memorial-surface-soft);
+  --color-ui-hover-bg: var(--ds-memorial-nav-hover);
+  --color-checkbox-bg: var(--ds-memorial-accent);
+  --navbar-background-color: var(--ds-memorial-surface-page);
+  --navbar-background-color-hover: var(--ds-memorial-nav-hover);
+  --navbar-menu-background-color: var(--ds-memorial-surface-page);
+  --navbar-button-background-color: var(--ds-memorial-accent);
+  --footer-background-color: var(--ds-memorial-surface-page);
+  --mobile-menu-bg: var(--ds-memorial-surface-page);
+  min-height: 100vh;
+  background: var(--ds-surface-page);
+  color: var(--ds-text-primary);
+}
+
+/* Cover every structural surface explicitly. The classic renderer mixes
+ * inherited variables with a few direct surface declarations; relying on
+ * inheritance alone can leave the lower page or iOS overscroll canvas white. */
+html:has(.super-root[data-memorial-mode="true"]),
+body:has(.super-root[data-memorial-mode="true"]),
+.super-root[data-memorial-mode="true"] .super-content-wrapper,
+.super-root[data-memorial-mode="true"] .super-content,
+.super-root[data-memorial-mode="true"] .notion-header,
+.super-root[data-memorial-mode="true"] .notion-root,
+.super-root[data-memorial-mode="true"] footer.super-footer {
+  background-color: var(--ds-memorial-surface-page);
+}
+
+.super-root[data-memorial-mode="true"] :is(img, video, svg, canvas, .notion-icon) {
+  filter: grayscale(1) saturate(0) contrast(0.96);
+}
+
+.super-root[data-memorial-mode="true"]
+  :is(span[data-link-style="icon"] > a.notion-link.link, a[data-link-style="icon"].notion-link.link)::before {
+  filter: grayscale(1) saturate(0) contrast(0.96);
+}
+
+.super-root[data-memorial-mode="true"] :is(a, button, img, svg) {
+  transition-duration: 0ms !important;
+}
+
+.memorial-notice {
+  box-sizing: border-box;
+  width: 100%;
+  color: var(--ds-text-primary);
+}
+
+.memorial-notice__inner {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: var(--padding-left) var(--padding-right);
+}
+
+.memorial-notice p,
+.memorial-notice h2,
+.memorial-notice h3 {
+  margin: 0;
+}
+
+.memorial-notice__eyebrow {
+  color: var(--ds-text-faint);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.memorial-notice--compact {
+  border-top: 1px solid var(--ds-border-subtle);
+  border-bottom: 1px solid var(--ds-border-subtle);
+  background: var(--ds-memorial-banner-surface);
+}
+
+.memorial-notice__inner--compact {
+  display: grid;
+  grid-template-columns: 2px minmax(0, 1fr) auto;
+  min-height: 62px;
+  align-items: center;
+  column-gap: 14px;
+}
+
+.super-root:has(.memorial-notice--home) .memorial-notice--compact {
+  display: none;
+}
+
+.memorial-notice__marker {
+  width: 2px;
+  height: 28px;
+  flex: 0 0 auto;
+  background: var(--ds-text-muted);
+}
+
+.memorial-notice__compact-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px !important;
+  color: var(--ds-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.memorial-notice__compact-context {
+  color: var(--ds-text-faint);
+  font-size: 12px;
+}
+
+.memorial-notice__compact-context::before {
+  margin-right: 8px;
+  color: var(--ds-border-strong);
+  content: "/";
+}
+
+.memorial-notice__sources a,
+.memorial-notice__column-source {
+  color: var(--ds-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration-color: var(--ds-link-underline);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.memorial-notice__column-source {
+  width: fit-content;
+  margin-top: 7px;
+}
+
+.memorial-notice__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.memorial-notice__inner--compact > .memorial-notice__sources {
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.memorial-notice--home {
+  margin-top: 10px;
+  margin-bottom: 0;
+  border-top: 1px solid var(--ds-border-subtle);
+  border-bottom: 1px solid var(--ds-border-subtle);
+  background: var(--ds-memorial-banner-surface);
+}
+
+.memorial-notice__inner--home {
+  padding-top: 22px;
+  padding-bottom: 24px;
+}
+
+/* The classic page shell reserves 140px for a missing Notion cover. That
+ * spacing is useful on an ordinary page, but reads as a blank section after
+ * the memorial notice. Keep a small breath before the original Home title. */
+.page__index:has(.memorial-notice--home) .notion-header__cover.no-cover {
+  height: 28px;
+  max-height: 28px;
+}
+
+.memorial-notice__layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(28px, 6vw, 64px);
+  margin-top: 17px;
+}
+
+.memorial-notice__primary,
+.memorial-notice__secondary {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+}
+
+.memorial-notice__primary h2 {
+  max-width: 22ch;
+  font-size: clamp(26px, 4vw, 38px);
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.memorial-notice__secondary > .memorial-notice__secondary-location {
+  color: var(--ds-text-primary);
+  font-size: clamp(26px, 4vw, 38px);
+  font-weight: 680;
+  letter-spacing: 0;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.memorial-notice__primary > p,
+.memorial-notice__secondary > p {
+  color: var(--ds-text-secondary);
+  font-size: 14px;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.memorial-notice__secondary {
+  padding-left: 0;
+}
+
+.memorial-notice__primary h3,
+.memorial-notice__secondary h3 {
+  font-size: 18px;
+  font-weight: 680;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+@media (min-width: 547px) and (max-width: 900px) {
+  .memorial-notice__inner {
+    padding-left: calc(env(safe-area-inset-left) + 48px);
+    padding-right: calc(env(safe-area-inset-right) + 48px);
+  }
+}
+
+@media (max-width: 700px) {
+  .memorial-notice__layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .memorial-notice__inner--compact {
+    grid-template-columns: 2px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: stretch;
+    column-gap: 14px;
+    row-gap: 10px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
+  .memorial-notice__inner--compact .memorial-notice__marker {
+    grid-row: 1 / span 2;
+    height: auto;
+    min-height: 42px;
+  }
+
+  .memorial-notice__compact-copy,
+  .memorial-notice__inner--compact > .memorial-notice__sources {
+    grid-column: 2;
+  }
+
+  .memorial-notice__inner--compact > .memorial-notice__sources {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 546px) {
+  .memorial-notice__inner {
+    padding-left: var(--padding-left-mobile);
+    padding-right: var(--padding-right-mobile);
+  }
+
+  .memorial-notice__compact-title {
+    gap: 4px 7px;
+  }
+
+  .memorial-notice__compact-context::before {
+    margin-right: 7px;
+  }
+}

@@ -144,6 +144,111 @@ export function SiteAdminSettingsForm({
         </div>
       </SettingsGroup>
 
+      <SettingsGroup
+        title="Memorial mode"
+        description="Apply a quiet grayscale treatment to the public site and explain what is being remembered."
+      >
+        <SiteAdminSwitchRow
+          label="Status"
+          checked={draftSettings.memorialEnabled}
+          onChange={(next) => updateField("memorialEnabled", next)}
+          text={draftSettings.memorialEnabled ? "Memorial mode is active" : "Memorial mode is off"}
+        />
+        <SiteAdminSelectFieldRow
+          label="Scope"
+          value={draftSettings.memorialScope}
+          onChange={(next) =>
+            updateField("memorialScope", next === "all-public" ? "all-public" : "home")
+          }
+          options={[
+            { value: "home", label: "Home page only" },
+            { value: "all-public", label: "All public pages" },
+          ]}
+        />
+        <SiteAdminTextFieldRow
+          label="Eyebrow"
+          value={draftSettings.memorialEyebrow}
+          onChange={(next) => updateField("memorialEyebrow", next)}
+          placeholder="In remembrance"
+        />
+        <SiteAdminTextFieldRow
+          label="English location"
+          value={draftSettings.memorialContext}
+          onChange={(next) => updateField("memorialContext", next)}
+          placeholder="Shigatse · Gyirong"
+        />
+        <SiteAdminTextFieldRow
+          label="Chinese location"
+          value={draftSettings.memorialTitle}
+          onChange={(next) => updateField("memorialTitle", next)}
+          placeholder="日喀则 · 吉隆"
+        />
+        <SiteAdminTextFieldRow
+          label="English memorial heading"
+          value={draftSettings.memorialEnglishTitle}
+          onChange={(next) => updateField("memorialEnglishTitle", next)}
+          placeholder="In memory of those who lost their lives…"
+        />
+        <SiteAdminTextAreaRow
+          label="English message"
+          value={draftSettings.memorialMessage}
+          onChange={(next) => updateField("memorialMessage", next)}
+          placeholder="A short, factual remembrance message."
+        />
+        <SiteAdminTextFieldRow
+          label="Chinese memorial heading"
+          value={draftSettings.memorialChineseTitle}
+          onChange={(next) => updateField("memorialChineseTitle", next)}
+          placeholder="谨悼……遇难者"
+        />
+        <SiteAdminTextAreaRow
+          label="Chinese message"
+          value={draftSettings.memorialChineseMessage}
+          onChange={(next) => updateField("memorialChineseMessage", next)}
+          placeholder="简短说明悼念对象，并以官方通报为准。"
+        />
+        <SiteAdminTextFieldRow
+          label="English updates label"
+          value={draftSettings.memorialSourceLabel}
+          onChange={(next) => updateField("memorialSourceLabel", next)}
+          placeholder="Latest Updates"
+        />
+        <SiteAdminTextFieldRow
+          label="English updates URL"
+          value={draftSettings.memorialSourceUrl}
+          onChange={(next) => updateField("memorialSourceUrl", next)}
+          placeholder="https://…"
+        />
+        <SiteAdminTextFieldRow
+          label="Chinese updates label"
+          value={draftSettings.memorialSourceChineseLabel}
+          onChange={(next) => updateField("memorialSourceChineseLabel", next)}
+          placeholder="最新消息"
+        />
+        <SiteAdminTextFieldRow
+          label="Chinese updates URL"
+          value={draftSettings.memorialSourceChineseUrl}
+          onChange={(next) => updateField("memorialSourceChineseUrl", next)}
+          placeholder="https://…"
+        />
+        <SiteAdminTextFieldRow
+          label="Starts"
+          value={draftSettings.memorialStartsAt}
+          onChange={(next) => updateField("memorialStartsAt", next)}
+          type="date"
+        />
+        <SiteAdminTextFieldRow
+          label="Ends (optional)"
+          value={draftSettings.memorialEndsAt}
+          onChange={(next) => updateField("memorialEndsAt", next)}
+          type="date"
+        />
+        <div className="site-admin-form__memorial-note">
+          <strong>Keep changing figures out of this message.</strong>
+          <span>Link to the official source so visitors can see the latest verified update.</span>
+        </div>
+      </SettingsGroup>
+
       <details className="site-admin-form__advanced">
         <summary>
           <span>Advanced</span>

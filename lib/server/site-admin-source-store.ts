@@ -691,6 +691,7 @@ function mapSiteSettings(siteConfig: JsonRecord): SiteSettings {
   const integrations = asRecord(siteConfig.integrations);
   const security = asRecord(siteConfig.security);
   const content = asRecord(siteConfig.content);
+  const memorial = asRecord(siteConfig.memorial);
   const autoExclude = normalizeSitemapAutoExclude(content.sitemapAutoExclude);
   const pageOverrides = normalizeSeoPageOverrides(seo.pageOverrides);
   const users = Array.isArray(security.contentGithubUsers)
@@ -713,6 +714,23 @@ function mapSiteSettings(siteConfig: JsonRecord): SiteSettings {
         : "",
     googleAnalyticsId: asString(integrations.googleAnalyticsId),
     contentGithubUsers: users.join(", "),
+    memorialEnabled: asBoolean(memorial.enabled, false),
+    memorialScope: memorial.scope === "all-public" ? "all-public" : "home",
+    memorialEyebrow: asString(memorial.eyebrow) || "In remembrance",
+    memorialTitle: asString(memorial.title),
+    memorialContext: asString(memorial.context),
+    memorialEnglishTitle: asString(memorial.englishTitle),
+    memorialMessage: asString(memorial.message),
+    memorialChineseTitle: asString(memorial.chineseTitle),
+    memorialChineseMessage: asString(memorial.chineseMessage),
+    memorialSourceLabel:
+      asString(memorial.sourceLabel) || "Latest Updates",
+    memorialSourceUrl: asString(memorial.sourceUrl),
+    memorialSourceChineseLabel:
+      asString(memorial.sourceChineseLabel) || "最新消息",
+    memorialSourceChineseUrl: asString(memorial.sourceChineseUrl),
+    memorialStartsAt: asString(memorial.startsAt),
+    memorialEndsAt: asString(memorial.endsAt),
     sitemapExcludes: sitemapExcludes.join("\n"),
     sitemapAutoExcludeEnabled: Boolean(autoExclude.enabled),
     sitemapAutoExcludeSections: autoExclude.excludeSections.join(", "),
@@ -798,6 +816,7 @@ function applySettingsPatch(
   const integrations = asRecord(next.integrations);
   const security = asRecord(next.security);
   const content = asRecord(next.content);
+  const memorial = asRecord(next.memorial);
   const autoExclude = normalizeSitemapAutoExclude(content.sitemapAutoExclude);
   const maxDepthBySection = { ...autoExclude.maxDepthBySection };
 
@@ -820,6 +839,45 @@ function applySettingsPatch(
   }
   if (patch.contentGithubUsers !== undefined) {
     security.contentGithubUsers = parseGithubUserCsv(patch.contentGithubUsers);
+  }
+  if (patch.memorialEnabled !== undefined) {
+    memorial.enabled = Boolean(patch.memorialEnabled);
+  }
+  if (patch.memorialScope !== undefined) {
+    memorial.scope = patch.memorialScope === "all-public" ? "all-public" : "home";
+  }
+  const memorialTextFields = [
+    "memorialEyebrow",
+    "memorialTitle",
+    "memorialContext",
+    "memorialEnglishTitle",
+    "memorialMessage",
+    "memorialChineseTitle",
+    "memorialChineseMessage",
+    "memorialSourceLabel",
+    "memorialSourceUrl",
+    "memorialSourceChineseLabel",
+    "memorialSourceChineseUrl",
+    "memorialStartsAt",
+    "memorialEndsAt",
+  ] as const;
+  const memorialKeys = {
+    memorialEyebrow: "eyebrow",
+    memorialTitle: "title",
+    memorialContext: "context",
+    memorialEnglishTitle: "englishTitle",
+    memorialMessage: "message",
+    memorialChineseTitle: "chineseTitle",
+    memorialChineseMessage: "chineseMessage",
+    memorialSourceLabel: "sourceLabel",
+    memorialSourceUrl: "sourceUrl",
+    memorialSourceChineseLabel: "sourceChineseLabel",
+    memorialSourceChineseUrl: "sourceChineseUrl",
+    memorialStartsAt: "startsAt",
+    memorialEndsAt: "endsAt",
+  } as const;
+  for (const field of memorialTextFields) {
+    if (patch[field] !== undefined) memorial[memorialKeys[field]] = String(patch[field] || "").trim();
   }
   if (patch.sitemapExcludes !== undefined) {
     content.sitemapExcludes = parseSitemapExcludeEntries(patch.sitemapExcludes);
@@ -868,6 +926,7 @@ function applySettingsPatch(
   next.seo = seo;
   next.integrations = integrations;
   next.security = security;
+  next.memorial = memorial;
   next.content = content;
   return next;
 }
