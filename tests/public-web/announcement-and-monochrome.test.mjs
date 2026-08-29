@@ -52,8 +52,14 @@ test("the current announcement is content, not appearance configuration", async 
   assert.match(current.bodyMdx, /日喀则 · 吉隆/);
   assert.match(current.bodyMdx, /Latest Updates/);
   assert.match(current.bodyMdx, /最新消息/);
-  assert.equal(config.memorial, undefined);
-  assert.equal(config.appearance.monochrome.enabled, true);
+  assert.equal(config.appearance?.announcement, undefined);
+
+  // Release snapshots may temporarily contain the previous D1 config shape.
+  // Runtime migration reads only its display state; announcement prose always
+  // comes from announcements.json and the next settings save removes it.
+  const monochrome = config.appearance?.monochrome ?? config.memorial;
+  assert.equal(monochrome.enabled, true);
+  assert.equal(monochrome.scope, "all-public");
 });
 
 test("monochrome appearance has its own independent schedule", () => {
