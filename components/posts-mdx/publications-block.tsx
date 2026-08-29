@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 
 import { parsePublicationsEntries } from "@/lib/components/parse";
 import { PublicationList } from "@/components/publications/publication-list";
-import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
+import { getSiteComponentDefinition } from "@jinnkunn/content-core/components";
 
 interface PublicationsBlockProps {
   /** Cap rendered entries (newest first). Omit for all entries. */

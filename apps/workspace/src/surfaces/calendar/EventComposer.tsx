@@ -13,7 +13,7 @@ import {
   toZonedDateTimeInputValue,
   zonedDateAtMinute,
   zonedMinuteOfDay,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 
 const RECURRENCE_OPTIONS: Array<{
   value: "none" | RecurrenceFrequency;

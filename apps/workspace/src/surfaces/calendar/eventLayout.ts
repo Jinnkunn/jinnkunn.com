@@ -25,7 +25,7 @@ import {
   isSameZonedDay,
   zonedDayRange,
   zonedMinuteOfDay,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 import type { CalendarEvent } from "./types";
 
 export interface PositionedEvent {

@@ -58,12 +58,21 @@ test("deploy metadata: reports stale deployable versions", () => {
   assert.match(mismatch || "", /content=cccccccc expected bbbbbbbb/);
 });
 
-test("release script uses a clean snapshot for dirty staging releases", async () => {
+test("release script uses an immutable snapshot for every full release", async () => {
   const script = await fs.readFile(
     path.join(process.cwd(), "scripts/release/release-cloudflare.mjs"),
     "utf8",
   );
-  assert.match(script, /prepareCleanReleaseSnapshot/);
+  assert.match(script, /createReleaseWorkspacePlan/);
+  assert.match(script, /prepareImmutableReleaseSnapshot/);
+  assert.match(script, /removeImmutableReleaseSnapshot/);
+  assert.match(script, /immutable snapshot/);
+  assert.match(script, /--skip-build requires a recent immutable build cache/);
+  assert.match(script, /--skip-build requires RELEASE_EXPECT_CONTENT_SHA/);
+  assert.match(script, /buildRun: didRunBuild/);
+  assert.match(script, /resolvedContentSourceMode = `\$\{cached\.env \|\| "unknown"\}-immutable-build-cache`/);
+  assert.match(script, /Production promotion requires the exact verified staging artifact/);
+  assert.match(script, /restore verified cached build artifacts/);
   assert.match(script, /dumpD1Content/);
   assert.match(script, /--sync-content-to-git/);
   assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);

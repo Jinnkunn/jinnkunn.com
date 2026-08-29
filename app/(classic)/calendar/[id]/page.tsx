@@ -9,8 +9,8 @@ import { getSiteConfig } from "@/lib/site-config";
 import {
   DEFAULT_CALENDAR_TIME_ZONE,
   formatInTimeZone,
-} from "@/lib/shared/calendar-timezone";
-import type { PublicCalendarEvent } from "@/lib/shared/public-calendar";
+} from "@jinnkunn/calendar-core/timezone";
+import type { PublicCalendarEvent } from "@jinnkunn/calendar-core/public";
 
 // Per-event detail page. Reachable via:
 //

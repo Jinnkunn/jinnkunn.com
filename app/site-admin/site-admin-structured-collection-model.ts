@@ -6,7 +6,7 @@ import {
   type WorksComponentEntry,
 } from "@/lib/components/parse";
 import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
-import type { SiteComponentName } from "@/lib/site-admin/component-registry";
+import type { SiteComponentName } from "@jinnkunn/content-core/components";
 import { parseMonthRangePeriod } from "./site-admin-month-range";
 
 export type NewsDraftEntry = {

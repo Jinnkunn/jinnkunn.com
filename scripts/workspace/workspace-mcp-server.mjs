@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { DatabaseSync } from "node:sqlite";
+import { unwrapSiteAdminApiEnvelope } from "@jinnkunn/site-admin-client/transport";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -2452,15 +2453,19 @@ function siteAdminApiRequestSync(api, method, requestPath, body = null) {
     throw new Error(`SITE_ADMIN_API_BAD_RESPONSE: ${result.stdout || result.stderr}`);
   }
   const bodyRecord = asObject(parsed.body);
-  const envelopeOk = bodyRecord.ok === true || (parsed.ok && bodyRecord.ok !== false);
-  if (!parsed.ok || bodyRecord.ok === false || !envelopeOk) {
-    const code = cleanText(bodyRecord.code, 120) || `HTTP_${parsed.status || 0}`;
-    const error = cleanText(bodyRecord.error, 1_000) || cleanText(parsed.text, 1_000) || "Site Admin API request failed.";
+  const envelope = unwrapSiteAdminApiEnvelope(parsed.body);
+  if (!parsed.ok || !envelope.ok) {
+    const code = envelope.ok
+      ? cleanText(bodyRecord.code, 120) || `HTTP_${parsed.status || 0}`
+      : envelope.code;
+    const error = envelope.ok
+      ? cleanText(bodyRecord.error, 1_000) || cleanText(parsed.text, 1_000) || "Site Admin API request failed."
+      : envelope.error;
     throw new Error(`${code}: ${error}`);
   }
   return {
     status: parsed.status,
-    data: bodyRecord.ok === true ? bodyRecord.data : bodyRecord,
+    data: envelope.data,
     raw: parsed.body,
   };
 }

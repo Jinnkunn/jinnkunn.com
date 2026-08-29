@@ -10,6 +10,11 @@ import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { readActiveDeployment } from "../_lib/cloudflare-api.mjs";
 import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
 import { readMarker, writeMarker } from "../_lib/release-cache.mjs";
+import {
+  createReleaseWorkspacePlan,
+  prepareImmutableReleaseSnapshot,
+  removeImmutableReleaseSnapshot,
+} from "../_lib/release-workspace.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -245,38 +250,6 @@ function buildCacheContentMatches(marker, expectedContentSha) {
   const expected = String(expectedContentSha || "").trim().toLowerCase();
   if (!expected) return true;
   return String(marker?.contentSnapshotSha || "").trim().toLowerCase() === expected;
-}
-
-function prepareCleanReleaseSnapshot({ repoRoot, sha }) {
-  // A staging release should ship the committed HEAD even when the operator
-  // has unrelated local UI work in progress. Build/upload from an ignored
-  // clean snapshot so dirty files do not block content/calendar deploys and
-  // do not accidentally leak into the Worker bundle.
-  const shortSha = sha.slice(0, 12);
-  const snapshotRoot = path.join(repoRoot, ".cache", "release", "snapshots", shortSha);
-  const archivePath = path.join(repoRoot, ".cache", "release", "snapshots", `${shortSha}.tar`);
-  fs.rmSync(snapshotRoot, { recursive: true, force: true });
-  fs.mkdirSync(snapshotRoot, { recursive: true });
-  fs.mkdirSync(path.dirname(archivePath), { recursive: true });
-  run("git", ["archive", "--format=tar", "-o", archivePath, sha], {
-    label: "git archive HEAD",
-    cwd: repoRoot,
-  });
-  run("tar", ["-xf", archivePath, "-C", snapshotRoot], {
-    label: "tar extract release snapshot",
-    cwd: repoRoot,
-  });
-  fs.rmSync(archivePath, { force: true });
-  // Root deps plus every sub-project the release CHECKS run in — `git archive`
-  // ships sources only, so an un-linked sub-project fails at `tsc: not found`.
-  for (const relative of ["", WORKSPACE_DIR]) {
-    const source = path.join(repoRoot, relative, "node_modules");
-    const target = path.join(snapshotRoot, relative, "node_modules");
-    if (fs.existsSync(source) && fs.existsSync(path.dirname(target)) && !fs.existsSync(target)) {
-      fs.symlinkSync(source, target, "dir");
-    }
-  }
-  return snapshotRoot;
 }
 
 function dumpD1Content({ targetRoot, env, label }) {
@@ -541,6 +514,13 @@ async function main() {
         ? { ok: true, reasons: [] }
         : null;
   const productionGuard = args.env === "production" ? evaluateProductionGuard(git) : null;
+  const releaseWorkspace = createReleaseWorkspacePlan({
+    env: args.env,
+    contentEnv: args.contentEnv,
+    skipBuild: args.skipBuild,
+    syncContentToGit: args.syncContentToGit,
+    reuseStagingBuild: readEnv("RELEASE_REUSE_STAGING_BUILD") === "1",
+  });
   const expectedProductionVersionFromShell =
     readEnv("RELEASE_EXPECT_PRODUCTION_VERSION") ||
     readEnv("VERIFY_CF_EXPECT_PRODUCTION_VERSION");
@@ -552,7 +532,8 @@ async function main() {
     source: git,
     productionGuard,
     stagingDirtyGuard,
-    releaseRoot: ROOT,
+    releaseWorkspace,
+    releaseRoot: null,
   };
 
   if (args.dryRun) {
@@ -560,7 +541,9 @@ async function main() {
       ...baseReport,
       wouldRun: [
         ...(args.skipChecks ? [] : CHECKS.map(([name]) => name)),
-        ...(args.skipBuild ? [] : ["build:cf"]),
+        ...(releaseWorkspace.requiresCachedBuild
+          ? ["restore verified cached build artifacts"]
+          : ["build:cf"]),
         ...(args.skipUpload ? [] : ["wrangler versions upload"]),
         "deploy:cf",
         ...(args.skipVerify ? [] : ["verify:cf"]),
@@ -580,21 +563,16 @@ async function main() {
     return;
   }
 
-  const useD1ContentSnapshot =
-    args.env === "staging" && !args.skipBuild && !args.syncContentToGit;
-  const useCleanSnapshot =
-    args.env === "staging" &&
-    (useD1ContentSnapshot || git.dirty) &&
-    readEnv("ALLOW_DIRTY_STAGING") !== "1";
-  const releaseRoot = useCleanSnapshot
-    ? prepareCleanReleaseSnapshot({ repoRoot: ROOT, sha: git.sha })
-    : ROOT;
-  if (useCleanSnapshot) {
-    console.log(
-      `[release-cloudflare] working tree has ${git.dirtyFileCount} dirty file${git.dirtyFileCount === 1 ? "" : "s"}; building committed HEAD from ${path.relative(ROOT, releaseRoot)}`,
-    );
-  }
-  if (useD1ContentSnapshot) {
+  const releaseRoot = prepareImmutableReleaseSnapshot({
+    repoRoot: ROOT,
+    sha: git.sha,
+    environment: args.env,
+    dependencyRoots: ["", WORKSPACE_DIR],
+  });
+  console.log(
+    `[release-cloudflare] using committed HEAD from immutable snapshot ${path.relative(ROOT, releaseRoot)}${git.dirty ? `; excluded ${git.dirtyFileCount} working-tree change${git.dirtyFileCount === 1 ? "" : "s"}` : ""}`,
+  );
+  if (releaseWorkspace.hydrateContentFromD1) {
     dumpD1Content({
       targetRoot: releaseRoot,
       env: args.contentEnv,
@@ -663,6 +641,8 @@ async function main() {
   }
 
   let uploadedVersionId = null;
+  let didRunBuild = false;
+  let resolvedContentSourceMode = releaseWorkspace.contentSourceMode;
   let buildCache = {
     attempted: false,
     hit: false,
@@ -672,11 +652,64 @@ async function main() {
     storedContentSha: "",
   };
 
-  if (!args.skipBuild) {
+  if (args.skipBuild) {
+    if (!buildCache.expectedContentSha) {
+      throw new Error(
+        "--skip-build requires RELEASE_EXPECT_CONTENT_SHA so cached code and content can both be verified. Re-run without --skip-build when no expected content SHA is available.",
+      );
+    }
+    const cached = args.noCache
+      ? null
+      : readMarker({
+          repoRoot: ROOT,
+          bucket: BUILD_CACHE_BUCKET,
+          sha: git.sha,
+          maxAgeMs: BUILD_CACHE_TTL_MS,
+        });
+    if (!cached) {
+      throw new Error(
+        `--skip-build requires a recent immutable build cache for ${git.sha}. Re-run without --skip-build.`,
+      );
+    }
+    if (!buildCacheContentMatches(cached, buildCache.expectedContentSha)) {
+      throw new Error(
+        `--skip-build cache content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha || "unspecified"}`,
+      );
+    }
+    const restored = restoreBuildArtifacts({
+      repoRoot: ROOT,
+      artifactRoot: releaseRoot,
+      sha: git.sha,
+    });
+    const missing = BUILD_CACHE_PATHS.filter((entry) => !restored.includes(entry));
+    if (missing.length > 0) {
+      throw new Error(
+        `--skip-build cache is incomplete for ${git.sha}; missing ${missing.join(", ")}. Re-run without --skip-build.`,
+      );
+    }
+    buildCache = {
+      ...buildCache,
+      attempted: true,
+      hit: true,
+      restored,
+      reason: "required by --skip-build",
+      storedContentSha: String(cached.contentSnapshotSha || ""),
+    };
+    resolvedContentSourceMode = `${cached.env || "unknown"}-immutable-build-cache`;
+    console.log(
+      `[release-cloudflare] restored immutable build cache for ${git.sha.slice(0, 12)} (${restored.join(", ")})`,
+    );
+  } else {
     let restored = [];
+    const requirePromotedArtifact =
+      args.env === "production" && readEnv("RELEASE_REUSE_STAGING_BUILD") === "1";
+    if (requirePromotedArtifact && !buildCache.expectedContentSha) {
+      throw new Error(
+        "Production promotion requires RELEASE_EXPECT_CONTENT_SHA from the verified staging deployment.",
+      );
+    }
     const allowBuildCacheRead =
-      readEnv("RELEASE_REUSE_STAGING_BUILD") === "1" ||
-      readEnv("ALLOW_D1_BUILD_CACHE") === "1";
+      requirePromotedArtifact || readEnv("ALLOW_D1_BUILD_CACHE") === "1";
     const cached = args.noCache || !allowBuildCacheRead
       ? null
       : readMarker({
@@ -706,60 +739,35 @@ async function main() {
     } else if (cached) {
       buildCache.reason = `content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha || "unspecified"}`;
     }
-    if (restored.length > 0) {
+    const missingCachedArtifacts = BUILD_CACHE_PATHS.filter(
+      (entry) => !restored.includes(entry),
+    );
+    if (requirePromotedArtifact && missingCachedArtifacts.length > 0) {
+      const detail = cached
+        ? cachedContentMatches
+          ? `cache is incomplete; missing ${missingCachedArtifacts.join(", ")}`
+          : `content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha}`
+        : args.noCache
+          ? "cache reads were disabled by --no-cache"
+          : "no recent staging build cache exists";
+      throw new Error(
+        `Production promotion requires the exact verified staging artifact for code ${git.sha} and content ${buildCache.expectedContentSha}; ${detail}. Deploy staging on this runner, then retry promotion.`,
+      );
+    }
+    if (missingCachedArtifacts.length === 0) {
       const ageMin = Math.round((Date.now() - cached._writtenAtMs) / 60000);
       buildCache = { ...buildCache, hit: true, restored, reason: "matched code and content" };
+      resolvedContentSourceMode = `${cached.env || "unknown"}-immutable-build-cache`;
       console.log(
         `[release-cloudflare] reusing build:cf cache for ${git.sha.slice(0, 12)} (${ageMin}m old, restored: ${restored.join(", ")}). Pass --no-cache to rebuild.`,
       );
     } else {
       if (cachedContentMatches && !buildCache.reason) {
-        buildCache.reason = "cache marker matched but build artifacts were missing";
+        buildCache.reason = `cache marker matched but build artifacts were missing: ${missingCachedArtifacts.join(", ")}`;
       }
       console.log("[release-cloudflare] running build:cf");
       run("npm", ["run", "build:cf"], { label: "build:cf", cwd: releaseRoot });
-    }
-  }
-
-  // Build steps can update release-owned generated content (for example
-  // content/generated/classic-css-assets.json). Commit that before upload
-  // so the Worker version metadata points at the same SHA the operator sees
-  // locally after the release.
-  if (args.env === "staging" && !args.skipBuild && releaseRoot === ROOT) {
-    try {
-      const status = gitValue(["status", "--porcelain", "--", "content"]);
-      if (status) {
-        const files = status
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .map(parsePorcelainPath);
-        contentDriftFromGit = files;
-        if (args.autoCommitContent) {
-          contentAutoCommit = autoCommitContentDrift({ git, env: args.env });
-          if (contentAutoCommit.committed) {
-            git = readGitState();
-            console.log(
-              `[release-cloudflare] auto-committed generated content before upload → ${contentAutoCommit.newSha.slice(0, 12)}${contentAutoCommit.pushed ? " (pushed)" : ` (push failed: ${contentAutoCommit.pushError})`}`,
-            );
-          } else {
-            console.log(
-              `[release-cloudflare] skipped generated-content auto-commit (${contentAutoCommit.reason}); commit manually:`,
-            );
-            console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
-            console.log(`  git commit -m "chore(content): sync from D1 staging"`);
-            console.log(`  git push`);
-          }
-        } else {
-          console.log(
-            `[release-cloudflare] content/ now differs from git after build (${files.length} file${files.length === 1 ? "" : "s"}). This is no longer part of normal content publishing; use --sync-content-to-git for an explicit backup:`,
-          );
-          console.log(`  git add ${files.map((f) => `'${f}'`).join(" ")}`);
-          console.log(`  git commit -m "chore(content): sync from D1 staging"`);
-          console.log(`  git push`);
-        }
-      }
-    } catch {
-      // git status outside a working tree, etc. — just skip the hint.
+      didRunBuild = true;
     }
   }
 
@@ -971,7 +979,7 @@ async function main() {
     releaseRoot,
     checksRun,
     checksCached,
-    buildRun: !args.skipBuild,
+    buildRun: didRunBuild,
     buildCache,
     contentSnapshotSha,
     uploadedVersionId,
@@ -981,11 +989,7 @@ async function main() {
     verified: verifies,
     contentDriftFromGit,
     contentAutoCommit,
-    contentSourceMode: useD1ContentSnapshot
-      ? `${args.contentEnv}-d1-snapshot`
-      : args.syncContentToGit
-        ? `${args.contentEnv}-d1-git-sync`
-        : "git",
+    contentSourceMode: resolvedContentSourceMode,
     rolledBack,
     rollbackTarget: args.env === "production" ? rollbackTarget : null,
     overlayClear,
@@ -1008,6 +1012,13 @@ async function main() {
     overlayClear,
     checksCached,
   });
+  try {
+    removeImmutableReleaseSnapshot({ repoRoot: ROOT, snapshotRoot: releaseRoot });
+  } catch (error) {
+    console.error(
+      `[release-cloudflare] warning: could not remove release snapshot: ${error?.message || error}`,
+    );
+  }
   reportAndExit(finalReport);
 }
 

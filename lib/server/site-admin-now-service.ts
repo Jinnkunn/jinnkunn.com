@@ -1,10 +1,10 @@
 import "server-only";
 
-import type { SiteAdminNowData } from "@/lib/site-admin/api-types";
+import type { SiteAdminNowData } from "@jinnkunn/contracts/api";
 import {
   emptyNowData,
   normalizeNowData,
-} from "@/lib/site-admin/now-normalize";
+} from "@jinnkunn/content-core/now";
 import {
   createNowData,
   deleteNowHistoryData,

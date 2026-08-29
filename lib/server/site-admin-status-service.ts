@@ -22,7 +22,7 @@ import {
 } from "./deploy-metadata.ts";
 import { safeDir, safeStat } from "@/lib/server/fs-stats";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
-import type { SiteAdminStatusPayload } from "@/lib/site-admin/api-types";
+import type { SiteAdminStatusPayload } from "@jinnkunn/contracts/api";
 import { parseAllowedContentUsers } from "@/lib/content-auth";
 import { parseAllowedAdminEmails, parseAllowedAdminUsers } from "@/lib/site-admin-auth";
 import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";

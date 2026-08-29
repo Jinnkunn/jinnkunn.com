@@ -6,8 +6,8 @@
 - Routine release path: local Cloudflare scripts from the Tauri workspace
   or CLI.
 - Staging content source of truth: D1 (`SITE_ADMIN_STORAGE=db`).
-- Production content source: bundled `content/*` snapshot generated from
-  staging D1 during the production build.
+- Production promotion source: the exact code-and-content build artifact
+  verified on staging. Promotion fails closed if that cache is unavailable.
 - Fixed semantics:
   - `Save` writes staging D1.
   - `Release staging` builds and deploys the staging Worker locally.
@@ -40,9 +40,10 @@
   - `npm run release:staging`
   - `npm run release:prod:from-staging`
 - Avoid ad-hoc `wrangler deploy` without deployment message metadata.
-- Staging releases may run from a dirty non-content worktree; the script
-  builds a clean snapshot of committed HEAD. Dirty `content/` still blocks
-  by default because the D1 dump would overwrite it.
+- Every staging and production release builds or restores artifacts inside an
+  immutable archive of committed HEAD. Working-tree changes are excluded.
+  Dirty `content/` blocks only the explicit D1-to-Git backup command because
+  normal releases never overwrite root `content/`.
 - Release scripts stamp `workers/message` with
   `source=<sha> branch=<name> code=<sha> content=<sha> contentBranch=<name>`
   to keep status/preflight deterministic.

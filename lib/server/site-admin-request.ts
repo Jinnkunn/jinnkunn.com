@@ -1,13 +1,13 @@
 import "server-only";
 
+import { siteAdminConfigCommandInputSchema } from "@jinnkunn/contracts/schemas";
 import { compactId } from "@/lib/shared/route-utils";
-import { z } from "zod";
 import {
   parseSiteAdminRoutesCommand,
   type SiteAdminRoutesCommand,
 } from "@/lib/site-admin/routes-command";
 import type { ParseResult } from "@/lib/site-admin/request-types";
-import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+import type { NavItemRow, SiteSettings } from "@jinnkunn/contracts/site-admin";
 import { normalizeDepthString } from "@/lib/shared/depth";
 import { normalizeGoogleAnalyticsId } from "@/lib/shared/google-analytics";
 import {
@@ -43,33 +43,6 @@ export type SiteAdminConfigCommand =
       input: SiteAdminNavCreateInput;
       expectedSiteConfigSha: string;
     };
-
-const configCommandSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("settings"),
-      rowId: z.unknown().optional(),
-      patch: z.record(z.unknown()).optional(),
-      expectedSiteConfigSha: z.unknown().optional(),
-      allowStaleSiteConfigSha: z.unknown().optional(),
-    })
-    .passthrough(),
-  z
-    .object({
-      kind: z.literal("nav-update"),
-      rowId: z.unknown().optional(),
-      patch: z.record(z.unknown()).optional(),
-      expectedSiteConfigSha: z.unknown().optional(),
-    })
-    .passthrough(),
-  z
-    .object({
-      kind: z.literal("nav-create"),
-      input: z.record(z.unknown()).optional(),
-      expectedSiteConfigSha: z.unknown().optional(),
-    })
-    .passthrough(),
-]);
 
 function asString(raw: unknown): string {
   if (typeof raw === "string") return raw.trim();
@@ -118,7 +91,7 @@ export async function parseSiteAdminJsonCommand<T>(
 export function parseSiteAdminConfigCommand(
   body: Record<string, unknown>,
 ): ParseResult<SiteAdminConfigCommand> {
-  const parsedBody = configCommandSchema.safeParse(body);
+  const parsedBody = siteAdminConfigCommandInputSchema.safeParse(body);
   if (!parsedBody.success) return bad("Unknown kind", 400);
   const command = parsedBody.data;
   const kind = command.kind;

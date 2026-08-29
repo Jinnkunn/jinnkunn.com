@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { apiError, apiPayloadOk, withSiteAdminContext } from "@/lib/server/site-admin-api";
-import type { SiteAdminDeployPreviewPayload } from "@/lib/site-admin/api-types";
+import type { SiteAdminDeployPreviewPayload } from "@jinnkunn/contracts/api";
 
 export const runtime = "nodejs";
 

@@ -8,7 +8,7 @@ import { SiteAdminRequirementsCard } from "@/components/site-admin/status/admin-
 import { SiteAdminDiagnosticsCard } from "@/components/site-admin/status/diagnostics-card";
 import { SiteAdminGeneratedFilesCard } from "@/components/site-admin/status/generated-files-card";
 import { SiteAdminPreflightCard } from "@/components/site-admin/status/preflight-card";
-import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
+import type { SiteAdminDeployResult } from "@jinnkunn/contracts/api";
 import type {
   BannerState,
   GeneratedState,

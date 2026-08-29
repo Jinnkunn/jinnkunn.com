@@ -3,7 +3,7 @@
 import type { SiteSettings } from "./types";
 import { errorFromUnknown } from "./utils";
 import { siteAdminBackend } from "@/lib/client/site-admin-backend";
-import type { SiteAdminConfigSourceVersion } from "@/lib/site-admin/api-types";
+import type { SiteAdminConfigSourceVersion } from "@jinnkunn/contracts/api";
 
 type UseSiteAdminSettingsMutationArgs = {
   draftSettings: SiteSettings | null;

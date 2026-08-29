@@ -15,7 +15,7 @@ import {
   readPage,
   updatePage,
 } from "@/lib/pages/store";
-import { parsePageFile } from "@/lib/pages/meta";
+import { parsePageFile } from "@jinnkunn/content-core/pages";
 import { isValidPageSlug } from "@/lib/pages/slug";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 

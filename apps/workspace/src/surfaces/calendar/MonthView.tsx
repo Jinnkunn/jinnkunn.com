@@ -12,7 +12,7 @@ import {
   isSameZonedDay,
   zonedDateAtMinute,
   zonedDayRange,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 
 const BAR_HEIGHT = 18;
 const BAR_GAP = 2;

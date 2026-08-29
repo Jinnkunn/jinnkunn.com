@@ -29,7 +29,7 @@ import {
   getSiteComponentDefinition,
   type SiteComponentDefinition,
   type SiteComponentName,
-} from "../../../../../lib/site-admin/component-registry.ts";
+} from "@jinnkunn/content-core/components";
 import { WorkspaceInspectorSection } from "../../ui/primitives";
 
 export type ComponentName = SiteComponentName;

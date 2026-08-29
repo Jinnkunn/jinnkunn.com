@@ -15,7 +15,7 @@ import {
   readPost,
   updatePost,
 } from "@/lib/posts/store";
-import { parsePostFile } from "@/lib/posts/meta";
+import { parsePostFile } from "@jinnkunn/content-core/posts";
 import { isValidSlug } from "@/lib/posts/slug";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 

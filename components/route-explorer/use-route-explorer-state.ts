@@ -3,7 +3,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import type { AdminConfig } from "@/lib/site-admin/route-explorer-model";
-import type { SiteAdminRoutesSourceVersion } from "@/lib/site-admin/api-types";
+import type { SiteAdminRoutesSourceVersion } from "@jinnkunn/contracts/api";
 import type { AccessMode } from "@/lib/shared/access";
 
 export const INITIAL_RENDER_LIMIT = 180;

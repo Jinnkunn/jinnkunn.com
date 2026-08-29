@@ -1,0 +1,11 @@
+{
+  "name": "@jinnkunn/document-repository",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./path": "./src/path.ts",
+    "./repository": "./src/repository.ts"
+  }
+}

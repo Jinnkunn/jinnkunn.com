@@ -9,7 +9,7 @@ import {
   selectPublicCalendarRuntimeData,
   type PublicCalendarData,
   type PublicCalendarEvent,
-} from "@/lib/shared/public-calendar";
+} from "@jinnkunn/calendar-core/public";
 import bundledPublicCalendarSnapshot from "@/content/calendar-public.json";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import {

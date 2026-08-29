@@ -8,7 +8,7 @@ import {
   normalizePublicCalendarData,
   publicCalendarJson,
   type PublicCalendarData,
-} from "@/lib/shared/public-calendar";
+} from "@jinnkunn/calendar-core/public";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
 import {
   readPublicCalendarFromDb,

@@ -34,7 +34,7 @@ import type {
   SiteAdminRoutesGetPayload,
   SiteAdminRoutesPostPayload,
   SiteAdminStatusPayload,
-} from "@/lib/site-admin/api-types";
+} from "@jinnkunn/contracts/api";
 import type { SiteAdminConfigCommand } from "@/lib/server/site-admin-request";
 import type { SiteAdminRoutesCommand } from "@/lib/site-admin/routes-command";
 

@@ -13,12 +13,12 @@ import type {
   SiteAdminHomeData,
   SiteAdminNowData,
   SiteAdminNowUpdate,
-} from "@/lib/site-admin/api-types";
+} from "@jinnkunn/contracts/api";
 import {
   SITE_COMPONENT_DEFINITIONS,
   isSiteComponentName,
   type SiteComponentName,
-} from "@/lib/site-admin/component-registry";
+} from "@jinnkunn/content-core/components";
 import type { SiteAdminMobileSummary } from "@/lib/site-admin/mobile-summary";
 import {
   contentListPlaceholder,

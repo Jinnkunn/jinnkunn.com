@@ -44,7 +44,7 @@ import {
   normalizeCalendarObservationSyncPayload,
   type CalendarObservationInput,
   type CalendarSourceDescriptor,
-} from "../../../../../lib/shared/calendar-core.ts";
+} from "@jinnkunn/calendar-core/core";
 
 export type CalendarSyncReason = "auto" | "manual" | "background";
 export type CalendarSyncStatus = "synced" | "unchanged";

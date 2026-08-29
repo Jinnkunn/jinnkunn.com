@@ -133,7 +133,7 @@ test("release gate includes the workspace typecheck and vitest run", () => {
   assert.match(script, /\["workspace tests", "npm", \["run", "test"\], \{ cwd: WORKSPACE_DIR \}\]/);
   // `git archive` ships tracked sources only, so the clean-snapshot path must
   // link each sub-project's deps too or the check dies at `tsc: not found`.
-  assert.match(script, /\bWORKSPACE_DIR\b[\s\S]{0,400}symlinkSync/);
+  assert.match(script, /dependencyRoots: \["", WORKSPACE_DIR\]/);
   // A green CHECKS marker written before these checks existed must not let a
   // release skip them.
   assert.match(script, /CHECKS\.every\(\(\[name\]\) => \(marker\.checks \|\| \[\]\)\.includes\(name\)\)/);

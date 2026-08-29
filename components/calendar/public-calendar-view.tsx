@@ -5,13 +5,13 @@ import { useMemo, type CSSProperties, type MouseEvent } from "react";
 import {
   eventMatchesAnyTag,
   summarizeTags,
-} from "@/lib/shared/calendar-tags";
+} from "@jinnkunn/calendar-core/tags";
 import {
   CALENDAR_TIME_ZONE_OPTIONS,
   DEFAULT_CALENDAR_TIME_ZONE,
   calendarTimeZoneLabel,
   formatInTimeZone,
-} from "@/lib/shared/calendar-timezone";
+} from "@jinnkunn/calendar-core/timezone";
 import {
   PUBLIC_CALENDAR_VIEW_LABELS,
   addCalendarDays,
@@ -37,7 +37,7 @@ import {
   type PublicCalendarDayIndex,
   type PublicCalendarViewMode,
 } from "./public-calendar-model";
-import type { PublicCalendarData } from "@/lib/shared/public-calendar";
+import type { PublicCalendarData } from "@jinnkunn/calendar-core/public";
 
 export type { PublicCalendarViewMode } from "./public-calendar-model";
 export type { PublicCalendarAudienceMode } from "./public-calendar-model";

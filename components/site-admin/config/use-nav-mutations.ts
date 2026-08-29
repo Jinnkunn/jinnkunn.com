@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import type { NavItemRow } from "./types";
 import { errorFromUnknown } from "./utils";
 import { siteAdminBackend } from "@/lib/client/site-admin-backend";
-import type { SiteAdminConfigSourceVersion } from "@/lib/site-admin/api-types";
+import type { SiteAdminConfigSourceVersion } from "@jinnkunn/contracts/api";
 
 type UseSiteAdminNavMutationsArgs = {
   setBusy: (value: boolean) => void;

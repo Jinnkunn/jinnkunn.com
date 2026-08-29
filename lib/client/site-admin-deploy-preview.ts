@@ -1,5 +1,5 @@
 import { siteAdminBackend } from "@/lib/client/site-admin-backend";
-import type { SiteAdminDeployPreviewResult } from "@/lib/site-admin/api-types";
+import type { SiteAdminDeployPreviewResult } from "@jinnkunn/contracts/api";
 
 export async function fetchSiteAdminDeployPreview(): Promise<SiteAdminDeployPreviewResult> {
   try {

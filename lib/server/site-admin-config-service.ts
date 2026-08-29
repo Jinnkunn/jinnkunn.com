@@ -4,7 +4,7 @@ import {
   getSiteAdminSourceStore,
   type SiteAdminConfigSourceVersion,
 } from "@/lib/server/site-admin-source-store";
-import type { NavItemRow, SiteSettings } from "@/lib/site-admin/types";
+import type { NavItemRow, SiteSettings } from "@jinnkunn/contracts/site-admin";
 
 type SiteAdminConfigData = {
   settings: SiteSettings | null;

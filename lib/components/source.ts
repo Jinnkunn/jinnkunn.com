@@ -3,7 +3,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
+import { getSiteComponentDefinition } from "@jinnkunn/content-core/components";
 
 import {
   parseTeachingEntries,

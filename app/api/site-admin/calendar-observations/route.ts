@@ -14,7 +14,7 @@ import {
   readCalendarSyncHealth,
   writeCalendarObservationSync,
 } from "@/lib/server/calendar-sync-store";
-import { normalizeCalendarObservationSyncPayload } from "@/lib/shared/calendar-core";
+import { normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
 import { parseCalendarCollectorCleanupCommand } from "@/lib/site-admin/calendar-observation-commands";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 

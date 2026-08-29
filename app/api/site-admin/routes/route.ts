@@ -16,7 +16,7 @@ import {
 } from "@/lib/server/site-admin-request";
 import type {
   SiteAdminRoutesGetPayload,
-} from "@/lib/site-admin/api-types";
+} from "@jinnkunn/contracts/api";
 
 export const runtime = "nodejs";
 

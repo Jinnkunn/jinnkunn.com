@@ -7,7 +7,7 @@ import {
 } from "../icons";
 import type { SurfaceNavGroup, SurfaceNavItem } from "../types";
 import type { SiteAdminTab } from "./types";
-import { SITE_COMPONENT_DEFINITIONS } from "../../../../../lib/site-admin/component-registry.ts";
+import { SITE_COMPONENT_DEFINITIONS } from "@jinnkunn/content-core/components";
 
 /** Static children of the "Components" group — the four reusable MDX
  * widgets. Each leaf id is `components:<name>`; clicking it routes to

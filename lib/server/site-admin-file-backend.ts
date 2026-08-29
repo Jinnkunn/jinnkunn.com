@@ -1,33 +1,21 @@
-// File-IO surface used by SiteAdminSourceStore. Exists so the higher-level
-// store doesn't have to branch on storage mode for every read/write — it just
-// holds a backend and calls through.
-//
-// Two implementations:
-//   - createFsFileBackend: node:fs + git shell (mirrors the original
-//     LocalSiteAdminSourceStore behavior; for dev and CI builds).
-//   - createDbFileBackend: D1-backed via the existing DbContentStore. Paths
-//     must live under content/; the prefix is stripped before delegating to
-//     the content store, whose rows are content-relative.
-//
-// History methods on the db backend stub to empty results — D1 has no
-// commit timeline; an audit-log-backed implementation can replace the stub
-// later without changing this interface.
-//
-// No `server-only` marker so node:test can import it for unit coverage.
+// Compatibility adapter for SiteAdminSourceStore. Filesystem and D1 storage
+// are implemented once through DocumentRepository; this module only maps the
+// historical repo-root paths and response vocabulary.
 
-import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 
-import { createDbContentStore, type DbExecutor } from "./db-content-store.ts";
+import {
+  DocumentConflictError,
+  normalizeDocumentPath,
+  toContentDocumentPath,
+  type DocumentRepository,
+} from "@jinnkunn/document-repository";
+import {
+  createDbDocumentRepository,
+  type DbExecutor,
+} from "./db-content-store.ts";
+import { createLocalDocumentRepository } from "./document-repository-local.ts";
 
-const execFileAsync = promisify(execFile);
-
-// Re-declared here to keep this module independent of site-admin-source-store
-// (which would create a tricky circular import for the runtime impls; type
-// imports are erased so the inverse direction is fine).
 export type SiteAdminFileHistoryEntry = {
   commitSha: string;
   commitShort: string;
@@ -44,62 +32,30 @@ export type SiteAdminFileStat = {
 
 export interface SiteAdminFileBackend {
   readonly kind: "fs" | "db";
-
-  /** Lightweight existence + size + mtime probe. Used by the Status panel
-   * to render the GENERATED FILES card without parsing every JSON. The fs
-   * backend uses fs.statSync (with a readFileSync fallback for bundled
-   * Workers files); the db backend queries content_files row metadata. */
   statFile(repoRel: string): Promise<SiteAdminFileStat>;
-
-  /** Read a JSON file by repo-root-relative path. Returns null when the file
-   * doesn't exist or doesn't parse. */
   readJsonFile(repoRel: string): Promise<unknown | null>;
-
-  /** Write a JSON file (sorted keys, trailing newline) by repo-root-relative
-   * path. Creates parent dirs as needed. Always overwrites — optimistic
-   * concurrency is enforced one layer up by SiteAdminSourceStore. */
   writeJsonFile(repoRel: string, value: unknown): Promise<void>;
-
-  /** Read a UTF-8 text file by repo-root-relative path. The returned `sha`
-   * is sha1 over the raw content — the same token ContentStore mints — so it
-   * lines up with the optimistic-lock keys used by writeTextFile and with the
-   * versions a posts/pages editor round-trips back as expectedSha. */
-  readTextFile(
-    repoRel: string,
-  ): Promise<{ content: string; sha: string } | null>;
-
-  /** Write a UTF-8 text file with optional `expectedSha` optimistic lock.
-   * Throws SiteAdminSourceConflictError-like errors via a callback set up
-   * by the caller; raw conflicts here surface as null returns or thrown
-   * `Error` so this module stays free of cross-module imports. */
+  readTextFile(repoRel: string): Promise<{ content: string; sha: string } | null>;
   writeTextFile(input: {
     repoRel: string;
     content: string;
     expectedSha?: string;
   }): Promise<{ fileSha: string; commitSha: string }>;
-
-  /** Best-effort recent-change history for `repoRel`. Returns an empty array
-   * when the backend has no concept of history (db backend, missing git). */
   listTextFileHistory(
     repoRel: string,
     limit: number,
   ): Promise<SiteAdminFileHistoryEntry[]>;
-
-  /** Read `repoRel` at a specific commit. Returns null when the backend
-   * can't address by commit (db backend) or when the commit isn't found. */
   readTextFileAtCommit(
     repoRel: string,
     commitSha: string,
   ): Promise<{ content: string; sha: string; commitSha: string } | null>;
 }
 
-// Conflict signal used by writeTextFile when expectedSha doesn't match the
-// current file. Caller (SiteAdminSourceStore) translates to its own error
-// type so this module stays import-free of source-store types.
 export class SiteAdminFileBackendConflictError extends Error {
   readonly code = "BACKEND_CONFLICT";
   readonly expectedSha: string;
   readonly currentSha: string;
+
   constructor(input: { expectedSha: string; currentSha: string }) {
     super(
       `site-admin file backend: sha mismatch (expected ${input.expectedSha}, current ${input.currentSha})`,
@@ -111,19 +67,9 @@ export class SiteAdminFileBackendConflictError extends Error {
 }
 
 export function isSiteAdminFileBackendConflictError(
-  err: unknown,
-): err is SiteAdminFileBackendConflictError {
-  return err instanceof SiteAdminFileBackendConflictError;
-}
-
-// ---- shared helpers (intentionally duplicated from site-admin-source-store)
-// These are tiny pure utilities; importing them across modules creates a
-// circular dependency (source-store imports backend impls; backend would
-// need to import source-store helpers). Keeping local copies keeps both
-// modules clean.
-
-function sha1Hex(input: string): string {
-  return createHash("sha1").update(input, "utf8").digest("hex");
+  error: unknown,
+): error is SiteAdminFileBackendConflictError {
+  return error instanceof SiteAdminFileBackendConflictError;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -134,359 +80,140 @@ function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
   if (!isRecord(value)) return value;
   const out: Record<string, unknown> = {};
-  const keys = Object.keys(value).sort((a, b) => a.localeCompare(b));
-  for (const key of keys) out[key] = sortJson(value[key]);
+  for (const key of Object.keys(value).sort((left, right) => left.localeCompare(right))) {
+    out[key] = sortJson(value[key]);
+  }
   return out;
 }
 
-function textSha(content: string): string {
-  // sha1 over the raw bytes — the same hash lib/server/content-store.ts and
-  // the db backend mint for their ContentVersion. Hashing a JSON-encoded
-  // form here instead made the fs backend's tokens permanently unequal to
-  // the ones the posts/pages editors hand back, so every local restore lost
-  // its optimistic-lock check to a 409.
-  return sha1Hex(content);
-}
-
-function pickExistingFile(filePath: string): string {
-  try {
-    return fs.statSync(filePath).isFile() ? filePath : "";
-  } catch {
-    return "";
+function documentPath(repoRel: string, backendLabel: string): string {
+  const normalized = normalizeDocumentPath(repoRel);
+  if (!normalized.startsWith("content/")) {
+    throw new Error(`${backendLabel}: path must be under content/: ${repoRel}`);
   }
+  return toContentDocumentPath(normalized);
 }
 
-// -- FsFileBackend: byte-for-byte mirrors the original LocalSiteAdminSourceStore
-// fs/git behavior so the refactor is a no-op for local mode.
+function expectedVersion(expectedSha: string | undefined): string | null | undefined {
+  if (expectedSha === undefined) return undefined;
+  return expectedSha === "" ? null : expectedSha;
+}
 
-export type FsFileBackendConfig = {
-  rootDir: string;
-};
+function translateConflict(error: unknown, fallbackExpected = ""): never {
+  if (error instanceof DocumentConflictError) {
+    throw new SiteAdminFileBackendConflictError({
+      expectedSha: error.expectedVersion ?? fallbackExpected,
+      currentSha: error.actualVersion ?? "",
+    });
+  }
+  throw error;
+}
 
-export function createFsFileBackend(
-  config: FsFileBackendConfig,
+export function siteAdminFileBackendFromDocumentRepository(
+  repository: DocumentRepository,
 ): SiteAdminFileBackend {
-  const rootDir = config.rootDir;
-
-  function resolve(repoRel: string): string {
-    return path.join(rootDir, repoRel);
-  }
-
+  const isDb = repository.kind === "d1" || repository.kind === "db";
+  const backendLabel = isDb ? "db file backend" : "fs file backend";
   return {
-    kind: "fs",
+    kind: isDb ? "db" : "fs",
 
     async statFile(repoRel) {
-      const filePath = resolve(repoRel);
-      try {
-        const st = fs.statSync(filePath);
-        return {
-          exists: st.isFile(),
-          size: st.size,
-          mtimeMs: st.mtimeMs,
-        };
-      } catch {
-        // See lib/server/fs-stats.ts for context: Workers fs can fail to
-        // stat bundled Data files even though readFileSync works.
-        try {
-          const data = fs.readFileSync(filePath);
-          return { exists: true, size: data.length };
-        } catch {
-          return { exists: false };
-        }
-      }
-    },
-
-    async readJsonFile(repoRel) {
-      const filePath = pickExistingFile(resolve(repoRel));
-      if (!filePath) return null;
-      try {
-        return JSON.parse(fs.readFileSync(filePath, "utf8"));
-      } catch {
-        return null;
-      }
-    },
-
-    async writeJsonFile(repoRel, value) {
-      const outPath = resolve(repoRel);
-      fs.mkdirSync(path.dirname(outPath), { recursive: true });
-      fs.writeFileSync(
-        outPath,
-        `${JSON.stringify(sortJson(value), null, 2)}\n`,
-        "utf8",
-      );
-    },
-
-    async readTextFile(repoRel) {
-      const filePath = resolve(repoRel);
-      try {
-        const content = fs.readFileSync(filePath, "utf8");
-        return { content, sha: textSha(content) };
-      } catch {
-        return null;
-      }
-    },
-
-    async writeTextFile(input) {
-      const filePath = resolve(input.repoRel);
-      let existingContent: string | null = null;
-      try {
-        existingContent = fs.readFileSync(filePath, "utf8");
-      } catch {
-        existingContent = null;
-      }
-      if (input.expectedSha !== undefined) {
-        const currentSha = existingContent === null
-          ? ""
-          : textSha(existingContent);
-        if (currentSha !== input.expectedSha) {
-          throw new SiteAdminFileBackendConflictError({
-            expectedSha: input.expectedSha,
-            currentSha,
-          });
-        }
-      }
-      if (existingContent === input.content) {
-        const sha = textSha(input.content);
-        return { fileSha: sha, commitSha: sha };
-      }
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, input.content, "utf8");
-      const sha = textSha(input.content);
-      return { fileSha: sha, commitSha: sha };
-    },
-
-    async listTextFileHistory(repoRel, limit) {
-      const maxCount = Math.max(1, Math.min(50, Math.floor(limit)));
-      try {
-        const { stdout } = await execFileAsync(
-          "git",
-          [
-            "log",
-            `--max-count=${maxCount}`,
-            "--format=%H%x1f%h%x1f%ct%x1f%an%x1f%s",
-            "--",
-            repoRel,
-          ],
-          { cwd: rootDir, maxBuffer: 1024 * 1024 },
-        );
-        return stdout
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => {
-            const [commitSha, commitShort, epoch, authorName, ...messageParts] =
-              line.split("\x1f");
-            const timestampMs = Number(epoch) * 1000;
-            return {
-              commitSha: commitSha || "",
-              commitShort: commitShort || (commitSha || "").slice(0, 7),
-              committedAt: Number.isFinite(timestampMs)
-                ? new Date(timestampMs).toISOString()
-                : null,
-              authorName: authorName || "",
-              message: messageParts.join("\x1f") || "",
-            };
-          })
-          .filter((entry) => Boolean(entry.commitSha));
-      } catch {
-        return [];
-      }
-    },
-
-    async readTextFileAtCommit(repoRel, commitSha) {
-      if (!/^[a-f0-9]{7,40}$/i.test(commitSha)) return null;
-      try {
-        const { stdout } = await execFileAsync(
-          "git",
-          ["show", `${commitSha}:${repoRel}`],
-          { cwd: rootDir, maxBuffer: 8 * 1024 * 1024 },
-        );
-        return { content: stdout, sha: textSha(stdout), commitSha };
-      } catch {
-        return null;
-      }
-    },
-  };
-}
-
-// -- DbFileBackend: delegates to DbContentStore. Paths must be under content/.
-
-export type DbFileBackendConfig = {
-  executor: DbExecutor;
-  // Optional: tags writes with the actor for the audit trail. Called per
-  // write so request-scoped values (AsyncLocalStorage) can be threaded in.
-  getActor?: () => string | null | undefined;
-};
-
-const CONTENT_PREFIX = "content/";
-
-function toContentRel(repoRel: string): string {
-  if (!repoRel.startsWith(CONTENT_PREFIX)) {
-    // The site-admin source store only operates on content/-rooted paths;
-    // anything else is a bug in the caller. Throwing loudly beats silently
-    // routing the wrong file to the wrong place.
-    throw new Error(
-      `db file backend: path must be under content/: ${repoRel}`,
-    );
-  }
-  return repoRel.slice(CONTENT_PREFIX.length);
-}
-
-export function createDbFileBackend(
-  config: DbFileBackendConfig,
-): SiteAdminFileBackend {
-  const contentStore = createDbContentStore({
-    executor: config.executor,
-    ...(config.getActor ? { getActor: config.getActor } : {}),
-  });
-  const executor = config.executor;
-
-  return {
-    kind: "db",
-
-    async statFile(repoRel) {
-      const contentRel = toContentRel(repoRel);
-      // Direct executor query (instead of contentStore.readFile) so we get
-      // size + updated_at without pulling the whole body across the wire.
-      const result = await executor.execute({
-        sql: "SELECT size, updated_at FROM content_files WHERE rel_path = ?",
-        args: [contentRel],
-      });
-      const row = result.rows[0];
-      if (!row) return { exists: false };
-      const size = Number(row.size);
-      const updatedAt = Number(row.updated_at);
+      const stat = await repository.stat(documentPath(repoRel, backendLabel));
       return {
-        exists: true,
-        ...(Number.isFinite(size) ? { size } : {}),
-        ...(Number.isFinite(updatedAt) ? { mtimeMs: updatedAt } : {}),
+        exists: stat.exists,
+        ...(stat.size !== undefined ? { size: stat.size } : {}),
+        ...(stat.updatedAt !== undefined ? { mtimeMs: stat.updatedAt } : {}),
       };
     },
 
     async readJsonFile(repoRel) {
-      const contentRel = toContentRel(repoRel);
-      const result = await contentStore.readFile(contentRel);
-      if (!result) return null;
+      const document = await repository.readText(documentPath(repoRel, backendLabel));
+      if (!document) return null;
       try {
-        return JSON.parse(result.content);
+        return JSON.parse(document.content);
       } catch {
         return null;
       }
     },
 
     async writeJsonFile(repoRel, value) {
-      const contentRel = toContentRel(repoRel);
-      const json = `${JSON.stringify(sortJson(value), null, 2)}\n`;
-      await contentStore.writeFile(contentRel, json);
+      const content = `${JSON.stringify(sortJson(value), null, 2)}\n`;
+      await repository.writeText(documentPath(repoRel, backendLabel), content);
     },
 
     async readTextFile(repoRel) {
-      const contentRel = toContentRel(repoRel);
-      const result = await contentStore.readFile(contentRel);
-      if (!result) return null;
-      // Pass through the row sha — the SiteAdminFileBackend contract
-      // treats the returned value as an opaque optimistic-lock token, and
-      // using the row's own sha keeps writeTextFile / listTextFileHistory /
-      // readTextFileAtCommit all on one identifier (the body's sha1) so
-      // /api/site-admin/versions can round-trip an entry's commitSha back
-      // through the restore path.
-      return { content: result.content, sha: result.sha };
+      const document = await repository.readText(documentPath(repoRel, backendLabel));
+      return document
+        ? { content: document.content, sha: document.version }
+        : null;
     },
 
     async writeTextFile(input) {
-      const contentRel = toContentRel(input.repoRel);
-      const existing = await contentStore.readFile(contentRel);
-      if (input.expectedSha !== undefined) {
-        const currentSha = existing ? existing.sha : "";
-        if (currentSha !== input.expectedSha) {
-          throw new SiteAdminFileBackendConflictError({
-            expectedSha: input.expectedSha,
-            currentSha,
-          });
-        }
+      try {
+        const result = await repository.writeText(
+          documentPath(input.repoRel, backendLabel),
+          input.content,
+          { expectedVersion: expectedVersion(input.expectedSha) },
+        );
+        return { fileSha: result.version, commitSha: result.version };
+      } catch (error) {
+        return translateConflict(error, input.expectedSha ?? "");
       }
-      if (existing && existing.content === input.content) {
-        return { fileSha: existing.sha, commitSha: existing.sha };
-      }
-      const written = await contentStore.writeFile(contentRel, input.content);
-      return { fileSha: written.sha, commitSha: written.sha };
     },
 
     async listTextFileHistory(repoRel, limit) {
-      // Pull recent versions out of content_files_history (populated on
-      // every successful upsert in db-content-store.ts). The
-      // SiteAdminFileHistoryEntry contract uses commitSha as the version
-      // identifier — in db mode that's the body sha (sha1 of bytes), the
-      // same value the optimistic-lock + restore-by-sha path use, so all
-      // three API surfaces share one identifier.
-      const contentRel = toContentRel(repoRel);
-      const max = Math.max(1, Math.min(50, Math.floor(limit)));
-      try {
-        const result = await executor.execute({
-          sql: `SELECT sha, updated_at, updated_by
-                  FROM content_files_history
-                 WHERE rel_path = ?
-                 ORDER BY updated_at DESC, id DESC
-                 LIMIT ?`,
-          args: [contentRel, max],
-        });
-        return result.rows.map((row) => {
-          const sha = String(row.sha || "");
-          const updatedAtMs = Number(row.updated_at);
-          const author = row.updated_by == null ? "" : String(row.updated_by);
-          return {
-            commitSha: sha,
-            commitShort: sha.slice(0, 7),
-            committedAt: Number.isFinite(updatedAtMs)
-              ? new Date(updatedAtMs).toISOString()
-              : null,
-            authorName: author,
-            // We don't currently capture an edit message — the action that
-            // produced this history row (config.save / posts.update / …)
-            // lives in site_admin_audit_logs but joining tables across the
-            // separate audit-log D1 binding is a bigger change. Leave empty.
-            message: "",
-          };
-        });
-      } catch {
-        // Table missing (DB hasn't run migration 002) or read failure —
-        // degrade gracefully to "no history" instead of blowing up the
-        // whole Status / Versions panel render.
-        return [];
-      }
+      const revisions = await repository.listHistory(
+        documentPath(repoRel, backendLabel),
+        limit,
+      );
+      return revisions.map((revision) => ({
+        commitSha: revision.version,
+        commitShort: revision.shortVersion,
+        committedAt: revision.createdAt,
+        authorName: revision.actor,
+        message: revision.message,
+      }));
     },
 
     async readTextFileAtCommit(repoRel, commitSha) {
-      const contentRel = toContentRel(repoRel);
-      const sha = String(commitSha || "").trim().toLowerCase();
-      if (!/^[a-f0-9]{7,40}$/i.test(sha)) return null;
-      try {
-        const result = await executor.execute({
-          sql: `SELECT lower(hex(body)) AS body_hex, sha
-                  FROM content_files_history
-                 WHERE rel_path = ? AND sha = ?
-                 ORDER BY id DESC
-                 LIMIT 1`,
-          args: [contentRel, sha],
-        });
-        const row = result.rows[0];
-        if (!row) return null;
-        const bodyHex = String(row.body_hex || "");
-        const bytes = Buffer.from(bodyHex, "hex");
-        const content = bytes.toString("utf8");
-        const rowSha = String(row.sha);
-        return {
-          content,
-          // sha === commitSha in db mode (both are sha1 of the body bytes,
-          // matching what writeTextFile + readTextFile + listTextFileHistory
-          // return). Keeping them equal lets restore-by-commitSha use the
-          // same value for the post-restore optimistic lock.
-          sha: rowSha,
-          commitSha: rowSha,
-        };
-      } catch {
-        return null;
-      }
+      const document = await repository.readRevision(
+        documentPath(repoRel, backendLabel),
+        commitSha,
+      );
+      return document
+        ? {
+            content: document.content,
+            sha: document.version,
+            commitSha,
+          }
+        : null;
     },
   };
+}
+
+export type FsFileBackendConfig = { rootDir: string };
+
+export function createFsFileBackend(
+  config: FsFileBackendConfig,
+): SiteAdminFileBackend {
+  return siteAdminFileBackendFromDocumentRepository(
+    createLocalDocumentRepository({
+      rootDir: path.join(config.rootDir, "content"),
+      gitRootDir: config.rootDir,
+      gitPathPrefix: "content",
+    }),
+  );
+}
+
+export type DbFileBackendConfig = {
+  executor: DbExecutor;
+  getActor?: () => string | null | undefined;
+};
+
+export function createDbFileBackend(
+  config: DbFileBackendConfig,
+): SiteAdminFileBackend {
+  return siteAdminFileBackendFromDocumentRepository(
+    createDbDocumentRepository(config),
+  );
 }

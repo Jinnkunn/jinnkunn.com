@@ -8,7 +8,7 @@ import {
   isMdxRuntimeCodeGenerationError,
   renderHomePreviewShellHtml,
 } from "@/lib/site-admin/mdx-preview-render";
-import { normalizeHomeData } from "@/lib/site-admin/home-normalize";
+import { normalizeHomeData } from "@jinnkunn/content-core/home";
 import { findContentFile, readJsonFile } from "@/lib/server/content-files";
 import {
   apiError,

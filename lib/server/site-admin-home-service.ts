@@ -3,9 +3,9 @@ import "server-only";
 import {
   emptyHomeData,
   normalizeHomeData,
-} from "@/lib/site-admin/home-normalize";
+} from "@jinnkunn/content-core/home";
 import { getSiteAdminSourceStore } from "@/lib/server/site-admin-source-store";
-import type { SiteAdminHomeData } from "@/lib/site-admin/api-types";
+import type { SiteAdminHomeData } from "@jinnkunn/contracts/api";
 
 const HOME_REL_PATH = "content/home.json";
 

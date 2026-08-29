@@ -9,7 +9,7 @@ import { NewsEntry } from "@/components/posts-mdx/news-entry";
 import { TeachingEntry } from "@/components/posts-mdx/teaching-entry";
 import { WorksEntry } from "@/components/posts-mdx/works-entry";
 import { compilePostMdx } from "@/lib/posts/compile";
-import type { SiteComponentName } from "@/lib/site-admin/component-registry";
+import type { SiteComponentName } from "@jinnkunn/content-core/components";
 
 import {
   parseNewsFeedItems,

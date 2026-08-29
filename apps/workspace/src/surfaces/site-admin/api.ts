@@ -1,58 +1,9 @@
 import { siteAdminHttpRequest } from "../../modules/site-admin/tauri";
+import { normalizeTauriApiResponse } from "@jinnkunn/site-admin-client/transport";
 import type { NormalizedApiResponse } from "./types";
 import { normalizeString } from "./utils";
 
-// Normalize the server's admin-envelope response into one of two discrete
-// variants. Callers discriminate on `.ok` — success path exposes `.data`,
-// failure path exposes `.code` + `.error`.
-export function normalizeApiResponse(rawResponse: unknown): NormalizedApiResponse {
-  if (!rawResponse || typeof rawResponse !== "object") {
-    return {
-      ok: false,
-      status: 0,
-      code: "INVALID_RESPONSE",
-      error: "Invalid Tauri response",
-      raw: rawResponse,
-    };
-  }
-  const raw = rawResponse as { status?: number; body?: unknown };
-  const status = Number(raw.status ?? 0);
-  const body = raw.body;
-  if (!body || typeof body !== "object") {
-    return {
-      ok: false,
-      status,
-      code: "INVALID_RESPONSE",
-      error: "Response body is not JSON object",
-      raw: rawResponse,
-    };
-  }
-  const bodyRecord = body as Record<string, unknown>;
-  if (bodyRecord.ok === false) {
-    return {
-      ok: false,
-      status,
-      code: normalizeString(bodyRecord.code) || "REQUEST_FAILED",
-      error: normalizeString(bodyRecord.error) || "Request failed",
-      raw: body,
-    };
-  }
-  if (bodyRecord.ok === true) {
-    return {
-      ok: true,
-      status,
-      data: bodyRecord.data ?? bodyRecord,
-      raw: body,
-    };
-  }
-  return {
-    ok: false,
-    status,
-    code: "INVALID_ENVELOPE",
-    error: "Response envelope missing ok/data fields",
-    raw: body,
-  };
-}
+export const normalizeApiResponse = normalizeTauriApiResponse;
 
 /** The Rust host allowlist (`is_trusted_admin_host`) rejects a credentialed
  * call to an untrusted base URL by returning an `Err`, which surfaces here as

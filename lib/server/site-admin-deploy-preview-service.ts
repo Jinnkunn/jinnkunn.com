@@ -10,8 +10,8 @@ import { loadSiteAdminRouteData } from "@/lib/server/site-admin-routes-service";
 import type {
   SiteAdminDeployPreviewComponentChange,
   SiteAdminDeployPreviewPayload,
-} from "@/lib/site-admin/api-types";
-import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
+} from "@jinnkunn/contracts/api";
+import { getSiteComponentDefinition } from "@jinnkunn/content-core/components";
 import {
   buildDeployPreviewDiff,
   type DeployPreviewProtectedEntry,

@@ -14,7 +14,7 @@ import {
 import {
   CALENDAR_TIME_ZONE_OPTIONS,
   calendarTimeZoneLabel,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 import {
   calendarCapability,
   calendarSettingsSearchText,

@@ -8,7 +8,7 @@ import { errorFromUnknown } from "@/components/site-admin/config/utils";
 import { useSiteAdminNavMutations } from "@/components/site-admin/config/use-nav-mutations";
 import { useSiteAdminSettingsMutation } from "@/components/site-admin/config/use-settings-mutation";
 import { siteAdminBackend } from "@/lib/client/site-admin-backend";
-import type { SiteAdminConfigSourceVersion } from "@/lib/site-admin/api-types";
+import type { SiteAdminConfigSourceVersion } from "@jinnkunn/contracts/api";
 
 export function useSiteAdminConfigData() {
   const [busy, setBusy] = useState(false);

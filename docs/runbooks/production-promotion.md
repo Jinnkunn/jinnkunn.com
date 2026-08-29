@@ -44,36 +44,33 @@ Release Center or the dry-run commands below.
 
 ## Content-from-D1 sync
 
-The staging worker runs `SITE_ADMIN_STORAGE=db` (per `wrangler.toml`),
-so its canonical content lives in D1 — workspace edits land there
-directly. `release:staging` is wired to dump from D1 → `content/*`
-automatically before the build step, so a fresh nav link / page
-edit / calendar projection saved through the workspace appears on
-the next staging release without any manual `dump-content-from-db`
-invocation.
+The staging worker runs `SITE_ADMIN_STORAGE=db` (per `wrangler.toml`), so its
+canonical content lives in D1. `release:staging` archives the requested Git SHA
+into an immutable directory under `.cache/release/snapshots/`, dumps staging D1
+into that snapshot, and builds there. It never rewrites the operator's working
+tree during the normal release path.
 
-After a successful `npm run release:staging`, watch for the
-`content/ now differs from git` hint in the script's tail output.
-That means the D1 dump pulled bytes that `main` doesn't yet have —
-the staging worker is correct, but git hasn't caught up. Commit
-the diff when you want git to remain a rollback/audit baseline:
+When Git needs a content backup, use the explicit sync path. It retains the
+dirty-content guard because this command intentionally rewrites root
+`content/*` before committing:
 
 ```bash
-git add content/
-git commit -m "chore(content): sync from D1 staging"
-git push
+npm run release:staging:sync-git
 ```
 
-You don't need to commit on every release — the dump is
-idempotent — but committing periodically (or before a production
-promotion) keeps git as a usable rollback target. The
-production promotion path snapshots both code and content SHAs
-into `production-version-history.md`, so a stale main makes the
-log harder to read.
+Every full staging and production release uses an immutable snapshot of the
+committed source SHA. Tracked edits and untracked files in the working tree are
+excluded from the Worker bundle. Production still requires a clean tree and
+explicit SHA confirmation; staging may run while unrelated local work exists,
+but the release will contain committed code only.
 
-If unrelated local files are dirty, staging release builds from a clean
-snapshot of committed HEAD under `.cache/release/snapshots/`. Dirty
-`content/` still blocks by default because the D1 dump would overwrite it.
+Build-cache reuse is content-addressed as well as code-addressed. Recovery with
+`--skip-build` requires both an existing build cache for the exact Git SHA and
+an explicit `RELEASE_EXPECT_CONTENT_SHA`; the release fails closed when either
+identity cannot be proven. Routine `release:prod:from-staging` supplies the
+expected staging content SHA automatically and requires the complete staging
+artifact. If that artifact is missing, promotion stops and asks for a new
+staging release instead of rebuilding different bytes for production.
 
 ## Content-only fast publish
 

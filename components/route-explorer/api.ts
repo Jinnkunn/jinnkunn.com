@@ -4,7 +4,7 @@ import type { RouteManifestItem } from "@/lib/routes-manifest";
 import { siteAdminBackend } from "@/lib/client/site-admin-backend";
 import type { AccessMode } from "@/lib/shared/access";
 import { parseAdminRoutesPayload, type AdminConfig } from "@/lib/site-admin/route-explorer-model";
-import type { SiteAdminRoutesSourceVersion } from "@/lib/site-admin/api-types";
+import type { SiteAdminRoutesSourceVersion } from "@jinnkunn/contracts/api";
 
 export async function fetchAdminConfig(
   items: RouteManifestItem[],

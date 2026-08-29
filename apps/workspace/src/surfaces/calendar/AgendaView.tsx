@@ -10,7 +10,7 @@ import {
   formatInTimeZone,
   zonedDayKey,
   zonedDateFromDayKey,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 import {
   todoTimelineKind,
   todoTimelineStart,

@@ -21,7 +21,7 @@ import {
   getSiteComponentDefinition,
   isSiteComponentName,
   type SiteComponentName,
-} from "@/lib/site-admin/component-registry";
+} from "@jinnkunn/content-core/components";
 
 /** Fixed list of editable components — kept in sync with the
  * `<{Name}Block />` server components in `components/posts-mdx/*`

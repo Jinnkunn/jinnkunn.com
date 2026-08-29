@@ -15,12 +15,12 @@ import {
   normalizePublicCalendarServedAt,
   selectPublicCalendarHydrationData,
   type PublicCalendarData,
-} from "@/lib/shared/public-calendar";
+} from "@jinnkunn/calendar-core/public";
 import {
   DEFAULT_CALENDAR_TIME_ZONE,
   normalizeCalendarTimeZone,
   zonedStartOfDay,
-} from "@/lib/shared/calendar-timezone";
+} from "@jinnkunn/calendar-core/timezone";
 
 // Tag filter persists in the URL search param `tag` (`?tag=foo&tag=bar`)
 // so a shareable link can deep-link to "/calendar filtered by talks".

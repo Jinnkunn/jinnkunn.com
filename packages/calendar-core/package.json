@@ -1,0 +1,14 @@
+{
+  "name": "@jinnkunn/calendar-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/calendar-core.ts",
+    "./ics": "./src/calendar-ics.ts",
+    "./public": "./src/public-calendar.ts",
+    "./tags": "./src/calendar-tags.ts",
+    "./timezone": "./src/calendar-timezone.ts"
+  }
+}

@@ -9,7 +9,7 @@ import {
 import {
   zonedDateFromDayKey,
   zonedDayKey,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 
 const TIME_ZONE = "America/Halifax";
 

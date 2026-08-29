@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { normalizeCalendarObservationSyncPayload } from "../../../../../lib/shared/calendar-core.ts";
+import { normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
 import {
   parseSiteAdminCalendarPublicLiveSaveCommand,
   parseSiteAdminCalendarPublicSaveCommand,
-} from "../../../../../lib/site-admin/calendar-public-commands.ts";
+} from "@jinnkunn/contracts/calendar-commands";
 import type { PublicCalendarPayload } from "./publicProjection";
 
 const mocks = vi.hoisted(() => ({

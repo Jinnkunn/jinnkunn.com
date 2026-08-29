@@ -14,7 +14,7 @@ import {
 import {
   isSiteComponentName,
   type SiteComponentName,
-} from "@/lib/site-admin/component-registry";
+} from "@jinnkunn/content-core/components";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 
 export const runtime = "nodejs";

@@ -4,7 +4,7 @@ import { getLatestPublicCalendarData } from "@/lib/server/public-calendar-data";
 import {
   PUBLIC_CALENDAR_CACHE_TAG,
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
-} from "@/lib/shared/public-calendar";
+} from "@jinnkunn/calendar-core/public";
 
 export const runtime = "nodejs";
 export const revalidate = 300;

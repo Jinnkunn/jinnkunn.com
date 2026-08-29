@@ -9,7 +9,7 @@ import {
   zonedEndOfMonth,
   zonedStartOfDay,
   zonedStartOfMonth,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 
 /** Date math + view-aware range/navigation/title helpers.
  *

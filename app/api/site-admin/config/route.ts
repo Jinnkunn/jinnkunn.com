@@ -14,7 +14,7 @@ import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import { parseSiteAdminConfigCommand } from "@/lib/server/site-admin-request";
 import type {
   SiteAdminConfigGetPayload,
-} from "@/lib/site-admin/api-types";
+} from "@jinnkunn/contracts/api";
 
 export const runtime = "nodejs";
 

@@ -6,6 +6,10 @@ import type {
   ProtectedRow,
   SiteSettings,
 } from "./types";
+import {
+  parsePageListRow,
+  parsePostListRow,
+} from "@jinnkunn/site-admin-client/transport";
 
 export function normalizeString(input: unknown): string {
   return String(input ?? "").trim();
@@ -176,6 +180,21 @@ export function defaultSettings(): SiteSettings {
     seoPageOverrides: "",
     googleAnalyticsId: "",
     contentGithubUsers: "",
+    memorialEnabled: false,
+    memorialScope: "home",
+    memorialEyebrow: "In remembrance",
+    memorialTitle: "",
+    memorialContext: "",
+    memorialEnglishTitle: "",
+    memorialMessage: "",
+    memorialChineseTitle: "",
+    memorialChineseMessage: "",
+    memorialSourceLabel: "Latest Updates",
+    memorialSourceUrl: "",
+    memorialSourceChineseLabel: "最新消息",
+    memorialSourceChineseUrl: "",
+    memorialStartsAt: "",
+    memorialEndsAt: "",
     sitemapExcludes: "",
     sitemapAutoExcludeEnabled: true,
     sitemapAutoExcludeSections: "",
@@ -203,6 +222,23 @@ export function normalizeSettings(input: unknown): SiteSettings {
     seoPageOverrides: normalizeString(src.seoPageOverrides),
     googleAnalyticsId: normalizeString(src.googleAnalyticsId),
     contentGithubUsers: normalizeString(src.contentGithubUsers),
+    memorialEnabled: Boolean(src.memorialEnabled),
+    memorialScope: src.memorialScope === "all-public" ? "all-public" : "home",
+    memorialEyebrow: normalizeString(src.memorialEyebrow) || "In remembrance",
+    memorialTitle: normalizeString(src.memorialTitle),
+    memorialContext: normalizeString(src.memorialContext),
+    memorialEnglishTitle: normalizeString(src.memorialEnglishTitle),
+    memorialMessage: normalizeString(src.memorialMessage),
+    memorialChineseTitle: normalizeString(src.memorialChineseTitle),
+    memorialChineseMessage: normalizeString(src.memorialChineseMessage),
+    memorialSourceLabel:
+      normalizeString(src.memorialSourceLabel) || "Latest Updates",
+    memorialSourceUrl: normalizeString(src.memorialSourceUrl),
+    memorialSourceChineseLabel:
+      normalizeString(src.memorialSourceChineseLabel) || "最新消息",
+    memorialSourceChineseUrl: normalizeString(src.memorialSourceChineseUrl),
+    memorialStartsAt: normalizeString(src.memorialStartsAt),
+    memorialEndsAt: normalizeString(src.memorialEndsAt),
     sitemapExcludes: normalizeString(src.sitemapExcludes),
     sitemapAutoExcludeEnabled: Boolean(src.sitemapAutoExcludeEnabled ?? true),
     sitemapAutoExcludeSections: normalizeString(src.sitemapAutoExcludeSections),
@@ -264,6 +300,21 @@ const SETTINGS_KEYS: readonly (keyof SiteSettings)[] = [
   "ogImage",
   "googleAnalyticsId",
   "contentGithubUsers",
+  "memorialEnabled",
+  "memorialScope",
+  "memorialEyebrow",
+  "memorialTitle",
+  "memorialContext",
+  "memorialEnglishTitle",
+  "memorialMessage",
+  "memorialChineseTitle",
+  "memorialChineseMessage",
+  "memorialSourceLabel",
+  "memorialSourceUrl",
+  "memorialSourceChineseLabel",
+  "memorialSourceChineseUrl",
+  "memorialStartsAt",
+  "memorialEndsAt",
   "seoPageOverrides",
   "sitemapExcludes",
   "sitemapAutoExcludeEnabled",
@@ -347,14 +398,6 @@ export function formatPendingDeploy(source: {
   return reason ? `Unknown (${reason})` : "Unknown";
 }
 
-function asBoolean(value: unknown, fallback = false): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function asInteger(value: unknown, fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
 /** Parse one row from `/api/site-admin/posts.posts[]`. Returns null if
  * the row is missing the required slug, otherwise a strongly-typed
  * `PostListRow` with sensible fallbacks for optional fields. Used by
@@ -362,42 +405,10 @@ function asInteger(value: unknown, fallback = 0): number {
  * + command palette index) and historically by the now-defunct
  * Posts panel list. */
 export function normalizePostListRow(raw: unknown): PostListRow | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const slug = normalizeString(r.slug);
-  if (!slug) return null;
-  return {
-    slug,
-    href: normalizeString(r.href) || `/blog/${slug}`,
-    title: normalizeString(r.title) || slug,
-    dateIso: (r.dateIso as string | null) ?? null,
-    dateText: (r.dateText as string | null) ?? null,
-    description: (r.description as string | null) ?? null,
-    draft: asBoolean(r.draft),
-    tags: Array.isArray(r.tags)
-      ? r.tags.filter((t): t is string => typeof t === "string")
-      : [],
-    wordCount: asInteger(r.wordCount),
-    readingMinutes: asInteger(r.readingMinutes),
-    version: normalizeString(r.version),
-  };
+  return parsePostListRow(raw);
 }
 
 /** Same shape as `normalizePostListRow` but for the pages endpoint. */
 export function normalizePageListRow(raw: unknown): PageListRow | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const slug = normalizeString(r.slug);
-  if (!slug) return null;
-  return {
-    slug,
-    href: normalizeString(r.href) || `/pages/${slug}`,
-    title: normalizeString(r.title) || slug,
-    description: (r.description as string | null) ?? null,
-    updatedIso: (r.updatedIso as string | null) ?? null,
-    draft: asBoolean(r.draft),
-    wordCount: asInteger(r.wordCount),
-    readingMinutes: asInteger(r.readingMinutes),
-    version: normalizeString(r.version),
-  };
+  return parsePageListRow(raw);
 }

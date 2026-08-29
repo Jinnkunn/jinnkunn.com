@@ -14,7 +14,7 @@ import type { TodoRow } from "../../modules/todos/api";
 import {
   DEFAULT_CALENDAR_TIME_ZONE,
   formatInTimeZone,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 
 const ALL_DAY_BAR_HEIGHT = 18;
 const ALL_DAY_BAR_GAP = 2;

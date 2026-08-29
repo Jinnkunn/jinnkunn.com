@@ -14,7 +14,7 @@ import {
   DEFAULT_CALENDAR_TIME_ZONE,
   formatInTimeZone,
   zonedDayRange,
-} from "../../../../../lib/shared/calendar-timezone.ts";
+} from "@jinnkunn/calendar-core/timezone";
 
 /** Single-day timeline. The header strip shows the weekday name + date
  * with a blue circle around the number when it's today, matching the

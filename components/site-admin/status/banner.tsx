@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import type { StatusPayload } from "@/components/site-admin/status/types";
-import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
+import type { SiteAdminDeployResult } from "@jinnkunn/contracts/api";
 import type { BannerState } from "@/lib/site-admin/status-model";
 
 type SiteAdminStatusBannerProps = {

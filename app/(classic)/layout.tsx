@@ -51,9 +51,7 @@ export default function ClassicLayout({
         <ViewportCssVars />
         {/* Lightweight JS to restore Notion interactions that otherwise require client hydration. */}
         <NotionBlockBehavior />
-        {memorial?.scope === "all-public" ? (
-          <MemorialNotice memorial={memorial} variant="compact" />
-        ) : null}
+        {memorial ? <MemorialNotice memorial={memorial} /> : null}
         <div id="content-wrapper" className="super-content-wrapper">
           {children}
         </div>

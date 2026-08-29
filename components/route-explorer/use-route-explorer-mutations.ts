@@ -7,7 +7,7 @@ import {
 } from "@/lib/shared/access";
 import type { AdminConfig } from "@/lib/site-admin/route-explorer-model";
 import type { RouteTreeItem } from "@/lib/site-admin/route-explorer-types";
-import type { SiteAdminRoutesSourceVersion } from "@/lib/site-admin/api-types";
+import type { SiteAdminRoutesSourceVersion } from "@jinnkunn/contracts/api";
 
 import { postAccess, postOverride } from "./api";
 

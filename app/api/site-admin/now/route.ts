@@ -4,7 +4,7 @@ import {
   NOW_CONTEXT_MAX_LENGTH,
   NOW_LOCATION_MAX_LENGTH,
   NOW_STATUS_MAX_LENGTH,
-} from "@/lib/site-admin/now-normalize";
+} from "@jinnkunn/content-core/now";
 import { SiteAdminNowHistoryNotFoundError } from "@/lib/site-admin/now-commands";
 import {
   apiError,

@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 
 import { parseNewsFeedItems, type NewsComponentFeedItem } from "@/lib/components/parse";
 import { compilePostMdx } from "@/lib/posts/compile";
-import { getSiteComponentDefinition } from "@/lib/site-admin/component-registry";
+import { getSiteComponentDefinition } from "@jinnkunn/content-core/components";
 
 import { postMdxComponents } from "./components";
 import { NewsEntry } from "./news-entry";

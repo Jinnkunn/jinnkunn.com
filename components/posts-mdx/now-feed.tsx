@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 
 import nowContent from "@/content/now.json";
 
-import { normalizeNowData } from "@/lib/site-admin/now-normalize";
+import { normalizeNowData } from "@jinnkunn/content-core/now";
 import { NowFeedClient } from "./now-feed-client";
 
 export function NowFeed(): ReactElement {

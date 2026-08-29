@@ -1,5 +1,19 @@
 // Shared types for the site-admin surface.
 
+import type {
+  NavItemRow,
+  NormalizedApiFailure as ContractNormalizedApiFailure,
+  NormalizedApiResponse as ContractNormalizedApiResponse,
+  SiteAdminAssetUpload,
+  SiteAdminConfigSourceVersion,
+  SiteAdminPageDetail,
+  SiteAdminPageListRow,
+  SiteAdminPostDetail,
+  SiteAdminPostListRow,
+  SiteAdminRoutesSourceVersion,
+  SiteSettings as ContractSiteSettings,
+} from "@jinnkunn/contracts";
+
 /** Site-admin nav tab id — mirrors the leaf ids in `nav.ts` and the
  * surface switches on this value to pick which panel to render. Keep
  * the union in sync with `SECTIONS` when adding/removing tabs.
@@ -16,36 +30,8 @@ export type SiteAdminTab =
   | "release"
   | "settings";
 
-export interface SiteSettings {
-  rowId: string;
-  siteName: string;
-  lang: string;
-  seoTitle: string;
-  seoDescription: string;
-  favicon: string;
-  ogImage: string;
-  seoPageOverrides: string;
-  googleAnalyticsId: string;
-  contentGithubUsers: string;
-  sitemapExcludes: string;
-  sitemapAutoExcludeEnabled: boolean;
-  sitemapAutoExcludeSections: string;
-  sitemapAutoExcludeDepthPages: string;
-  sitemapAutoExcludeDepthBlog: string;
-  sitemapAutoExcludeDepthPublications: string;
-  sitemapAutoExcludeDepthTeaching: string;
-  rootPageId: string;
-  homePageId: string;
-}
-
-export interface NavRow {
-  rowId: string;
-  label: string;
-  href: string;
-  group: "top" | "more";
-  order: number;
-  enabled: boolean;
-}
+export type SiteSettings = ContractSiteSettings;
+export type NavRow = NavItemRow;
 
 export interface OverrideRow {
   rowId: string;
@@ -65,16 +51,8 @@ export interface ProtectedRow {
   enabled: boolean;
 }
 
-export interface ConfigSourceVersion {
-  siteConfigSha: string;
-  branchSha: string;
-}
-
-export interface RoutesSourceVersion {
-  siteConfigSha: string;
-  protectedRoutesSha: string;
-  branchSha: string;
-}
+export type ConfigSourceVersion = SiteAdminConfigSourceVersion;
+export type RoutesSourceVersion = SiteAdminRoutesSourceVersion;
 
 export interface StatusPayload {
   source: {
@@ -162,58 +140,15 @@ export interface ConnectionProfile {
   baseUrl: string;
 }
 
-export interface NormalizedApiSuccess {
-  ok: true;
-  status: number;
-  data: unknown;
-  raw: unknown;
-}
-
-export interface NormalizedApiFailure {
-  ok: false;
-  status: number;
-  code: string;
-  error: string;
-  raw: unknown;
-}
-
-export type NormalizedApiResponse = NormalizedApiSuccess | NormalizedApiFailure;
+export type NormalizedApiResponse = ContractNormalizedApiResponse;
+export type NormalizedApiFailure = ContractNormalizedApiFailure;
 
 // --- MDX content (posts + pages) ------------------------------------------
 
-export interface PostListRow {
-  slug: string;
-  href: string;
-  title: string;
-  dateIso: string | null;
-  dateText: string | null;
-  description: string | null;
-  draft: boolean;
-  tags: string[];
-  wordCount: number;
-  readingMinutes: number;
-  version: string;
-}
-
-export interface PostDetail extends PostListRow {
-  source: string;
-}
-
-export interface PageListRow {
-  slug: string;
-  href: string;
-  title: string;
-  description: string | null;
-  updatedIso: string | null;
-  draft: boolean;
-  wordCount: number;
-  readingMinutes: number;
-  version: string;
-}
-
-export interface PageDetail extends PageListRow {
-  source: string;
-}
+export type PostListRow = SiteAdminPostListRow;
+export type PostDetail = SiteAdminPostDetail;
+export type PageListRow = SiteAdminPageListRow;
+export type PageDetail = SiteAdminPageDetail;
 
 /** Selection state for the Posts/Pages panels. `null` → empty state;
  * `{kind:"new"}` → create form; otherwise the editor for `slug` is open.
@@ -260,10 +195,4 @@ export interface HomeData {
 
 // --- Assets ---------------------------------------------------------------
 
-export interface AssetUploadResponse {
-  key: string;
-  url: string;
-  size: number;
-  contentType: string;
-  version: string;
-}
+export type AssetUploadResponse = SiteAdminAssetUpload;

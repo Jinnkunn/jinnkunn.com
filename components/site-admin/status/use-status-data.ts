@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { StatusResult } from "@/components/site-admin/status/types";
 import { siteAdminBackend } from "@/lib/client/site-admin-backend";
-import type { SiteAdminDeployResult } from "@/lib/site-admin/api-types";
+import type { SiteAdminDeployResult } from "@jinnkunn/contracts/api";
 import { triggerSiteAdminDeploy } from "@/lib/client/site-admin-deploy";
-import { isSiteAdminStatusOk } from "@/lib/site-admin/status-contract";
+import { isSiteAdminStatusOk } from "@jinnkunn/site-admin-client/contracts";
 import {
   deriveSiteAdminStatus,
   type BannerState,

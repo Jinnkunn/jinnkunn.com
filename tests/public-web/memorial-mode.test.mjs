@@ -65,9 +65,18 @@ test("classic public layout scopes memorial mode away from Site Admin", async ()
     fs.readFile("app/(classic)/memorial.css", "utf8"),
   ]);
   assert.match(layout, /data-memorial-mode/);
-  assert.match(home, /variant="home"/);
+  assert.match(layout, /<MemorialNotice memorial=\{memorial\}/);
+  assert.doesNotMatch(home, /MemorialNotice/);
+  assert.match(notice, /usePathname/);
+  assert.match(notice, /userPreference \?\? isHome/);
+  assert.match(notice, /aria-expanded/);
+  assert.match(notice, /Collapse memorial message/);
+  assert.match(notice, /Expand memorial message/);
   assert.match(notice, /memorial\.context/);
-  assert.match(notice, /memorial-notice__compact-context/);
+  assert.match(notice, /memorial-notice__compact-title/);
+  assert.match(notice, /memorial-notice__compact-divider/);
+  assert.match(notice, /memorial-notice__compact-sources/);
+  assert.match(notice, /memorial-notice__compact-source/);
   assert.match(notice, /memorial-notice__inner--compact/);
   assert.match(notice, /memorial-notice__inner--home/);
   assert.match(notice, /memorial\.context \|\| memorial\.title/);

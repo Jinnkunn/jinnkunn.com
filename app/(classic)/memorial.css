@@ -107,13 +107,11 @@ body:has(.super-root[data-memorial-mode="true"]),
 .memorial-notice__inner--compact {
   display: grid;
   grid-template-columns: 2px minmax(0, 1fr) auto;
-  min-height: 62px;
+  min-height: 70px;
   align-items: center;
   column-gap: 14px;
-}
-
-.super-root:has(.memorial-notice--home) .memorial-notice--compact {
-  display: none;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 .memorial-notice__marker {
@@ -127,25 +125,76 @@ body:has(.super-root[data-memorial-mode="true"]),
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 2px !important;
+  gap: 0 7px;
   color: var(--ds-text-secondary);
   font-size: 13px;
+  font-weight: 400;
   line-height: 1.4;
 }
 
-.memorial-notice__compact-context {
-  color: var(--ds-text-faint);
-  font-size: 12px;
+.memorial-notice__compact-copy {
+  display: grid;
+  min-width: 0;
+  row-gap: 7px;
 }
 
-.memorial-notice__compact-context::before {
-  margin-right: 8px;
+.memorial-notice__compact-copy > .memorial-notice__eyebrow {
+  margin-bottom: 0;
+}
+
+.memorial-notice__compact-sources {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+}
+
+.memorial-notice__compact-divider {
   color: var(--ds-border-strong);
-  content: "/";
 }
 
-.memorial-notice__sources a,
+.memorial-notice__toggle {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ds-text-muted);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.memorial-notice__toggle:hover {
+  border-color: var(--ds-border-emphasis);
+  background: var(--ds-surface-soft-strong);
+  color: var(--ds-text-primary);
+}
+
+.memorial-notice__toggle:focus-visible {
+  outline: 2px solid var(--ds-text-muted);
+  outline-offset: 3px;
+}
+
+.memorial-notice__toggle-icon {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.memorial-notice[data-expanded="true"] .memorial-notice__toggle-icon {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.memorial-notice__compact-source,
 .memorial-notice__column-source {
   color: var(--ds-text-secondary);
   font-size: 12px;
@@ -161,17 +210,6 @@ body:has(.super-root[data-memorial-mode="true"]),
   margin-top: 7px;
 }
 
-.memorial-notice__sources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-}
-
-.memorial-notice__inner--compact > .memorial-notice__sources {
-  justify-content: flex-end;
-  white-space: nowrap;
-}
-
 .memorial-notice--home {
   margin-top: 10px;
   margin-bottom: 0;
@@ -181,14 +219,27 @@ body:has(.super-root[data-memorial-mode="true"]),
 }
 
 .memorial-notice__inner--home {
+  display: grid;
   padding-top: 22px;
   padding-bottom: 24px;
+}
+
+.memorial-notice__header {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.memorial-notice__header > .memorial-notice__toggle {
+  margin-left: auto;
 }
 
 /* The classic page shell reserves 140px for a missing Notion cover. That
  * spacing is useful on an ordinary page, but reads as a blank section after
  * the memorial notice. Keep a small breath before the original Home title. */
-.page__index:has(.memorial-notice--home) .notion-header__cover.no-cover {
+.super-root:has(.memorial-notice--home) .page__index .notion-header__cover.no-cover {
   height: 28px;
   max-height: 28px;
 }
@@ -197,7 +248,7 @@ body:has(.super-root[data-memorial-mode="true"]),
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: clamp(28px, 6vw, 64px);
-  margin-top: 17px;
+  margin-top: 10px;
 }
 
 .memorial-notice__primary,
@@ -281,29 +332,9 @@ body:has(.super-root[data-memorial-mode="true"]),
     word-break: normal;
   }
 
-  .memorial-notice__inner--compact {
-    grid-template-columns: 2px minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    align-items: stretch;
-    column-gap: 14px;
-    row-gap: 10px;
-    padding-top: 14px;
-    padding-bottom: 14px;
-  }
-
   .memorial-notice__inner--compact .memorial-notice__marker {
-    grid-row: 1 / span 2;
     height: auto;
-    min-height: 42px;
-  }
-
-  .memorial-notice__compact-copy,
-  .memorial-notice__inner--compact > .memorial-notice__sources {
-    grid-column: 2;
-  }
-
-  .memorial-notice__inner--compact > .memorial-notice__sources {
-    justify-content: flex-start;
+    min-height: 50px;
   }
 }
 
@@ -314,10 +345,20 @@ body:has(.super-root[data-memorial-mode="true"]),
   }
 
   .memorial-notice__compact-title {
-    gap: 4px 7px;
+    gap: 0 6px;
   }
 
-  .memorial-notice__compact-context::before {
-    margin-right: 7px;
+  .memorial-notice__compact-sources {
+    column-gap: 14px;
+  }
+
+  .memorial-notice__inner--compact {
+    column-gap: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .memorial-notice__toggle {
+    transition: none;
   }
 }

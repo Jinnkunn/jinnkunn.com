@@ -98,6 +98,11 @@
     "workspace:mcp:reject": "node --no-warnings scripts/workspace/workspace-mcp-server.mjs --reject"
   },
   "dependencies": {
+    "@jinnkunn/calendar-core": "file:packages/calendar-core",
+    "@jinnkunn/content-core": "file:packages/content-core",
+    "@jinnkunn/contracts": "file:packages/contracts",
+    "@jinnkunn/document-repository": "file:packages/document-repository",
+    "@jinnkunn/site-admin-client": "file:packages/site-admin-client",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-markdown": "^6.5.1",
     "@codemirror/language": "^6.12.4",
@@ -116,8 +121,8 @@
     "next-auth": "^4.24.13",
     "parse5": "^7.3.0",
     "prismjs": "^1.30.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-katex": "^7.0.1",
     "rehype-slug": "^6.0.0",
@@ -128,7 +133,7 @@
   },
   "devDependencies": {
     "@libsql/client": "^0.17.3",
-    "@next/bundle-analyzer": "^16.2.4",
+    "@next/bundle-analyzer": "16.1.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

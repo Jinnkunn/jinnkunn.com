@@ -1,0 +1,21 @@
+{
+  "name": "@jinnkunn/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./access": "./src/access.ts",
+    "./api": "./src/api-types.ts",
+    "./calendar-commands": "./src/calendar-public-commands.ts",
+    "./calendar-observation-commands": "./src/calendar-observation-commands.ts",
+    "./parse-result": "./src/parse-result.ts",
+    "./schemas": "./src/schemas.ts",
+    "./site-admin": "./src/site-admin-types.ts",
+    "./transport": "./src/api-guards.ts"
+  },
+  "dependencies": {
+    "@jinnkunn/calendar-core": "file:../calendar-core",
+    "zod": "^3.25.76"
+  }
+}

@@ -1,27 +1,21 @@
-// SQLite-backed ContentStore. Stores file blobs as rows in a single
-// `content_files` table; uses sha1 over the body bytes as the optimistic-lock
-// version so the contract matches the local + GitHub stores 1:1 — callers
-// don't need to branch.
-//
-// Decoupled from any specific SQLite client so the same code runs against:
-//   - Cloudflare D1 binding (production / staging / dev under wrangler)
-//   - in-memory libSQL                         (unit tests)
-//   - any other SQLite client implementing `DbExecutor`
-// No `server-only` marker so node:test can import it for unit coverage.
+// SQLite-backed implementation of the canonical DocumentRepository contract.
+// ContentStore remains available as a compatibility facade for older callers.
 
 import { createHash } from "node:crypto";
-import path from "node:path";
 
 import {
-  ContentStoreConflictError,
-  ContentStoreNotFoundError,
-  type ContentEntry,
+  DocumentConflictError,
+  DocumentNotFoundError,
+  normalizeDocumentPath,
+  type DocumentEntry,
+  type DocumentRepository,
+  type DocumentVersion,
+} from "@jinnkunn/document-repository";
+import {
+  contentStoreFromDocumentRepository,
   type ContentStore,
-  type ContentVersion,
 } from "./content-store.ts";
 
-// Minimal SQL-execution surface shared by D1 (`prepare(...).bind(...).all()`)
-// and libSQL (`execute({sql, args})`). Adapters live next to each backend.
 export interface DbExecutor {
   execute(opts: { sql: string; args?: unknown[] }): Promise<{
     rows: Record<string, unknown>[];
@@ -31,8 +25,7 @@ export interface DbExecutor {
 
 export type DbContentStoreConfig = {
   executor: DbExecutor;
-  // Optional: tag every write with an actor for the audit trail.
-  // Called per-write so request-scoped values can be threaded in.
+  /** Request-scoped actor recorded on writes and history rows. */
   getActor?: () => string | null | undefined;
 };
 
@@ -48,115 +41,107 @@ function bytesToUtf8(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("utf8");
 }
 
-// Decode a SQLite hex string (output of `hex()`) into bytes. The hand-rolled
-// loop avoids depending on Buffer in case this code ever runs in a Workers
-// context where the nodejs_compat shim isn't available.
+// SQLite's hex() result avoids relying on the varying BLOB result shapes
+// returned by D1 and libSQL runtimes.
 function hexToBytes(hex: string): Uint8Array {
   const length = hex.length >> 1;
   const out = new Uint8Array(length);
-  for (let i = 0; i < length; i++) {
-    out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  for (let index = 0; index < length; index += 1) {
+    out[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
   }
   return out;
 }
 
-function normalizeRel(relPath: string): string {
-  const normalized = path.posix.normalize(relPath.replace(/^\/+/, ""));
-  if (
-    !normalized ||
-    normalized.startsWith("..") ||
-    normalized.includes("/../") ||
-    normalized.endsWith("/..")
-  ) {
-    throw new Error(`content store: invalid path: ${relPath}`);
-  }
-  return normalized;
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const code = (err as { code?: unknown }).code;
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
   if (typeof code === "string" && code.includes("CONSTRAINT")) return true;
-  const message = (err as { message?: unknown }).message;
-  if (typeof message === "string" && /UNIQUE constraint failed/i.test(message)) {
-    return true;
-  }
-  return false;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && /UNIQUE constraint failed/i.test(message);
 }
 
-export function createDbContentStore(config: DbContentStoreConfig): ContentStore {
+function assertExpectedVersion(input: {
+  expectedVersion: DocumentVersion | null | undefined;
+  actualVersion: DocumentVersion | null;
+}): void {
+  if (input.expectedVersion === undefined) return;
+  const creating = input.expectedVersion === null || input.expectedVersion === "";
+  if (creating ? input.actualVersion !== null : input.expectedVersion !== input.actualVersion) {
+    throw new DocumentConflictError({
+      expectedVersion: input.expectedVersion,
+      actualVersion: input.actualVersion,
+    });
+  }
+}
+
+export function createDbDocumentRepository(
+  config: DbContentStoreConfig,
+): DocumentRepository {
   const { executor, getActor } = config;
 
-  async function getRow(relPath: string): Promise<{
+  async function getRow(documentPath: string): Promise<{
     body: Uint8Array;
     sha: string;
+    size: number;
+    updatedAt: number;
   } | null> {
-    // Pull the body as a SQLite hex string (`lower(hex(body))`) instead of
-    // raw BLOB. D1's binding has shipped BLOB-column results in several
-    // shapes over time (ArrayBuffer, cross-realm ArrayBuffer, Uint8Array,
-    // even number arrays in some Worker isolation contexts) — hex sidesteps
-    // every one of those at the cost of 2x payload bytes, which is fine for
-    // the small JSON / MDX rows we read here. libSQL also supports hex(),
-    // so unit tests against in-memory libSQL exercise the same path.
     const result = await executor.execute({
-      sql: "SELECT lower(hex(body)) AS body_hex, sha FROM content_files WHERE rel_path = ?",
-      args: [relPath],
+      sql: `SELECT lower(hex(body)) AS body_hex, sha, size, updated_at
+              FROM content_files
+             WHERE rel_path = ?`,
+      args: [documentPath],
     });
     const row = result.rows[0];
     if (!row) return null;
     return {
-      body: hexToBytes(String(row.body_hex)),
-      sha: String(row.sha),
+      body: hexToBytes(String(row.body_hex || "")),
+      sha: String(row.sha || ""),
+      size: Number(row.size),
+      updatedAt: Number(row.updated_at),
     };
   }
 
-  async function upsert(
-    relPath: string,
-    body: Uint8Array,
-    isBinary: boolean,
-    opts?: { ifMatch?: ContentVersion | null },
-  ): Promise<{ sha: string }> {
-    const existing = await getRow(relPath);
-    if (opts?.ifMatch !== undefined) {
-      const expected = opts.ifMatch;
-      const actual = existing?.sha ?? null;
-      const isCreate = expected === null || expected === "";
-      if (isCreate && actual !== null) {
-        throw new ContentStoreConflictError({ expected, actual });
-      }
-      if (!isCreate && expected !== actual) {
-        throw new ContentStoreConflictError({ expected, actual });
-      }
+  async function writeBytes(input: {
+    path: string;
+    body: Uint8Array;
+    isBinary: boolean;
+    expectedVersion: DocumentVersion | null | undefined;
+  }) {
+    const documentPath = normalizeDocumentPath(input.path);
+    const existing = await getRow(documentPath);
+    assertExpectedVersion({
+      expectedVersion: input.expectedVersion,
+      actualVersion: existing?.sha ?? null,
+    });
+
+    const sha = sha1HexBytes(input.body);
+    if (existing?.sha === sha) {
+      return { path: documentPath, version: sha, state: "committed" as const };
     }
-    const sha = sha1HexBytes(body);
-    if (existing && existing.sha === sha) {
-      return { sha };
-    }
+
     const updatedAt = Date.now();
     const updatedBy = getActor?.() ?? null;
     if (existing) {
-      // UPDATE … WHERE sha = oldSha gives row-level atomicity even if a
-      // concurrent writer slipped between the SELECT above and this UPDATE.
-      const res = await executor.execute({
+      const result = await executor.execute({
         sql: `UPDATE content_files
                  SET body = ?, sha = ?, size = ?, is_binary = ?, updated_at = ?, updated_by = ?
                WHERE rel_path = ? AND sha = ?`,
         args: [
-          body,
+          input.body,
           sha,
-          body.byteLength,
-          isBinary ? 1 : 0,
+          input.body.byteLength,
+          input.isBinary ? 1 : 0,
           updatedAt,
           updatedBy,
-          relPath,
+          documentPath,
           existing.sha,
         ],
       });
-      if ((res.rowsAffected ?? 0) === 0) {
-        const fresh = await getRow(relPath);
-        throw new ContentStoreConflictError({
-          expected: opts?.ifMatch ?? null,
-          actual: fresh?.sha ?? null,
+      if ((result.rowsAffected ?? 0) === 0) {
+        const fresh = await getRow(documentPath);
+        throw new DocumentConflictError({
+          expectedVersion: input.expectedVersion ?? existing.sha,
+          actualVersion: fresh?.sha ?? null,
         });
       }
     } else {
@@ -166,128 +151,224 @@ export function createDbContentStore(config: DbContentStoreConfig): ContentStore
                   (rel_path, body, sha, size, is_binary, updated_at, updated_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
           args: [
-            relPath,
-            body,
+            documentPath,
+            input.body,
             sha,
-            body.byteLength,
-            isBinary ? 1 : 0,
+            input.body.byteLength,
+            input.isBinary ? 1 : 0,
             updatedAt,
             updatedBy,
           ],
         });
-      } catch (err) {
-        if (isUniqueViolation(err)) {
-          // Lost the race — a concurrent INSERT got there first.
-          const fresh = await getRow(relPath);
-          throw new ContentStoreConflictError({
-            expected: opts?.ifMatch ?? null,
-            actual: fresh?.sha ?? null,
-          });
-        }
-        throw err;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        const fresh = await getRow(documentPath);
+        throw new DocumentConflictError({
+          expectedVersion: input.expectedVersion ?? null,
+          actualVersion: fresh?.sha ?? null,
+        });
       }
     }
 
-    // Binary uploads (images, PDFs) are never diffed or restored from history,
-    // so keeping a full second copy of every version only grows D1 without
-    // buying anything. Text bodies still get their timeline.
-    if (isBinary) return { sha };
-
-    // Append a row to content_files_history *after* the main upsert lands
-    // so a failed upsert doesn't pollute the history timeline. Failures
-    // here are non-fatal — the user-visible write already succeeded; we
-    // only lose the version-tracking record for that one write.
-    try {
-      await executor.execute({
-        sql: `INSERT INTO content_files_history
-                (rel_path, body, sha, size, is_binary, updated_at, updated_by)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        args: [relPath, body, sha, body.byteLength, isBinary ? 1 : 0, updatedAt, updatedBy],
-      });
-    } catch {
-      // Table missing (DB hasn't run migration 002 yet) or other
-      // transient issue. content_files itself is consistent — swallow.
+    // Binary revisions are not exposed by the product and would duplicate
+    // large assets in D1. Text writes retain the existing version timeline.
+    if (!input.isBinary) {
+      try {
+        await executor.execute({
+          sql: `INSERT INTO content_files_history
+                  (rel_path, body, sha, size, is_binary, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, 0, ?, ?)`,
+          args: [
+            documentPath,
+            input.body,
+            sha,
+            input.body.byteLength,
+            updatedAt,
+            updatedBy,
+          ],
+        });
+      } catch {
+        // A missing history migration must not turn a successful write into
+        // a failed user operation.
+      }
     }
 
-    return { sha };
+    return { path: documentPath, version: sha, state: "committed" as const };
   }
 
   return {
-    async listFiles(dirRel, opts) {
-      const normalized = normalizeRel(dirRel);
-      const prefix = `${normalized}/`;
-      // Non-recursive listing excludes paths that have an additional `/`
-      // after the prefix, i.e. files nested in subdirectories.
-      const sql = opts?.recursive
-        ? "SELECT rel_path, sha, size FROM content_files WHERE rel_path LIKE ? ORDER BY rel_path"
-        : "SELECT rel_path, sha, size FROM content_files WHERE rel_path LIKE ? AND instr(substr(rel_path, ?), '/') = 0 ORDER BY rel_path";
-      const args = opts?.recursive
-        ? [`${prefix}%`]
-        : [`${prefix}%`, prefix.length + 1];
+    kind: "d1",
+
+    async list(prefix, options) {
+      const normalizedPrefix = normalizeDocumentPath(prefix);
+      const pathPrefix = `${normalizedPrefix}/`;
+      const sql = options?.recursive
+        ? `SELECT rel_path, sha, size, updated_at
+             FROM content_files
+            WHERE rel_path LIKE ?
+            ORDER BY rel_path`
+        : `SELECT rel_path, sha, size, updated_at
+             FROM content_files
+            WHERE rel_path LIKE ?
+              AND instr(substr(rel_path, ?), '/') = 0
+            ORDER BY rel_path`;
+      const args = options?.recursive
+        ? [`${pathPrefix}%`]
+        : [`${pathPrefix}%`, pathPrefix.length + 1];
       const result = await executor.execute({ sql, args });
-      const out: ContentEntry[] = [];
-      for (const row of result.rows) {
-        const relPath = String(row.rel_path);
-        const name = path.posix.basename(relPath);
-        out.push({
-          name,
-          relPath,
-          sha: String(row.sha),
+      const entries: DocumentEntry[] = result.rows.map((row) => {
+        const documentPath = String(row.rel_path);
+        const updatedAt = Number(row.updated_at);
+        return {
+          name: documentPath.slice(documentPath.lastIndexOf("/") + 1),
+          path: documentPath,
+          version: String(row.sha),
           size: Number(row.size),
-        });
-      }
-      out.sort((a, b) => a.name.localeCompare(b.name));
-      return out;
-    },
-
-    async readFile(relPath) {
-      const normalized = normalizeRel(relPath);
-      const row = await getRow(normalized);
-      if (!row) return null;
-      return { content: bytesToUtf8(row.body), sha: row.sha };
-    },
-
-    async readBinary(relPath) {
-      const normalized = normalizeRel(relPath);
-      const row = await getRow(normalized);
-      if (!row) return null;
-      return { data: row.body, sha: row.sha };
-    },
-
-    async writeFile(relPath, content, opts) {
-      const normalized = normalizeRel(relPath);
-      return upsert(normalized, utf8Bytes(content), false, opts);
-    },
-
-    async writeBinary(relPath, data, opts) {
-      const normalized = normalizeRel(relPath);
-      return upsert(normalized, data, true, opts);
-    },
-
-    async deleteFile(relPath, opts) {
-      const normalized = normalizeRel(relPath);
-      const existing = await getRow(normalized);
-      if (!existing) throw new ContentStoreNotFoundError(normalized);
-      if (opts?.ifMatch !== undefined && opts.ifMatch !== null) {
-        if (opts.ifMatch !== existing.sha) {
-          throw new ContentStoreConflictError({
-            expected: opts.ifMatch,
-            actual: existing.sha,
-          });
-        }
-      }
-      const res = await executor.execute({
-        sql: "DELETE FROM content_files WHERE rel_path = ? AND sha = ?",
-        args: [normalized, existing.sha],
+          ...(Number.isFinite(updatedAt) ? { updatedAt } : {}),
+        };
       });
-      if ((res.rowsAffected ?? 0) === 0) {
-        // Race: someone updated/deleted between the SELECT and DELETE.
-        const fresh = await getRow(normalized);
-        throw new ContentStoreConflictError({
-          expected: opts?.ifMatch ?? null,
-          actual: fresh?.sha ?? null,
+      entries.sort((left, right) => left.path.localeCompare(right.path));
+      return entries;
+    },
+
+    async stat(input) {
+      const documentPath = normalizeDocumentPath(input);
+      const result = await executor.execute({
+        sql: `SELECT sha, size, updated_at
+                FROM content_files
+               WHERE rel_path = ?`,
+        args: [documentPath],
+      });
+      const row = result.rows[0];
+      if (!row) return { exists: false };
+      const updatedAt = Number(row.updated_at);
+      return {
+        exists: true,
+        version: String(row.sha),
+        size: Number(row.size),
+        ...(Number.isFinite(updatedAt) ? { updatedAt } : {}),
+      };
+    },
+
+    async readText(input) {
+      const documentPath = normalizeDocumentPath(input);
+      const row = await getRow(documentPath);
+      return row
+        ? { path: documentPath, content: bytesToUtf8(row.body), version: row.sha }
+        : null;
+    },
+
+    async readBinary(input) {
+      const documentPath = normalizeDocumentPath(input);
+      const row = await getRow(documentPath);
+      return row
+        ? { path: documentPath, data: row.body, version: row.sha }
+        : null;
+    },
+
+    async writeText(input, content, options) {
+      return writeBytes({
+        path: input,
+        body: utf8Bytes(content),
+        isBinary: false,
+        expectedVersion: options?.expectedVersion,
+      });
+    },
+
+    async writeBinary(input, data, options) {
+      return writeBytes({
+        path: input,
+        body: data,
+        isBinary: true,
+        expectedVersion: options?.expectedVersion,
+      });
+    },
+
+    async delete(input, options) {
+      const documentPath = normalizeDocumentPath(input);
+      const existing = await getRow(documentPath);
+      if (!existing) throw new DocumentNotFoundError(documentPath);
+      assertExpectedVersion({
+        expectedVersion: options?.expectedVersion,
+        actualVersion: existing.sha,
+      });
+      const result = await executor.execute({
+        sql: "DELETE FROM content_files WHERE rel_path = ? AND sha = ?",
+        args: [documentPath, existing.sha],
+      });
+      if ((result.rowsAffected ?? 0) === 0) {
+        const fresh = await getRow(documentPath);
+        throw new DocumentConflictError({
+          expectedVersion: options?.expectedVersion ?? existing.sha,
+          actualVersion: fresh?.sha ?? null,
         });
+      }
+      return {
+        path: documentPath,
+        version: existing.sha,
+        state: "committed" as const,
+      };
+    },
+
+    async listHistory(input, limit = 12) {
+      const documentPath = normalizeDocumentPath(input);
+      const max = Math.max(1, Math.min(50, Math.floor(limit)));
+      try {
+        const result = await executor.execute({
+          sql: `SELECT sha, updated_at, updated_by
+                  FROM content_files_history
+                 WHERE rel_path = ?
+                 ORDER BY updated_at DESC, id DESC
+                 LIMIT ?`,
+          args: [documentPath, max],
+        });
+        return result.rows.map((row) => {
+          const version = String(row.sha || "");
+          const updatedAt = Number(row.updated_at);
+          return {
+            version,
+            shortVersion: version.slice(0, 7),
+            createdAt: Number.isFinite(updatedAt)
+              ? new Date(updatedAt).toISOString()
+              : null,
+            actor: row.updated_by == null ? "" : String(row.updated_by),
+            message: "",
+          };
+        });
+      } catch {
+        return [];
+      }
+    },
+
+    async readRevision(input, version) {
+      const documentPath = normalizeDocumentPath(input);
+      const normalizedVersion = String(version || "").trim().toLowerCase();
+      if (!/^[a-f0-9]{7,40}$/.test(normalizedVersion)) return null;
+      try {
+        const result = await executor.execute({
+          sql: `SELECT lower(hex(body)) AS body_hex, sha
+                  FROM content_files_history
+                 WHERE rel_path = ?
+                   AND substr(sha, 1, ?) = ?
+                 ORDER BY id DESC
+                 LIMIT 1`,
+          args: [documentPath, normalizedVersion.length, normalizedVersion],
+        });
+        const row = result.rows[0];
+        if (!row) return null;
+        return {
+          path: documentPath,
+          content: bytesToUtf8(hexToBytes(String(row.body_hex || ""))),
+          version: String(row.sha),
+        };
+      } catch {
+        return null;
       }
     },
   };
+}
+
+/** Historical entry point retained while callers migrate to DocumentRepository. */
+export function createDbContentStore(config: DbContentStoreConfig): ContentStore {
+  return contentStoreFromDocumentRepository(createDbDocumentRepository(config));
 }

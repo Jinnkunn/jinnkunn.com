@@ -3,8 +3,8 @@
 import { Fragment, type ReactElement, useEffect, useState } from "react";
 
 import { ClassicLink } from "@/components/classic/classic-link";
-import type { SiteAdminNowData, SiteAdminNowUpdate } from "@/lib/site-admin/api-types";
-import { normalizeNowData } from "@/lib/site-admin/now-normalize";
+import type { SiteAdminNowData, SiteAdminNowUpdate } from "@jinnkunn/contracts/api";
+import { normalizeNowData } from "@jinnkunn/content-core/now";
 
 const DISPLAY_TIME_ZONE = "America/Halifax";
 const RECENT_UPDATE_WINDOW_DAYS = 7;

@@ -3,7 +3,7 @@ import {
   normalizeAccessMode,
   type AccessMode,
 } from "../shared/access.ts";
-import { z } from "zod";
+import { siteAdminRoutesCommandInputSchema } from "@jinnkunn/contracts/schemas";
 import type { ParseResult } from "./request-types.ts";
 
 export type SiteAdminRoutesCommand =
@@ -26,27 +26,6 @@ function bad(error: string, status = 400): ParseResult<never> {
   return { ok: false, error, status };
 }
 
-const routesCommandSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("override"),
-      pageId: z.unknown().optional(),
-      routePath: z.unknown().optional(),
-      expectedSiteConfigSha: z.unknown().optional(),
-    })
-    .passthrough(),
-  z
-    .object({
-      kind: z.literal("protected"),
-      pageId: z.unknown().optional(),
-      path: z.unknown().optional(),
-      auth: z.unknown().optional(),
-      password: z.unknown().optional(),
-      expectedProtectedRoutesSha: z.unknown().optional(),
-    })
-    .passthrough(),
-]);
-
 function readString(
   raw: unknown,
   opts?: { trim?: boolean; maxLen?: number },
@@ -66,7 +45,7 @@ function normalizeOptionalRoutePath(rawPath: string): string {
 export function parseSiteAdminRoutesCommand(
   body: Record<string, unknown>,
 ): ParseResult<SiteAdminRoutesCommand> {
-  const parsedBody = routesCommandSchema.safeParse(body);
+  const parsedBody = siteAdminRoutesCommandInputSchema.safeParse(body);
   if (!parsedBody.success) return bad("Unsupported kind", 400);
   const command = parsedBody.data;
   const kind = command.kind;

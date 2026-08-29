@@ -13,8 +13,8 @@ import type { PublicCalendarPayload } from "./publicProjection";
 import { fingerprintPublicCalendarPayload } from "./syncSnapshot";
 import type {
   CalendarObservationSyncPayload,
-} from "../../../../../lib/shared/calendar-core.ts";
-import { normalizePublicCalendarData } from "../../../../../lib/shared/public-calendar.ts";
+} from "@jinnkunn/calendar-core/core";
+import { normalizePublicCalendarData } from "@jinnkunn/calendar-core/public";
 
 const CONNECTION_STORAGE_KEY = "workspace.site-admin.connection.v1";
 const DEFAULT_BASE_URL = "https://staging.jinkunchen.com";

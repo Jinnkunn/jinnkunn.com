@@ -4,7 +4,7 @@ import "server-only";
 import { ClassicLink } from "@/components/classic/classic-link";
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import type { BlogPostIndexItem } from "@/lib/blog";
-import type { PostEntry } from "@/lib/posts/types";
+import type { PostEntry } from "@jinnkunn/content-core/posts";
 import { compilePostMdx } from "@/lib/posts/compile";
 import { postMdxComponents } from "./components";
 

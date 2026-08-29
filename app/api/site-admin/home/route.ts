@@ -16,7 +16,7 @@ import { isSiteAdminSourceConflictError } from "@/lib/server/site-admin-source-s
 import type {
   SiteAdminHomeData,
   SiteAdminHomeGetPayload,
-} from "@/lib/site-admin/api-types";
+} from "@jinnkunn/contracts/api";
 
 export const runtime = "nodejs";
 

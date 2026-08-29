@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getLatestPublicCalendarData } from "@/lib/server/public-calendar-data";
-import { buildPublicCalendarIcs } from "@/lib/shared/calendar-ics";
-import { PUBLIC_CALENDAR_CACHE_TAG } from "@/lib/shared/public-calendar";
+import { buildPublicCalendarIcs } from "@jinnkunn/calendar-core/ics";
+import { PUBLIC_CALENDAR_CACHE_TAG } from "@jinnkunn/calendar-core/public";
 
 // Public calendar feed in RFC 5545 form. The JSON sibling at
 // /api/public/calendar serves the same data for the workspace's

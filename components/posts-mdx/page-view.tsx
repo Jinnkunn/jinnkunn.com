@@ -5,9 +5,9 @@ import { Fragment } from "react";
 
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { getPageEntry } from "@/lib/pages/index";
-import type { PageEntry } from "@/lib/pages/types";
+import type { PageEntry } from "@jinnkunn/content-core/pages";
 import { compilePostMdx } from "@/lib/posts/compile";
-import { formatLongDate } from "@/lib/posts/meta";
+import { formatLongDate } from "@jinnkunn/content-core/posts";
 import { postMdxComponents } from "./components";
 
 interface BreadcrumbItem {
