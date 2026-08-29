@@ -18,6 +18,7 @@ const ROOT = process.cwd();
 const DEFAULT_PRODUCTION_ORIGIN = "https://jinkunchen.com";
 const DEFAULT_STAGING_ORIGIN = "https://staging.jinkunchen.com";
 const CLASSIC_DEFAULT_TEXT_COLOR = "rgb(55, 53, 47)";
+const MEMORIAL_DEFAULT_TEXT_COLOR = "rgb(48, 47, 44)";
 // Darkened from Notion's published #787774 (rgb 120/119/116, 4.48:1
 // vs white) to #6F6E6B (rgb 111/110/107, 5.10:1) so gray prose clears
 // WCAG AA. See app/design-system.css and the corresponding fix(a11y)
@@ -463,6 +464,10 @@ async function readSnapshot(page, route, origin, viewportName) {
         hasPageClass: pageClass
           ? Boolean(document.querySelector(`#main-content.${pageClass}`))
           : false,
+        memorialMode: Boolean(
+          document.querySelector('.super-root[data-memorial-mode="true"]'),
+        ),
+        hasHomeMemorial: Boolean(document.querySelector(".memorial-notice--home")),
         title:
           document.querySelector(".notion-header__title")?.textContent?.trim() || "",
         root: pageClass ? rectOf(`.${pageClass} .notion-root.max-width`) : null,
@@ -609,12 +614,21 @@ function compareRoute(route, local, production, viewportName) {
         4,
         `${route.path} header width drifted from production`,
       );
-      assertClose(
-        local.cover?.height ?? 0,
-        production.cover?.height ?? 0,
-        4,
-        `${route.path} cover spacer height drifted from production`,
-      );
+      if (local.hasHomeMemorial) {
+        assertRange(
+          local.cover?.height ?? 0,
+          27,
+          29,
+          `${route.path} memorial cover spacer height drifted`,
+        );
+      } else {
+        assertClose(
+          local.cover?.height ?? 0,
+          production.cover?.height ?? 0,
+          4,
+          `${route.path} cover spacer height drifted from production`,
+        );
+      }
     } else {
       assertRange(
         local.root?.width ?? 0,
@@ -630,8 +644,8 @@ function compareRoute(route, local, production, viewportName) {
       );
       assertRange(
         local.cover?.height ?? 0,
-        139,
-        141,
+        local.hasHomeMemorial ? 27 : 139,
+        local.hasHomeMemorial ? 29 : 141,
         `${route.path} cover spacer height drifted from the production visual contract`,
       );
     }
@@ -648,7 +662,9 @@ function compareRoute(route, local, production, viewportName) {
 
   if (!route.grayTextColor && route.compareReadableStyle !== false) {
     compareTextStyle(local.firstReadableStyle, production.firstReadableStyle, route.path, {
-      expectedColor: route.readableColor,
+      expectedColor: local.memorialMode
+        ? MEMORIAL_DEFAULT_TEXT_COLOR
+        : route.readableColor,
     });
   }
   if (route.grayTextColor) {
@@ -795,13 +811,21 @@ function compareRoute(route, local, production, viewportName) {
       local.home.introParagraphStyle,
       production.home.introParagraphStyle || production.firstReadableStyle,
       "Homepage intro paragraph",
-      { expectedColor: route.readableColor },
+      {
+        expectedColor: local.memorialMode
+          ? MEMORIAL_DEFAULT_TEXT_COLOR
+          : route.readableColor,
+      },
     );
     compareTextStyle(
       local.home.bodyParagraphStyle,
       production.home.bodyParagraphStyle || production.firstReadableStyle,
       "Homepage body paragraph",
-      { expectedColor: route.readableColor },
+      {
+        expectedColor: local.memorialMode
+          ? MEMORIAL_DEFAULT_TEXT_COLOR
+          : route.readableColor,
+      },
     );
     assert(
       normalizeStyleValue(local.home.bodyParagraphStyle?.marginBottom) === "32px",
