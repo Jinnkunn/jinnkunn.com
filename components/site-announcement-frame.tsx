@@ -37,6 +37,8 @@ export function SiteAnnouncementFrame({
 }) {
   const pathname = usePathname() || "/";
   const contentId = useId();
+  const compactContentId = `${contentId}-compact`;
+  const expandedContentId = `${contentId}-expanded`;
   const isHome = pathname === "/";
   const preferenceKey = `${announcement.id}:${pathname}`;
   const [userPreference, setUserPreference] = useState<{
@@ -51,65 +53,77 @@ export function SiteAnnouncementFrame({
   if (!visibleOnRoute(announcement, pathname)) return null;
 
   const canToggle = announcement.collapsible;
-  const toggleLabel = expanded ? "Collapse announcement" : "Expand announcement";
-
-  if (!expanded) {
-    return (
-      <aside
-        className="site-announcement site-announcement--compact"
-        aria-label={announcement.title}
-        data-expanded="false"
-      >
-        <div className="site-announcement__inner site-announcement__inner--compact">
-          <span className="site-announcement__marker" aria-hidden="true" />
-          <div className="site-announcement__compact-content" id={contentId}>
-            {compactContent || <p>{announcement.title}</p>}
-          </div>
-          {canToggle ? (
-            <button
-              type="button"
-              className="site-announcement__toggle"
-              aria-controls={contentId}
-              aria-expanded="false"
-              aria-label={toggleLabel}
-              title={toggleLabel}
-              onClick={() => setUserPreference({ key: preferenceKey, expanded: true })}
-            >
-              <span className="site-announcement__toggle-icon" aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-      </aside>
-    );
-  }
 
   return (
-    <section
-      className="site-announcement site-announcement--expanded"
+    <aside
+      className={`site-announcement site-announcement--${expanded ? "expanded" : "compact"}`}
       aria-label={announcement.title}
-      data-expanded="true"
+      data-expanded={expanded ? "true" : "false"}
       data-layout={announcement.layout}
     >
-      <div className="site-announcement__inner site-announcement__inner--expanded">
-        {canToggle ? (
-          <div className="site-announcement__header">
-            <button
-              type="button"
-              className="site-announcement__toggle"
-              aria-controls={contentId}
-              aria-expanded="true"
-              aria-label={toggleLabel}
-              title={toggleLabel}
-              onClick={() => setUserPreference({ key: preferenceKey, expanded: false })}
+      <div
+        className="site-announcement__panel-shell site-announcement__panel-shell--compact"
+        aria-hidden={expanded}
+        inert={expanded ? true : undefined}
+      >
+        <div className="site-announcement__panel">
+          <div className="site-announcement__inner site-announcement__inner--compact">
+            <span className="site-announcement__marker" aria-hidden="true" />
+            <div
+              className="site-announcement__compact-content"
+              id={compactContentId}
             >
-              <span className="site-announcement__toggle-icon" aria-hidden="true" />
-            </button>
+              {compactContent || <p>{announcement.title}</p>}
+            </div>
+            {canToggle ? (
+              <button
+                type="button"
+                className="site-announcement__toggle"
+                aria-controls={expandedContentId}
+                aria-expanded="false"
+                aria-label="Expand announcement"
+                title="Expand announcement"
+                onClick={() =>
+                  setUserPreference({ key: preferenceKey, expanded: true })
+                }
+              >
+                <span className="site-announcement__toggle-icon" aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
-        ) : null}
-        <div className="site-announcement__body" id={contentId}>
-          {children}
         </div>
       </div>
-    </section>
+
+      <div
+        className="site-announcement__panel-shell site-announcement__panel-shell--expanded"
+        aria-hidden={!expanded}
+        inert={!expanded ? true : undefined}
+      >
+        <div className="site-announcement__panel">
+          <div className="site-announcement__inner site-announcement__inner--expanded">
+            {canToggle ? (
+              <div className="site-announcement__header">
+                <button
+                  type="button"
+                  className="site-announcement__toggle"
+                  aria-controls={expandedContentId}
+                  aria-expanded="true"
+                  aria-label="Collapse announcement"
+                  title="Collapse announcement"
+                  onClick={() =>
+                    setUserPreference({ key: preferenceKey, expanded: false })
+                  }
+                >
+                  <span className="site-announcement__toggle-icon" aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+            <div className="site-announcement__body" id={expandedContentId}>
+              {children}
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
   );
 }

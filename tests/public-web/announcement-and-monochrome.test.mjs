@@ -95,7 +95,15 @@ test("classic layout renders announcements and monochrome appearance independent
   assert.match(layout, /<SiteAnnouncement announcement=\{announcement\}/);
   assert.match(frame, /Collapse announcement/);
   assert.match(frame, /Expand announcement/);
+  assert.match(frame, /site-announcement__panel-shell--compact/);
+  assert.match(frame, /site-announcement__panel-shell--expanded/);
   assert.match(announcementCss, /site-announcement__layout/);
+  assert.match(announcementCss, /grid-template-rows 420ms/);
+  assert.match(announcementCss, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(
+    announcementCss,
+    /\.site-announcement--expanded\s*\{[^}]*margin-top/s,
+  );
   assert.match(monochromeCss, /data-monochrome-mode="true"/);
   assert.match(settingsForm, /Monochrome appearance/);
   assert.doesNotMatch(settingsForm, /Memorial mode/);

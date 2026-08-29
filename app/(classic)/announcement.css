@@ -1,10 +1,40 @@
 .site-announcement {
   box-sizing: border-box;
   width: 100%;
+  overflow: clip;
   border-top: 1px solid var(--ds-border-subtle);
   border-bottom: 1px solid var(--ds-border-subtle);
   background: var(--ds-announcement-surface);
   color: var(--ds-text-primary);
+}
+
+.site-announcement__panel-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    grid-template-rows 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 140ms ease,
+    visibility 0s linear 420ms;
+}
+
+.site-announcement__panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.site-announcement[data-expanded="false"] .site-announcement__panel-shell--compact,
+.site-announcement[data-expanded="true"] .site-announcement__panel-shell--expanded {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    grid-template-rows 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 190ms ease 70ms,
+    visibility 0s linear;
 }
 
 .site-announcement__inner {
@@ -105,14 +135,11 @@
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: translateY(-2px) rotate(45deg);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .site-announcement[data-expanded="true"] .site-announcement__toggle-icon {
   transform: translateY(2px) rotate(225deg);
-}
-
-.site-announcement--expanded {
-  margin-top: 10px;
 }
 
 .site-announcement__inner--expanded {
@@ -203,6 +230,12 @@
   max-height: 28px;
 }
 
+.super-root[data-announcement-active="true"] .page__index .notion-header__cover.no-cover {
+  transition:
+    height 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (max-width: 700px) {
   .site-announcement[data-layout="columns"] .site-announcement__layout[data-columns="true"] {
     grid-template-columns: minmax(0, 1fr);
@@ -243,6 +276,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .site-announcement__panel-shell,
+  .site-announcement[data-expanded="false"] .site-announcement__panel-shell--compact,
+  .site-announcement[data-expanded="true"] .site-announcement__panel-shell--expanded,
+  .site-announcement__toggle-icon,
+  .super-root[data-announcement-active="true"] .page__index .notion-header__cover.no-cover,
   .site-announcement__toggle {
     transition: none;
   }
