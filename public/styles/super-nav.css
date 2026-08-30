@@ -253,7 +253,10 @@
 
 .super-navbar__viewport[data-state=closed],
 .super-navbar__list-arrow-wrapper[data-state=hidden] {
-  animation: fadeOut 200ms ease-in-out;
+  /* Keep the final transparent frame until the controller removes the menu.
+   * Without `forwards`, opacity snaps back to 1 for the 20ms gap between the
+   * animation ending and the delayed `display: none`, which reads as a flash. */
+  animation: fadeOut 200ms ease-in-out forwards;
 }
 
 .super-navbar__viewport-wrapper {

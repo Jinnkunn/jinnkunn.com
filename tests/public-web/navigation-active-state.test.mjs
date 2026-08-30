@@ -43,3 +43,14 @@ test("More uses click to open and hover only to keep an open menu stable", async
   assert.doesNotMatch(pointerEnter, /setMoreOpen\(true\)/);
   assert.match(source, /setMoreOpen\(!getMoreOpen\(\)\)/);
 });
+
+test("More close animation holds its transparent frame until the menu is hidden", async () => {
+  const css = await fs.readFile(
+    path.join(ROOT, "public/styles/super-nav.css"),
+    "utf8",
+  );
+  const closedRule =
+    /\.super-navbar__viewport\[data-state=closed\][\s\S]*?\{([\s\S]*?)\n\}/.exec(css)?.[1] || "";
+
+  assert.match(closedRule, /animation:\s*fadeOut 200ms ease-in-out forwards;/);
+});
