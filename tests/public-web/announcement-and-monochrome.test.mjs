@@ -35,6 +35,12 @@ test("site announcements observe status and their configured date window", () =>
 
 test("announcement content supports flexible prose and explicit two-column separation", () => {
   assert.deepEqual(splitAnnouncementColumns("English\n\n---\n\n中文"), ["English", "中文"]);
+  assert.deepEqual(splitAnnouncementColumns("English\n\n***\n\n中文"), ["English", "中文"]);
+  assert.deepEqual(splitAnnouncementColumns("English\n\n___\n\n中文"), ["English", "中文"]);
+  assert.deepEqual(splitAnnouncementColumns("English\n\n***\n\n中文\n\n---\n\nMore"), [
+    "English",
+    "中文\n\n---\n\nMore",
+  ]);
   assert.deepEqual(splitAnnouncementColumns("English\n\n中文"), ["English\n\n中文"]);
 });
 

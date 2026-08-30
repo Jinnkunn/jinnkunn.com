@@ -177,9 +177,17 @@ export function getActiveAnnouncement(
 }
 
 export function splitAnnouncementColumns(source: string): string[] {
-  const parts = source
-    .split(/^\s*---\s*$/m)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return parts.length > 1 ? parts.slice(0, 2) : parts;
+  const horizontalRule =
+    /^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})[ \t]*$/m;
+  const match = horizontalRule.exec(source);
+  if (!match || match.index === undefined) {
+    const content = source.trim();
+    return content ? [content] : [];
+  }
+
+  const parts = [
+    source.slice(0, match.index).trim(),
+    source.slice(match.index + match[0].length).trim(),
+  ].filter(Boolean);
+  return parts.length > 1 ? parts : source.trim() ? [source.trim()] : [];
 }
