@@ -88,7 +88,7 @@ async function fetchWithRetry(url, headers) {
       // Accept anything in the success / known-redirect band as
       // "the worker responded coherently", and only retry on transient
       // 5xx — staging-gate sometimes 302-redirects unauthenticated
-      // requests to /site-admin/login, which is fine for smoke purposes.
+      // requests to /api/auth/signin, which is fine for smoke purposes.
       if (result.status < 500) return result;
       lastError = `status=${result.status}`;
     } catch (error) {
@@ -109,7 +109,7 @@ async function main() {
   // Staging routes go behind STAGING_GATE; production is open. We mint
   // a short-lived synthetic cookie so authenticated routes work. If
   // creds are missing in env, gated routes degrade to status-only (a
-  // 302 → /site-admin/login response is still "the worker booted").
+  // 302 → /api/auth/signin response is still "the worker booted").
   const cookie = env === "staging" ? await maybeMintStagingCookie() : "";
   const headers = cookie
     ? { cookie, "user-agent": "release-from-dispatch/smoke-deployed" }

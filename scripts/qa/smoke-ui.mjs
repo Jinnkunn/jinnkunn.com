@@ -194,18 +194,18 @@ async function main() {
         await captureFailure(page, outDir, "fail-desktop-theme");
       }
 
-      // More hover shows dropdown
+      // More opens on click; hover only keeps an already-open menu stable.
       try {
-        await page.hover("#more-trigger");
+        await page.click("#more-trigger");
         await page.waitForTimeout(200);
         const visible = await page.isVisible("#more-menu");
         const theme = await readTheme(page);
-        record("desktop:more-hover-dropdown", visible && theme === "dark", { theme });
+        record("desktop:more-click-dropdown", visible && theme === "dark", { theme });
         if (!visible) {
-          await captureFailure(page, outDir, "fail-desktop-more-hover");
+          await captureFailure(page, outDir, "fail-desktop-more-click");
         }
       } catch (e) {
-        record("desktop:more-hover-dropdown", false, { error: String(e) });
+        record("desktop:more-click-dropdown", false, { error: String(e) });
       }
 
       // Search modal basics: open, scope pill, results, clear, close in dark mode.

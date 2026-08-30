@@ -52,14 +52,14 @@ async function main() {
         await gotoPage(page, `${origin}/`);
         await page.waitForSelector("#more-trigger", { timeout: 10_000 });
         await page.waitForTimeout(450);
-        await page.hover("#more-trigger");
+        await page.click("#more-trigger");
         await page.waitForTimeout(240);
         const visible = await page.isVisible("#more-menu");
-        record("desktop:more-hover-dropdown", visible);
-        if (!visible) await screenshot(page, "fail-desktop-more-hover");
+        record("desktop:more-click-dropdown", visible);
+        if (!visible) await screenshot(page, "fail-desktop-more-click");
       } catch (e) {
-        record("desktop:more-hover-dropdown", false, { error: String(e) });
-        await screenshot(page, "fail-desktop-more-hover");
+        record("desktop:more-click-dropdown", false, { error: String(e) });
+        await screenshot(page, "fail-desktop-more-click");
       }
 
       try {
@@ -164,7 +164,10 @@ async function main() {
         await page.goto(`${origin}/site-admin`, { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(260);
         const finalUrl = page.url();
-        const ok = finalUrl.includes("/site-admin/login");
+        const parsed = new URL(finalUrl);
+        const ok =
+          parsed.pathname === "/api/auth/signin" &&
+          parsed.searchParams.get("callbackUrl") === "/site-admin";
         record("desktop:site-admin-protected-redirect", ok, { finalUrl });
         if (!ok) await screenshot(page, "fail-desktop-site-admin-redirect");
       } catch (e) {

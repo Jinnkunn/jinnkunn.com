@@ -341,7 +341,8 @@ async function main() {
 
     if (
       finalPath.startsWith("/auth") ||
-      finalPath.startsWith("/site-admin/login")
+      finalPath.startsWith("/site-admin/login") ||
+      finalPath.startsWith("/api/auth/signin")
     ) {
       report.warnings.push({
         type: "internal-link-redirects-to-auth",
