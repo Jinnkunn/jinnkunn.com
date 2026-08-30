@@ -7,6 +7,7 @@ import {
   analyzeVisualMdxCompatibility,
   visualCompatibilitySummary,
 } from "@/lib/site-admin/mdx-visual-compatibility";
+import { isVisualModeAvailable } from "@/lib/site-admin/mdx-visual-mode";
 import styles from "./site-admin-dashboard.module.css";
 
 const SiteAdminSourceEditor = dynamic(
@@ -87,6 +88,7 @@ export function SiteAdminMarkdownEditor({
 }: MarkdownEditorProps) {
   const editorRootRef = useRef<HTMLDivElement | null>(null);
   const previewRequestIdRef = useRef(0);
+  const lastVisualValueRef = useRef<string | null>(null);
   const readOnly = disabled || blocking;
   const [mode, setMode] = useState<EditorMode>(
     visualEditing ? initialMode : initialMode === "preview" ? "preview" : "source",
@@ -102,7 +104,13 @@ export function SiteAdminMarkdownEditor({
     () => analyzeVisualMdxCompatibility(value),
     [value],
   );
-  const visualAvailable = visualEditing && visualCompatibility.compatible;
+  const visualAvailable = isVisualModeAvailable({
+    visualEditing,
+    compatible: visualCompatibility.compatible,
+    mode,
+    value,
+    lastVisualValue: lastVisualValueRef.current,
+  });
   const activeMode = mode === "visual" && !visualAvailable ? "source" : mode;
   const isSplitPreview = previewLayout === "split";
 
@@ -154,6 +162,11 @@ export function SiteAdminMarkdownEditor({
     if (nextMode === "visual" && !visualAvailable) return;
     setMode(nextMode);
     if (nextMode === "preview") void renderPreview();
+  }
+
+  function handleVisualChange(next: string) {
+    lastVisualValueRef.current = next;
+    onChange(next);
   }
 
   function jumpToHeading(index: number) {
@@ -307,7 +320,7 @@ export function SiteAdminMarkdownEditor({
         <SiteAdminVisualEditor
           label={label}
           value={value}
-          onChange={onChange}
+          onChange={handleVisualChange}
           minHeight={minHeight}
           placeholder={placeholder}
           disabled={readOnly}
