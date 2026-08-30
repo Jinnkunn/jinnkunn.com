@@ -50,7 +50,6 @@ function createMoreHoverHandlers(opts: {
   const onMorePointerEnter = () => {
     if (!opts.canHover) return;
     clearMoreHoverClose();
-    opts.setMoreOpen(true);
   };
 
   const onMorePointerLeave = () => {

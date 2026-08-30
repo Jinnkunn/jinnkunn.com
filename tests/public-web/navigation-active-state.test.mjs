@@ -31,3 +31,15 @@ test("navigation and search behavior ship with the layout bundle", async () => {
   assert.match(source, /cleanupSearch\?\.\(\)/);
   assert.match(source, /cleanupNav\(\)/);
 });
+
+test("More uses click to open and hover only to keep an open menu stable", async () => {
+  const source = await fs.readFile(
+    path.join(ROOT, "lib/client/nav/menu-events.ts"),
+    "utf8",
+  );
+  const pointerEnter = /const onMorePointerEnter = \(\) => \{([\s\S]*?)\n  \};/.exec(source)?.[1] || "";
+
+  assert.match(pointerEnter, /clearMoreHoverClose\(\)/);
+  assert.doesNotMatch(pointerEnter, /setMoreOpen\(true\)/);
+  assert.match(source, /setMoreOpen\(!getMoreOpen\(\)\)/);
+});
