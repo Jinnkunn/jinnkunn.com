@@ -31,6 +31,12 @@ import {
   visibilityLabel,
 } from "./site-admin-console-model";
 import {
+  buildPageTree,
+  pageBreadcrumb,
+  pagePathLabel,
+  type PageTreeNode,
+} from "./site-admin-page-tree-model";
+import {
   buildSiteAdminReleaseProgress,
   selectActiveReleaseJob,
   type SiteAdminReleaseJobLike,
@@ -182,6 +188,11 @@ type ComponentSummary = {
 type PagesPayload = {
   count: number;
   pages: PageListItem[];
+};
+
+type PageTreePayload = {
+  slugs: string[];
+  sourceVersion: SourceVersion;
 };
 
 type PostsPayload = {
@@ -744,6 +755,8 @@ export function SiteAdminWebConsole({
   const [historyText, setHistoryText] = useState("");
   const [historyDate, setHistoryDate] = useState(todayInHalifax());
   const [pages, setPages] = useState<PagesPayload | null>(null);
+  const [pageTreeOrder, setPageTreeOrder] = useState<string[]>([]);
+  const [collapsedPageSlugs, setCollapsedPageSlugs] = useState<string[]>([]);
   const [posts, setPosts] = useState<PostsPayload | null>(null);
   const [components, setComponents] = useState<ComponentsPayload | null>(null);
   const [, setKind] = useState<EditableKind>("posts");
@@ -879,9 +892,17 @@ export function SiteAdminWebConsole({
     return () => window.cancelAnimationFrame(frame);
   }, [selectedContentKey]);
 
+  const pageItems = useMemo(
+    () => contentItems({ kind: "pages", pages, posts, components }),
+    [components, pages, posts],
+  );
+  const postItems = useMemo(
+    () => contentItems({ kind: "posts", pages, posts, components }),
+    [components, pages, posts],
+  );
   const currentItems = useMemo(
-    () => contentItems({ kind: documentKind, pages, posts, components }),
-    [documentKind, pages, posts, components],
+    () => (documentKind === "pages" ? pageItems : postItems),
+    [documentKind, pageItems, postItems],
   );
   const visibleItems = useMemo(() => {
     const query = contentSearch.trim().toLowerCase();
@@ -896,7 +917,7 @@ export function SiteAdminWebConsole({
     const query = contentSearch.trim().toLowerCase();
     if (!query) return [];
     return (["posts", "pages"] as const).flatMap((itemKind) =>
-      contentItems({ kind: itemKind, pages, posts, components })
+      (itemKind === "posts" ? postItems : pageItems)
         .filter((item) =>
           [item.title, item.id, item.meta].some((value) =>
             String(value || "").toLowerCase().includes(query),
@@ -904,7 +925,22 @@ export function SiteAdminWebConsole({
         )
         .map((item) => ({ kind: itemKind, item })),
     );
-  }, [components, contentSearch, pages, posts]);
+  }, [contentSearch, pageItems, postItems]);
+  const pageTree = useMemo(
+    () => buildPageTree(pageItems, pageTreeOrder),
+    [pageItems, pageTreeOrder],
+  );
+  const collapsedPageSlugSet = useMemo(
+    () => new Set(collapsedPageSlugs),
+    [collapsedPageSlugs],
+  );
+  const selectedPageBreadcrumb = useMemo(
+    () =>
+      selected?.kind === "pages"
+        ? pageBreadcrumb(selected.id, pageItems, selected.title)
+        : [],
+    [pageItems, selected],
+  );
   const componentDefinitions = useMemo(
     () => componentDefinitionsFromPayload(components),
     [components],
@@ -1133,12 +1169,20 @@ export function SiteAdminWebConsole({
       readJson<HomePayload>("/api/site-admin/home"),
       readJson<NowPayload>("/api/site-admin/now"),
       readJson<PagesPayload>("/api/site-admin/pages?drafts=1"),
+      readJson<PageTreePayload>("/api/site-admin/pages/tree"),
       readJson<PostsPayload>("/api/site-admin/posts?drafts=1"),
       readJson<ComponentsPayload>("/api/site-admin/components"),
     ]);
     const failures: { scope: string; message: string }[] = [];
-    const [summaryResult, homeResult, nowResult, pagesResult, postsResult, componentsResult] =
-      results;
+    const [
+      summaryResult,
+      homeResult,
+      nowResult,
+      pagesResult,
+      pageTreeResult,
+      postsResult,
+      componentsResult,
+    ] = results;
 
     if (summaryResult.status === "fulfilled") {
       setSummary(summaryResult.value.summary);
@@ -1174,6 +1218,10 @@ export function SiteAdminWebConsole({
       setPages(pagesResult.value);
     } else {
       failures.push({ scope: "Pages", message: pagesResult.reason?.message || "failed" });
+    }
+
+    if (pageTreeResult.status === "fulfilled") {
+      setPageTreeOrder(pageTreeResult.value.slugs);
     }
 
     if (postsResult.status === "fulfilled") {
@@ -1851,12 +1899,14 @@ export function SiteAdminWebConsole({
    * Returns false when any list could not be refreshed.
    */
   async function refreshLists(): Promise<boolean> {
-    const [pagesResult, postsResult, componentsResult] = await Promise.allSettled([
+    const [pagesResult, pageTreeResult, postsResult, componentsResult] = await Promise.allSettled([
       readJson<PagesPayload>("/api/site-admin/pages?drafts=1"),
+      readJson<PageTreePayload>("/api/site-admin/pages/tree"),
       readJson<PostsPayload>("/api/site-admin/posts?drafts=1"),
       readJson<ComponentsPayload>("/api/site-admin/components"),
     ]);
     if (pagesResult.status === "fulfilled") setPages(pagesResult.value);
+    if (pageTreeResult.status === "fulfilled") setPageTreeOrder(pageTreeResult.value.slugs);
     if (postsResult.status === "fulfilled") setPosts(postsResult.value);
     if (componentsResult.status === "fulfilled") setComponents(componentsResult.value);
     return [pagesResult, postsResult, componentsResult].every(
@@ -3103,6 +3153,79 @@ export function SiteAdminWebConsole({
     );
   }
 
+  function togglePageBranch(slug: string) {
+    setCollapsedPageSlugs((current) =>
+      current.includes(slug)
+        ? current.filter((item) => item !== slug)
+        : [...current, slug],
+    );
+  }
+
+  function renderPageTreeNodes(
+    nodes: PageTreeNode<EditableSummary>[],
+    nested = false,
+  ) {
+    return (
+      <ul className={nested ? styles.pageTreeChildren : styles.pageTreeList}>
+        {nodes.map((node) => {
+          const hasChildren = node.children.length > 0;
+          const expanded = hasChildren && !collapsedPageSlugSet.has(node.slug);
+          const childrenId = `site-admin-page-tree-${encodeURIComponent(node.slug)}`;
+          const item = node.item;
+          return (
+            <li key={node.slug} className={styles.pageTreeItem}>
+              <div className={styles.pageTreeRow}>
+                {hasChildren ? (
+                  <button
+                    type="button"
+                    className={styles.pageTreeDisclosure}
+                    data-expanded={expanded}
+                    aria-expanded={expanded}
+                    aria-controls={childrenId}
+                    aria-label={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
+                    title={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
+                    onClick={() => togglePageBranch(node.slug)}
+                  >
+                    <span aria-hidden="true">›</span>
+                  </button>
+                ) : (
+                  <span className={styles.pageTreeDisclosureSpacer} aria-hidden="true" />
+                )}
+
+                {item ? (
+                  <button
+                    type="button"
+                    className={styles.pageTreeSelect}
+                    onClick={() => void selectLibraryContent("pages", item.id)}
+                  >
+                    <strong>{item.title}</strong>
+                  </button>
+                ) : (
+                  <span className={styles.pageTreeFolder}>
+                    <strong>{node.title}</strong>
+                  </span>
+                )}
+
+                {item ? (
+                  <span className={styles.contentIndexMeta}>
+                    {item.draft ? (
+                      <span className={styles.contentStateBadge}>Hidden</span>
+                    ) : null}
+                    <small>{item.meta}</small>
+                  </span>
+                ) : null}
+              </div>
+
+              {expanded ? (
+                <div id={childrenId}>{renderPageTreeNodes(node.children, true)}</div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
   function renderDocumentIndex() {
     const searching = Boolean(contentSearch.trim());
     const indexedItems = searching
@@ -3117,33 +3240,34 @@ export function SiteAdminWebConsole({
 
     return (
       <Card className={`${styles.editorPanel} ${styles.contentIndexPanel}`}>
-        <div className={styles.panelHeader}>
-          <div>
+        <div className={styles.contentIndexHeader}>
+          <div className={styles.contentIndexHeading}>
             <p className={styles.cardLabel}>Documents</p>
-            <h2 className={styles.panelTitle}>{searching ? "Search results" : typeLabel}</h2>
-            <p className={styles.cardText}>
-              {placeholder === "loading"
-                ? "Loading content…"
-                : searching
-                  ? `${indexedItems.length} matching items across posts and pages.`
-                  : `${indexedItems.length} ${documentKind === "posts" ? "posts" : "pages"}.`}
-            </p>
+            <div className={styles.contentIndexTitleLine}>
+              <h2 className={styles.panelTitle}>{searching ? "Search results" : typeLabel}</h2>
+              <span className={styles.contentIndexCount}>
+                {placeholder === "loading"
+                  ? "Loading…"
+                  : searching
+                    ? `${indexedItems.length} ${indexedItems.length === 1 ? "match" : "matches"}`
+                    : `${indexedItems.length} ${documentKind === "posts" ? "posts" : "pages"}`}
+              </span>
+            </div>
           </div>
-          <Button onClick={() => beginCreate(documentKind)} tone="accent" size="sm">
-            New {documentKind === "posts" ? "post" : "page"}
-          </Button>
-        </div>
-
-        <div className={styles.contentIndexToolbar}>
-          <label className={styles.contentIndexSearch}>
-            <span className={styles.visuallyHidden}>Search posts and pages</span>
-            <input
-              className={styles.textField}
-              value={contentSearch}
-              onChange={(event) => setContentSearch(event.target.value)}
-              placeholder="Search posts and pages"
-            />
-          </label>
+          <div className={styles.contentIndexHeaderActions}>
+            <label className={styles.contentIndexSearch}>
+              <span className={styles.visuallyHidden}>Search posts and pages</span>
+              <input
+                className={styles.textField}
+                value={contentSearch}
+                onChange={(event) => setContentSearch(event.target.value)}
+                placeholder="Search posts and pages"
+              />
+            </label>
+            <Button onClick={() => beginCreate(documentKind)} tone="accent" size="sm">
+              New {documentKind === "posts" ? "post" : "page"}
+            </Button>
+          </div>
         </div>
 
         {placeholder === "loading" ? (
@@ -3154,6 +3278,8 @@ export function SiteAdminWebConsole({
               </li>
             ))}
           </ul>
+        ) : placeholder === "ready" && documentKind === "pages" && !searching ? (
+          renderPageTreeNodes(pageTree)
         ) : placeholder === "ready" ? (
           <ul className={styles.contentIndexList}>
             {indexedItems.map(({ kind: itemKind, item }) => (
@@ -3165,10 +3291,15 @@ export function SiteAdminWebConsole({
                 >
                   <span className={styles.contentIndexPrimary}>
                     <strong>{item.title}</strong>
-                    {searching ? <small>/{item.id}</small> : null}
+                    {searching ? (
+                      <small>
+                        {itemKind === "pages"
+                          ? `Pages / ${pagePathLabel(item.id, pageItems)}`
+                          : `Posts / ${item.id}`}
+                      </small>
+                    ) : null}
                   </span>
                   <span className={styles.contentIndexMeta}>
-                    {searching ? <small>{titleForKind(itemKind)}</small> : null}
                     {item.draft ? <span className={styles.contentStateBadge}>Hidden</span> : null}
                     <small>{item.meta}</small>
                   </span>
@@ -3255,7 +3386,25 @@ export function SiteAdminWebConsole({
               <div className={styles.editorChrome}>
                 <div className={styles.panelHeader}>
                   <div>
-                    <p className={styles.cardLabel}>{titleForKind(selected.kind)}</p>
+                    {selected.kind === "pages" ? (
+                      <nav className={styles.pageBreadcrumb} aria-label="Page location">
+                        <ol>
+                          <li>Pages</li>
+                          {selectedPageBreadcrumb.map((segment, index) => (
+                            <li
+                              key={segment.slug}
+                              aria-current={
+                                index === selectedPageBreadcrumb.length - 1 ? "page" : undefined
+                              }
+                            >
+                              {segment.title}
+                            </li>
+                          ))}
+                        </ol>
+                      </nav>
+                    ) : (
+                      <p className={styles.cardLabel}>{titleForKind(selected.kind)}</p>
+                    )}
                     <h2 className={styles.panelTitle}>{selected.title}</h2>
                     <p className={styles.cardText}>{selected.meta}</p>
                   </div>
