@@ -1,8 +1,7 @@
 import "server-only";
 
-import { postMdxComponents } from "@/components/posts-mdx/components";
 import { SiteAnnouncementFrame } from "@/components/site-announcement-frame";
-import { compilePostMdx } from "@/lib/posts/compile";
+import { renderSimpleMarkdown } from "@/lib/posts/simple-markdown";
 import {
   splitAnnouncementColumns,
   type SiteAnnouncement as SiteAnnouncementData,
@@ -10,8 +9,7 @@ import {
 
 async function renderMdx(source: string) {
   if (!source.trim()) return null;
-  const { Content } = await compilePostMdx(source);
-  return <Content components={postMdxComponents} />;
+  return renderSimpleMarkdown(source);
 }
 
 export async function SiteAnnouncement({

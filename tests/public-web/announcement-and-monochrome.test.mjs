@@ -88,8 +88,9 @@ test("monochrome appearance has its own independent schedule", () => {
 });
 
 test("classic layout renders announcements and monochrome appearance independently", async () => {
-  const [layout, frame, announcementCss, monochromeCss, settingsForm] = await Promise.all([
+  const [layout, announcement, frame, announcementCss, monochromeCss, settingsForm] = await Promise.all([
     fs.readFile("app/(classic)/layout.tsx", "utf8"),
+    fs.readFile("components/site-announcement.tsx", "utf8"),
     fs.readFile("components/site-announcement-frame.tsx", "utf8"),
     fs.readFile("app/(classic)/announcement.css", "utf8"),
     fs.readFile("app/(classic)/monochrome.css", "utf8"),
@@ -99,6 +100,8 @@ test("classic layout renders announcements and monochrome appearance independent
   assert.match(layout, /data-announcement-active/);
   assert.match(layout, /data-monochrome-mode/);
   assert.match(layout, /<SiteAnnouncement announcement=\{announcement\}/);
+  assert.match(announcement, /renderSimpleMarkdown/);
+  assert.doesNotMatch(announcement, /compilePostMdx/);
   assert.match(frame, /Collapse announcement/);
   assert.match(frame, /Expand announcement/);
   assert.match(frame, /site-announcement__panel-shell--compact/);
