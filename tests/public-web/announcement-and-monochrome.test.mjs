@@ -122,3 +122,71 @@ test("classic layout renders announcements and monochrome appearance independent
   assert.match(settingsForm, /Monochrome appearance/);
   assert.doesNotMatch(settingsForm, /Memorial mode/);
 });
+
+test("monochrome appearance uses neutral surfaces and remaps semantic content hues", async () => {
+  const [designSystem, monochromeCss] = await Promise.all([
+    fs.readFile("app/design-system.css", "utf8"),
+    fs.readFile("app/(classic)/monochrome.css", "utf8"),
+  ]);
+
+  for (const token of [
+    "--ds-monochrome-surface-page: #f4f4f4",
+    "--ds-monochrome-surface-elevated: #fafafa",
+    "--ds-monochrome-announcement-surface: #e7e7e7",
+    "--ds-monochrome-surface-page: #181818",
+    "--ds-monochrome-surface-elevated: #232323",
+    "--ds-monochrome-announcement-surface: #242424",
+  ]) {
+    assert.match(designSystem, new RegExp(token));
+  }
+
+  for (const tone of [
+    "gray",
+    "brown",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "purple",
+    "pink",
+    "red",
+  ]) {
+    assert.match(
+      monochromeCss,
+      new RegExp(`--color-text-${tone}: var\\(--ds-monochrome-text-muted\\)`),
+    );
+    assert.match(
+      monochromeCss,
+      new RegExp(`--color-bg-${tone}: var\\(--ds-monochrome-surface-soft-strong\\)`),
+    );
+  }
+
+  for (const state of ["success", "danger", "warning", "info"]) {
+    assert.match(
+      monochromeCss,
+      new RegExp(`--ds-${state}-text: var\\(--ds-monochrome-text-secondary\\)`),
+    );
+  }
+
+  assert.match(
+    monochromeCss,
+    /--ds-announcement-surface:\s*var\(--ds-monochrome-announcement-surface\)/,
+  );
+  for (const bridgeToken of [
+    "--ds-interactive-hover: var(--ds-monochrome-surface-soft)",
+    "--ds-interactive-active: var(--ds-monochrome-surface-soft-strong)",
+    "--color-text-default: var(--ds-monochrome-text-primary)",
+    "--color-text-default-light: var(--ds-monochrome-text-faint)",
+    "--color-border-default: var(--ds-monochrome-border-subtle)",
+    "--navbar-text-color: var(--ds-monochrome-text-primary)",
+    "--footer-text-color: var(--ds-monochrome-text-primary)",
+  ]) {
+    assert.match(monochromeCss, new RegExp(bridgeToken.replace(/[()]/g, "\\$&")));
+  }
+  assert.match(
+    monochromeCss,
+    /span\[data-link-style="icon"\]\s*>\s*a\.notion-link\.link::before/,
+  );
+  assert.match(monochromeCss, /filter:\s*grayscale\(1\) saturate\(0\)/);
+  assert.doesNotMatch(monochromeCss, /:is\(a, button, img, video, svg, canvas/);
+});

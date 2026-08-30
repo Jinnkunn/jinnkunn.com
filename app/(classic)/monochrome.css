@@ -1,3 +1,7 @@
+html:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="all-public"]),
+body:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="all-public"]),
+html:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="home"] .page__index),
+body:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="home"] .page__index),
 .super-root[data-monochrome-mode="true"][data-monochrome-scope="all-public"],
 .super-root[data-monochrome-mode="true"][data-monochrome-scope="home"]:has(.page__index) {
   --ds-surface-page: var(--ds-monochrome-surface-page);
@@ -5,34 +9,189 @@
   --ds-surface-elevated: var(--ds-monochrome-surface-elevated);
   --ds-surface-soft: var(--ds-monochrome-surface-soft);
   --ds-surface-soft-strong: var(--ds-monochrome-surface-soft-strong);
+  --ds-surface-overlay: color-mix(in srgb, var(--ds-monochrome-surface-elevated) 82%, transparent);
   --ds-text-primary: var(--ds-monochrome-text-primary);
   --ds-text-secondary: var(--ds-monochrome-text-secondary);
   --ds-text-muted: var(--ds-monochrome-text-muted);
   --ds-text-faint: var(--ds-monochrome-text-faint);
   --ds-text-subtle: var(--ds-monochrome-text-subtle);
+  --ds-text-inverse: var(--ds-monochrome-surface-page);
   --ds-border-subtle: var(--ds-monochrome-border-subtle);
   --ds-border-strong: var(--ds-monochrome-border-strong);
   --ds-border-emphasis: var(--ds-monochrome-border-emphasis);
+  --ds-interactive-hover: var(--ds-monochrome-surface-soft);
+  --ds-interactive-active: var(--ds-monochrome-surface-soft-strong);
   --ds-accent: var(--ds-monochrome-accent);
+  --ds-accent-contrast: var(--ds-monochrome-surface-page);
   --ds-link-underline: var(--ds-monochrome-link-underline);
   --ds-link-underline-hover: var(--ds-monochrome-link-underline-hover);
   --ds-link-highlight: var(--ds-monochrome-link-highlight);
+  --ds-announcement-surface: var(--ds-monochrome-announcement-surface);
+  --ds-focus-ring: color-mix(in srgb, var(--ds-monochrome-accent) 76%, transparent);
+  --ds-selection-bg: color-mix(in srgb, var(--ds-monochrome-text-primary) 18%, transparent);
+  --ds-selection-text: var(--ds-monochrome-text-primary);
+  --ds-code-surface: var(--ds-monochrome-surface-soft-strong);
+  --ds-toc-underline: var(--ds-monochrome-border-strong);
+  --ds-anchor-flash: var(--ds-monochrome-surface-soft-strong);
+  --ds-link-icon-chip: var(--ds-monochrome-surface-elevated);
+
+  /* Semantic state remains legible through weight, border and copy while hue
+   * is intentionally removed. This keeps the mode complete: a warning badge
+   * or success marker cannot leak orange/green back into public content. */
+  --ds-success-text: var(--ds-monochrome-text-secondary);
+  --ds-success-bg: var(--ds-monochrome-surface-soft-strong);
+  --ds-success-border: var(--ds-monochrome-border-strong);
+  --ds-danger-text: var(--ds-monochrome-text-secondary);
+  --ds-danger-bg: var(--ds-monochrome-surface-soft-strong);
+  --ds-danger-border: var(--ds-monochrome-border-strong);
+  --ds-warning-text: var(--ds-monochrome-text-secondary);
+  --ds-warning-bg: var(--ds-monochrome-surface-soft-strong);
+  --ds-warning-border: var(--ds-monochrome-border-strong);
+  --ds-info-text: var(--ds-monochrome-text-secondary);
+  --ds-info-bg: var(--ds-monochrome-surface-soft-strong);
+  --ds-info-border: var(--ds-monochrome-border-strong);
+
+  /* MDX and imported Notion markup expose named content colors through two
+   * token families. Collapse both families onto one neutral foreground and
+   * surface so labels, callouts and inline highlights follow the same mode. */
+  --ds-color-text-gray: var(--ds-monochrome-text-muted);
+  --ds-color-text-brown: var(--ds-monochrome-text-muted);
+  --ds-color-text-orange: var(--ds-monochrome-text-muted);
+  --ds-color-text-yellow: var(--ds-monochrome-text-muted);
+  --ds-color-text-green: var(--ds-monochrome-text-muted);
+  --ds-color-text-blue: var(--ds-monochrome-text-muted);
+  --ds-color-text-purple: var(--ds-monochrome-text-muted);
+  --ds-color-text-pink: var(--ds-monochrome-text-muted);
+  --ds-color-text-red: var(--ds-monochrome-text-muted);
+  --ds-color-bg-gray: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-brown: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-orange: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-yellow: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-green: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-blue: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-purple: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-pink: var(--ds-monochrome-surface-soft-strong);
+  --ds-color-bg-red: var(--ds-monochrome-surface-soft-strong);
+
+  --color-gray: var(--ds-monochrome-text-muted);
+  --color-brown: var(--ds-monochrome-text-muted);
+  --color-orange: var(--ds-monochrome-text-muted);
+  --color-yellow: var(--ds-monochrome-text-muted);
+  --color-green: var(--ds-monochrome-text-muted);
+  --color-blue: var(--ds-monochrome-text-muted);
+  --color-purple: var(--ds-monochrome-text-muted);
+  --color-pink: var(--ds-monochrome-text-muted);
+  --color-red: var(--ds-monochrome-text-muted);
+  --color-text-gray: var(--ds-monochrome-text-muted);
+  --color-text-brown: var(--ds-monochrome-text-muted);
+  --color-text-orange: var(--ds-monochrome-text-muted);
+  --color-text-yellow: var(--ds-monochrome-text-muted);
+  --color-text-green: var(--ds-monochrome-text-muted);
+  --color-text-blue: var(--ds-monochrome-text-muted);
+  --color-text-purple: var(--ds-monochrome-text-muted);
+  --color-text-pink: var(--ds-monochrome-text-muted);
+  --color-text-red: var(--ds-monochrome-text-muted);
+  --color-text-gray-light: var(--ds-monochrome-text-subtle);
+  --color-text-brown-light: var(--ds-monochrome-text-subtle);
+  --color-text-orange-light: var(--ds-monochrome-text-subtle);
+  --color-text-yellow-light: var(--ds-monochrome-text-subtle);
+  --color-text-green-light: var(--ds-monochrome-text-subtle);
+  --color-text-blue-light: var(--ds-monochrome-text-subtle);
+  --color-text-purple-light: var(--ds-monochrome-text-subtle);
+  --color-text-pink-light: var(--ds-monochrome-text-subtle);
+  --color-text-red-light: var(--ds-monochrome-text-subtle);
+  --color-bg-gray: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-brown: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-orange: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-yellow: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-green: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-blue: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-purple: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-pink: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-red: var(--ds-monochrome-surface-soft-strong);
+  --color-bg-gray-light: var(--ds-monochrome-surface-soft);
+  --color-bg-brown-light: var(--ds-monochrome-surface-soft);
+  --color-bg-orange-light: var(--ds-monochrome-surface-soft);
+  --color-bg-yellow-light: var(--ds-monochrome-surface-soft);
+  --color-bg-green-light: var(--ds-monochrome-surface-soft);
+  --color-bg-blue-light: var(--ds-monochrome-surface-soft);
+  --color-bg-purple-light: var(--ds-monochrome-surface-soft);
+  --color-bg-pink-light: var(--ds-monochrome-surface-soft);
+  --color-bg-red-light: var(--ds-monochrome-surface-soft);
+  --color-pill-default: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-gray: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-brown: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-orange: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-yellow: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-green: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-blue: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-purple: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-pink: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-red: var(--ds-monochrome-surface-soft-strong);
+  --color-pill-text-default: var(--ds-monochrome-text-secondary);
+  --color-pill-text-gray: var(--ds-monochrome-text-secondary);
+  --color-pill-text-brown: var(--ds-monochrome-text-secondary);
+  --color-pill-text-orange: var(--ds-monochrome-text-secondary);
+  --color-pill-text-yellow: var(--ds-monochrome-text-secondary);
+  --color-pill-text-green: var(--ds-monochrome-text-secondary);
+  --color-pill-text-blue: var(--ds-monochrome-text-secondary);
+  --color-pill-text-purple: var(--ds-monochrome-text-secondary);
+  --color-pill-text-pink: var(--ds-monochrome-text-secondary);
+  --color-pill-text-red: var(--ds-monochrome-text-secondary);
+
   --ds-nav-surface: var(--ds-monochrome-surface-page);
   --ds-nav-surface-hover: var(--ds-monochrome-nav-hover);
   --ds-nav-text: var(--ds-monochrome-text-primary);
+  --ds-nav-action-surface: var(--ds-monochrome-accent);
+  --ds-nav-action-text: var(--ds-monochrome-surface-page);
+  --ds-nav-list-hover: var(--ds-monochrome-surface-soft-strong);
   --ds-footer-surface: var(--ds-monochrome-surface-page);
+  --ds-sidebar-surface: var(--ds-monochrome-surface-page);
+  --ds-sidebar-surface-hover: var(--ds-monochrome-nav-hover);
+  --ds-card-border: var(--ds-monochrome-border-subtle);
+  --ds-field-bg: var(--ds-monochrome-surface-elevated);
+  --ds-field-border: var(--ds-monochrome-border-strong);
+  --ds-search-backdrop: color-mix(in srgb, var(--ds-monochrome-surface-page) 82%, transparent);
+  --ds-search-highlight: var(--ds-monochrome-surface-soft-strong);
+  --ds-lightbox-surface: var(--ds-monochrome-surface-elevated);
+  --ds-scrollbar-bg: var(--ds-monochrome-surface-page);
+  --ds-scrollbar-thumb: color-mix(in srgb, var(--ds-monochrome-text-primary) 34%, var(--ds-monochrome-surface-page));
+  --ds-scrollbar-border: var(--ds-monochrome-border-subtle);
   --color-bg-default: var(--ds-monochrome-surface-page);
   --color-bg-surface: var(--ds-monochrome-surface-page);
   --color-bg-subtle: var(--ds-monochrome-surface-soft);
+  --color-text-default: var(--ds-monochrome-text-primary);
+  --color-text-default-light: var(--ds-monochrome-text-faint);
+  --color-text-muted: var(--ds-monochrome-text-muted);
+  --color-border-default: var(--ds-monochrome-border-subtle);
+  --color-border-dark: var(--ds-monochrome-border-subtle);
+  --color-border-subtle: var(--ds-monochrome-border-subtle);
+  --color-accent: var(--ds-monochrome-accent);
   --color-card-bg: var(--ds-monochrome-surface-page);
   --color-card-bg-hover: var(--ds-monochrome-surface-soft);
   --color-ui-hover-bg: var(--ds-monochrome-nav-hover);
   --color-checkbox-bg: var(--ds-monochrome-accent);
+  --scrollbar-background-color: var(--ds-monochrome-surface-page);
+  --scrollbar-thumb-color: var(--ds-scrollbar-thumb);
+  --scrollbar-border-color: var(--ds-monochrome-border-subtle);
+  --navbar-text-color: var(--ds-monochrome-text-primary);
+  --navbar-list-item-hover: var(--ds-monochrome-surface-soft-strong);
   --navbar-background-color: var(--ds-monochrome-surface-page);
   --navbar-background-color-hover: var(--ds-monochrome-nav-hover);
+  --navbar-button-text-color: var(--ds-monochrome-surface-page);
   --navbar-menu-background-color: var(--ds-monochrome-surface-page);
   --navbar-button-background-color: var(--ds-monochrome-accent);
+  --navbar-text-color-dark: var(--ds-monochrome-text-primary);
+  --footer-text-color: var(--ds-monochrome-text-primary);
   --footer-background-color: var(--ds-monochrome-surface-page);
+  --sidebar-text-color: var(--ds-monochrome-text-primary);
+  --sidebar-cta-text-color: var(--ds-monochrome-text-primary);
+  --sidebar-background-color: var(--ds-monochrome-surface-page);
+  --sidebar-cta-background-color: var(--ds-monochrome-surface-page);
+  --sidebar-border-color: var(--ds-monochrome-border-subtle);
+  --sidebar-background-color-hover: var(--ds-monochrome-nav-hover);
+  --sidebar-text-color-dark: var(--ds-monochrome-text-primary);
+  --sidebar-cta-background-color-hover: var(--ds-monochrome-nav-hover);
   --mobile-menu-bg: var(--ds-monochrome-surface-page);
   min-height: 100vh;
   background: var(--ds-surface-page);
@@ -49,12 +208,22 @@ body:has(.super-root[data-monochrome-mode="true"][data-monochrome-scope="home"] 
 }
 
 .super-root[data-monochrome-media="true"][data-monochrome-scope="all-public"]
-  :is(a, button, img, video, svg, canvas, .notion-icon),
+  :is(img, video, svg, canvas, .notion-icon),
 .super-root[data-monochrome-media="true"][data-monochrome-scope="home"]:has(.page__index)
-  :is(a, button, img, video, svg, canvas, .notion-icon) {
+  :is(img, video, svg, canvas, .notion-icon) {
   filter: grayscale(1) saturate(0) contrast(0.96);
 }
 
-.super-root[data-monochrome-mode="true"] :is(a, button, img, svg) {
-  transition-duration: 0ms !important;
+/* Icon links paint branded SVGs as pseudo-element background images, so they
+ * sit outside the media selector above. Keep their shape while removing hue
+ * with the same filter used for inline media. */
+.super-root[data-monochrome-media="true"][data-monochrome-scope="all-public"]
+  span[data-link-style="icon"] > a.notion-link.link::before,
+.super-root[data-monochrome-media="true"][data-monochrome-scope="all-public"]
+  a[data-link-style="icon"].notion-link.link::before,
+.super-root[data-monochrome-media="true"][data-monochrome-scope="home"]:has(.page__index)
+  span[data-link-style="icon"] > a.notion-link.link::before,
+.super-root[data-monochrome-media="true"][data-monochrome-scope="home"]:has(.page__index)
+  a[data-link-style="icon"].notion-link.link::before {
+  filter: grayscale(1) saturate(0) contrast(0.96);
 }
