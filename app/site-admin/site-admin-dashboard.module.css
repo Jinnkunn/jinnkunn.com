@@ -2904,24 +2904,13 @@ button.statusPill:disabled {
 }
 
 .editorChrome {
-  position: sticky;
-  z-index: 12;
-  top: 126px;
+  position: static;
   display: grid;
   gap: 10px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--ds-border-subtle);
   background: var(--ds-surface-page);
-  box-shadow: 0 -18px 0 var(--ds-surface-page);
-  isolation: isolate;
-}
-
-.editorPanel:has(.newsEditor) .editorChrome {
-  position: static;
-  z-index: auto;
-  top: auto;
   box-shadow: none;
-  isolation: auto;
 }
 
 .editorStatusBar {

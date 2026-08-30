@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { readActiveDeployment } from "./cloudflare-api.mjs";
 import { effectiveCodeSha } from "./deploy-metadata.mjs";
 import { createNextAuthSessionCookie } from "./site-admin-auth-cookie.mjs";
+import { d1DatabaseIdForEnv } from "./wrangler-d1.mjs";
 
 export const DEFAULT_RELEASE_ROUTES = ["/", "/news", "/blog", "/calendar"];
 export const PRODUCTION_HISTORY_PATH = "docs/runbooks/production-version-history.md";
@@ -111,9 +112,13 @@ function workerNameForEnv({ root, env }) {
 }
 
 function databaseIdForEnv({ root, env }) {
-  const block = readTomlBlock({ root, marker: `[[env.${env}.d1_databases]]` });
-  const match = /^\s*database_id\s*=\s*"([^"]+)"/m.exec(block);
-  return match?.[1] || "";
+  // Binding-aware: env.staging declares a second d1 block pointing at the
+  // production database, so block order must never decide which DB we query.
+  try {
+    return d1DatabaseIdForEnv({ root, env });
+  } catch {
+    return "";
+  }
 }
 
 function accountId() {

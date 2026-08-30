@@ -5,16 +5,15 @@
 // promotion. Production-authored content is authoritative for the live site
 // and must not be replaced automatically when staging code is promoted.
 
-import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { d1DatabaseIdForEnv } from "../_lib/wrangler-d1.mjs";
 
 const BINDING = "SITE_ADMIN_DB";
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
-const WRANGLER_TOML = path.join(ROOT, "wrangler.toml");
 // D1 caps bound parameters per query at 100. Seven columns per row means 14
 // rows would fit; 10 leaves headroom if the column list ever grows.
 const INSERT_CHUNK_ROWS = 10;
@@ -73,20 +72,9 @@ function apiToken() {
 }
 
 function databaseIdForEnv(env) {
-  const raw = fs.readFileSync(WRANGLER_TOML, "utf8");
-  const marker = `[[env.${env}.d1_databases]]`;
-  const start = raw.indexOf(marker);
-  if (start < 0) throw new Error(`Missing ${marker} in wrangler.toml`);
-  const rest = raw.slice(start + marker.length);
-  const nextBlock = rest.search(/\n\[/);
-  const block = nextBlock >= 0 ? rest.slice(0, nextBlock) : rest;
-  const bindingMatch = /^\s*binding\s*=\s*"([^"]+)"/m.exec(block);
-  const databaseMatch = /^\s*database_id\s*=\s*"([^"]+)"/m.exec(block);
-  if (bindingMatch?.[1] !== BINDING) {
-    throw new Error(`Missing ${BINDING} binding for env.${env}`);
-  }
-  if (!databaseMatch) throw new Error(`Missing database_id for env.${env}.${BINDING}`);
-  return databaseMatch[1];
+  // Scans every d1 block for the env and matches on `binding`, so wrangler.toml
+  // block order can never route this mirror at the wrong database.
+  return d1DatabaseIdForEnv({ root: ROOT, env, binding: BINDING });
 }
 
 function normalizeEnv(value, label) {

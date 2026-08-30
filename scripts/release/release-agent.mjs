@@ -196,18 +196,33 @@ function tailPush(lines, line, max = 120) {
   while (lines.length > max) lines.shift();
 }
 
-function redactor() {
-  const secrets = [
-    "SITE_ADMIN_RELEASE_AGENT_TOKEN",
-    "CLOUDFLARE_API_TOKEN",
-    "CF_API_TOKEN",
-    "DEPLOY_TOKEN",
-    "NEXTAUTH_SECRET",
-    "AUTH_SECRET",
-    "SITE_ADMIN_APP_TOKEN_SECRET",
-  ]
-    .map(readEnv)
-    .filter((value) => value.length >= 8);
+// The runner passes its whole environment to every npm child and streams each
+// output line to the remote control-plane job log, so redaction must cover
+// every credential in that environment — not a hand-maintained list that
+// missed RELEASE_AGENT_WAKE_TOKEN and the CF Access client secret. Any env
+// var whose NAME says it holds a credential is redacted; a newly added secret
+// is covered without editing this file. ACCOUNT_ID is named explicitly
+// (CLOUDFLARE_ACCOUNT_ID matches none of the credential words), and http(s)
+// values stay readable because vars like NEXTAUTH_URL match AUTH while being
+// public by construction.
+const SECRET_ENV_NAME_RE =
+  /(TOKEN|SECRET|PASSWORD|PASSPHRASE|PRIVATE|CREDENTIAL|AUTH|ACCOUNT_ID|(^|_)API_?KEYS?($|_)|(^|_)KEYS?($|_))/i;
+
+export function collectRedactionValues(env = process.env) {
+  const values = new Set();
+  for (const [name, raw] of Object.entries(env)) {
+    if (!SECRET_ENV_NAME_RE.test(name)) continue;
+    const value = String(raw || "").trim();
+    if (value.length < 8) continue;
+    if (/^https?:\/\//i.test(value)) continue;
+    values.add(value);
+  }
+  // Longest first so overlapping values cannot leave a partial secret behind.
+  return [...values].sort((a, b) => b.length - a.length);
+}
+
+function redactor(env = process.env) {
+  const secrets = collectRedactionValues(env);
   return (line) => {
     let out = String(line || "");
     for (const secret of secrets) {

@@ -24,12 +24,20 @@ CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT" npx wrangle
 
 ## Deployment Semantics Guardrail
 
-- For normal release/promotion, use:
-  - `npm run deploy:cf:staging`
-  - `npm run deploy:cf:prod`
+- For normal release/promotion, use the guarded release paths:
+  - `npm run release:staging`
+  - `npm run release:prod:from-staging` (or the `release:prod` form below)
+- `deploy:cf:staging` / `deploy:cf:prod` only promote an already-uploaded
+  Worker version. Both now refuse a version whose `code=`/`content=`
+  annotations do not match the deploying source (`DEPLOY_VERSION_STALE`);
+  `ALLOW_STALE_PROD_DEPLOY=1` is the explicit emergency override for
+  production.
 - These paths annotate deployments with `source=<sha> branch=<name>`.
 - Avoid direct `wrangler deploy` without `--message`, because missing source metadata makes `/api/site-admin/status` fall back to `pendingDeploy=null`.
 - Push-triggered GitHub deploys are staging-only. `main` pushes must not auto-deploy production.
+- Releases are serialized by a per-environment lock in the shared control-plane
+  D1 (`release_locks`); a refused start prints the current holder. See
+  `docs/runbooks/production-promotion.md` for the escape hatches.
 - Production promotion is manual only. Prefer the guarded path in `docs/runbooks/production-promotion.md`:
   - `npm run release:prod:dry-run`
   - explicit approval
@@ -39,7 +47,12 @@ CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT" npx wrangle
 
 - Account:
   - `Workers Scripts: Edit`
+  - `D1: Edit` (content dumps, overlay publishes, release locks/history)
+  - `Workers R2 Storage: Edit` (verified staging artifact mirror; without it
+    the R2 upload/download degrades to a warning and promotion stays pinned
+    to the staging machine's local cache)
   - `Workers Tail: Read` (recommended)
+  - `Access: Apps and Policies: Read` (verify:release-runner)
 - Zone:
   - `Zone: Read`
   - `Workers Routes: Edit` (if route binding is managed by deploy)

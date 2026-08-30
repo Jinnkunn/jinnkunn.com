@@ -18,3 +18,16 @@ test("navigation active state keeps Blog on the top-level item", async () => {
   );
   assert.doesNotMatch(css, /\.super-root:has\(\.page__blog(?:-post)?\) \.super-navbar__list(?:::after)?/);
 });
+
+test("navigation and search behavior ship with the layout bundle", async () => {
+  const source = await fs.readFile(
+    path.join(ROOT, "components/site-nav-enhancers.tsx"),
+    "utf8",
+  );
+
+  assert.match(source, /from "@\/lib\/client\/nav\/behavior-runtime"/);
+  assert.match(source, /from "@\/lib\/client\/search\/behavior-runtime"/);
+  assert.doesNotMatch(source, /import\("@\/lib\/client\/(?:nav|search)\/behavior-runtime"\)/);
+  assert.match(source, /cleanupSearch\?\.\(\)/);
+  assert.match(source, /cleanupNav\(\)/);
+});

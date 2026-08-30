@@ -22,6 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { recordRemoteReleaseHistory } from "../_lib/release-control-plane.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -285,6 +286,10 @@ function appendReleaseHistory(entry) {
     `${JSON.stringify({ ...entry, recordedAt: new Date().toISOString() })}\n`,
     "utf8",
   );
+  // The local JSONL is per-machine; mirror the snapshot into the shared
+  // control-plane D1 so rollback pointers survive any one machine.
+  // Best-effort, never rejects — safe un-awaited.
+  void recordRemoteReleaseHistory({ root: ROOT, entry });
 }
 
 function gitShortSha(sha) {

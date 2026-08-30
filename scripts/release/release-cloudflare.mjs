@@ -15,6 +15,16 @@ import {
   prepareImmutableReleaseSnapshot,
   removeImmutableReleaseSnapshot,
 } from "../_lib/release-workspace.mjs";
+import {
+  acquireReleaseLock,
+  formatHeldLock,
+  recordRemoteReleaseHistory,
+} from "../_lib/release-control-plane.mjs";
+import {
+  artifactStoreDisabled,
+  downloadBuildArtifact,
+  uploadBuildArtifact,
+} from "../_lib/release-artifact-store.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -226,13 +236,33 @@ function appendReleaseHistory(entry) {
       `[release-cloudflare] failed to append release history: ${error?.message || error}`,
     );
   }
+  // Machine-independent copy in the shared control-plane D1, so the audit
+  // trail and rollback pointers survive the machine that ran the release.
+  // Best-effort, self-timeboxed, and never rejects — safe un-awaited.
+  void recordRemoteReleaseHistory({
+    root: ROOT,
+    entry: { source: "release-cloudflare", ...entry },
+  });
+}
+
+function copyTreeFast(src, dst) {
+  // `cp -c` clones via APFS copyfile(2): cloning a multi-hundred-MB build
+  // tree costs kilobytes of disk instead of a full copy. (The old plain
+  // `cp -R` here silently ate a full artifact's worth of disk per SHA while
+  // its comment claimed cloning.) Not every filesystem supports clones, so
+  // fall back to a plain copy when the clone fails.
+  if (process.platform === "darwin") {
+    const clone = spawnSync("cp", ["-c", "-R", src, dst], { stdio: "ignore" });
+    if (clone.status === 0) return true;
+    fs.rmSync(dst, { recursive: true, force: true });
+  }
+  return spawnSync("cp", ["-R", src, dst], { stdio: "ignore" }).status === 0;
 }
 
 function packBuildArtifacts({ repoRoot, artifactRoot, sha }) {
   // Snapshot the built worker bundle to `.cache/release/build/<sha>/`
   // so a same-SHA promotion can restore it instead of paying for a full
-  // `npm run build:cf` again. Uses `cp -R` for speed; APFS clones the
-  // inodes so this is effectively free disk-wise on macOS.
+  // `npm run build:cf` again.
   const cacheDir = path.join(repoRoot, ".cache", "release", BUILD_CACHE_BUCKET, sha);
   fs.mkdirSync(cacheDir, { recursive: true });
   const captured = [];
@@ -241,8 +271,7 @@ function packBuildArtifacts({ repoRoot, artifactRoot, sha }) {
     if (!fs.existsSync(src)) continue;
     const dst = path.join(cacheDir, rel);
     fs.rmSync(dst, { recursive: true, force: true });
-    const result = spawnSync("cp", ["-R", src, dst], { stdio: "ignore" });
-    if (result.status === 0) captured.push(rel);
+    if (copyTreeFast(src, dst)) captured.push(rel);
   }
   return captured;
 }
@@ -256,10 +285,57 @@ function restoreBuildArtifacts({ repoRoot, artifactRoot, sha }) {
     if (!fs.existsSync(src)) continue;
     const dst = path.join(artifactRoot, rel);
     fs.rmSync(dst, { recursive: true, force: true });
-    const result = spawnSync("cp", ["-R", src, dst], { stdio: "ignore" });
-    if (result.status === 0) restored.push(rel);
+    if (copyTreeFast(src, dst)) restored.push(rel);
   }
   return restored;
+}
+
+function pruneBuildCache({ repoRoot, keepSha }) {
+  // Per-SHA artifact dirs run 360-580MB and nothing ever deleted them.
+  // Keep the newest few (always including the SHA just packed) and drop the
+  // rest together with their markers.
+  const keep = Math.max(1, Number(readEnv("RELEASE_BUILD_CACHE_KEEP") || 3));
+  const bucketRoot = path.join(repoRoot, ".cache", "release", BUILD_CACHE_BUCKET);
+  let entries = [];
+  try {
+    entries = fs
+      .readdirSync(bucketRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^[a-f0-9]{7,40}$/i.test(entry.name))
+      .map((entry) => {
+        const abs = path.join(bucketRoot, entry.name);
+        let mtimeMs = 0;
+        try {
+          mtimeMs = fs.statSync(abs).mtimeMs;
+        } catch {
+          // Treat unreadable entries as oldest.
+        }
+        return { sha: entry.name, abs, mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  } catch {
+    return 0;
+  }
+  const keepSet = new Set(entries.slice(0, keep).map((entry) => entry.sha));
+  if (keepSha) keepSet.add(String(keepSha));
+  let pruned = 0;
+  for (const entry of entries) {
+    if (keepSet.has(entry.sha)) continue;
+    try {
+      fs.rmSync(entry.abs, { recursive: true, force: true });
+      fs.rmSync(path.join(bucketRoot, `${entry.sha}.json`), { force: true });
+      pruned += 1;
+    } catch (error) {
+      console.warn(
+        `[release-cloudflare] could not prune build cache ${entry.sha}: ${error?.message || error}`,
+      );
+    }
+  }
+  if (pruned > 0) {
+    console.log(
+      `[release-cloudflare] pruned ${pruned} old build cache entr${pruned === 1 ? "y" : "ies"} (keeping newest ${keep})`,
+    );
+  }
+  return pruned;
 }
 
 function buildCacheContentMatches(marker, expectedContentSha) {
@@ -449,6 +525,8 @@ const CLI_ENV_OVERRIDES = [
   "SITE_ADMIN_DB_LOCATION",
 ];
 
+let heldReleaseLock = null;
+
 async function main() {
   const args = parseArgs();
   const cliEnv = {};
@@ -578,6 +656,24 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+
+  // Cross-process mutual exclusion for the whole release. The runner's
+  // in-process claimGate cannot see a laptop CLI invocation of this same
+  // script, and two releases racing over one Worker has happened before
+  // (see TERMINAL_RELEASE_STATUSES in release-agent.mjs). Children spawned
+  // below (deploy:cf, publish-content --clear, verify) inherit the lock.
+  const lock = await acquireReleaseLock({
+    root: ROOT,
+    environment: args.env,
+    operation: `release-cloudflare ${args.env} ${git.sha.slice(0, 12)}`,
+  });
+  if (!lock.ok) {
+    console.error(`[release-cloudflare] ${formatHeldLock(lock.held)}`);
+    reportAndExit({ ...baseReport, ok: false, lockHeldBy: lock.held });
+    process.exitCode = 1;
+    return;
+  }
+  heldReleaseLock = lock;
 
   const releaseRoot = prepareImmutableReleaseSnapshot({
     repoRoot: ROOT,
@@ -726,7 +822,7 @@ async function main() {
     }
     const allowBuildCacheRead =
       requirePromotedArtifact || readEnv("ALLOW_D1_BUILD_CACHE") === "1";
-    const cached = args.noCache || !allowBuildCacheRead
+    let cached = args.noCache || !allowBuildCacheRead
       ? null
       : readMarker({
           repoRoot: ROOT,
@@ -744,7 +840,7 @@ async function main() {
           : "not requested",
       storedContentSha: String(cached?.contentSnapshotSha || ""),
     };
-    const cachedContentMatches =
+    let cachedContentMatches =
       cached && buildCacheContentMatches(cached, buildCache.expectedContentSha);
     if (cachedContentMatches) {
       restored = restoreBuildArtifacts({
@@ -755,9 +851,51 @@ async function main() {
     } else if (cached) {
       buildCache.reason = `content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha || "unspecified"}`;
     }
-    const missingCachedArtifacts = BUILD_CACHE_PATHS.filter(
+    let missingCachedArtifacts = BUILD_CACHE_PATHS.filter(
       (entry) => !restored.includes(entry),
     );
+    let r2ArtifactTried = false;
+    if (
+      requirePromotedArtifact &&
+      missingCachedArtifacts.length > 0 &&
+      !artifactStoreDisabled()
+    ) {
+      // The verified staging artifact used to exist only on the machine that
+      // staged it. When this machine's cache misses (staged elsewhere, cache
+      // pruned, rebuilt runner), fall back to the copy uploaded to R2 after
+      // the green staging release before refusing to promote.
+      r2ArtifactTried = true;
+      const fetched = downloadBuildArtifact({
+        root: ROOT,
+        codeSha: git.sha,
+        contentSha: buildCache.expectedContentSha,
+      });
+      if (fetched) {
+        cached = readMarker({
+          repoRoot: ROOT,
+          bucket: BUILD_CACHE_BUCKET,
+          sha: git.sha,
+          maxAgeMs: BUILD_CACHE_TTL_MS,
+        });
+        cachedContentMatches =
+          cached && buildCacheContentMatches(cached, buildCache.expectedContentSha);
+        if (cachedContentMatches) {
+          restored = restoreBuildArtifacts({
+            repoRoot: ROOT,
+            artifactRoot: releaseRoot,
+            sha: git.sha,
+          });
+          missingCachedArtifacts = BUILD_CACHE_PATHS.filter(
+            (entry) => !restored.includes(entry),
+          );
+          buildCache = {
+            ...buildCache,
+            storedContentSha: String(cached?.contentSnapshotSha || ""),
+            restoredFromR2: missingCachedArtifacts.length === 0,
+          };
+        }
+      }
+    }
     if (requirePromotedArtifact && missingCachedArtifacts.length > 0) {
       const detail = cached
         ? cachedContentMatches
@@ -766,8 +904,11 @@ async function main() {
         : args.noCache
           ? "cache reads were disabled by --no-cache"
           : "no recent staging build cache exists";
+      const r2Note = r2ArtifactTried
+        ? " The R2 artifact store had no matching object either."
+        : "";
       throw new Error(
-        `Production promotion requires the exact verified staging artifact for code ${git.sha} and content ${buildCache.expectedContentSha}; ${detail}. Deploy staging on this runner, then retry promotion.`,
+        `Production promotion requires the exact verified staging artifact for code ${git.sha} and content ${buildCache.expectedContentSha}; ${detail}.${r2Note} Deploy staging (any machine with the artifact store enabled), then retry promotion.`,
       );
     }
     if (missingCachedArtifacts.length === 0) {
@@ -822,6 +963,7 @@ async function main() {
       console.log(
         `[release-cloudflare] stored build:cf cache for ${git.sha.slice(0, 12)} content=${contentSnapshotSha.slice(0, 12)} (${captured.join(", ")})`,
       );
+      pruneBuildCache({ repoRoot: ROOT, keepSha: git.sha });
     }
   }
 
@@ -903,6 +1045,24 @@ async function main() {
           sha: git.sha,
           payload: { verifyScript, ttlMs: STAGING_VERIFY_TTL_MS },
         });
+        // Mirror the now-verified artifact to R2 so promotion is not pinned
+        // to this machine's build cache. Cache-hit releases skip the upload —
+        // the artifact was mirrored when it was first built.
+        if (didRunBuild && !artifactStoreDisabled()) {
+          uploadBuildArtifact({
+            root: ROOT,
+            codeSha: git.sha,
+            contentSha: contentSnapshotSha,
+            cacheDir: path.join(ROOT, ".cache", "release", BUILD_CACHE_BUCKET, git.sha),
+            markerPayload:
+              readMarker({ repoRoot: ROOT, bucket: BUILD_CACHE_BUCKET, sha: git.sha }) || {
+                paths: BUILD_CACHE_PATHS,
+                branch: git.branch,
+                contentSnapshotSha,
+                env: args.env,
+              },
+          });
+        }
       }
     } catch (verifyError) {
       // Production verify failed — the bad worker is already live. If we
@@ -943,6 +1103,16 @@ async function main() {
           console.error(
             `[release-cloudflare] auto-rolled-back to ${rollbackTarget}; original verify error above`,
           );
+          // Record the rollback as its own audit row — the failure entry
+          // written by the top-level catch cannot see `rolledBack`.
+          appendReleaseHistory({
+            env: "production",
+            sha: git.sha,
+            branch: git.branch,
+            rolledBack,
+            deployedVersionId: rollbackTarget,
+            note: `auto-rollback to ${rollbackTarget} after production verify failure`,
+          });
         } catch (rollbackError) {
           const rbMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
           console.error(
@@ -951,7 +1121,7 @@ async function main() {
         }
       } else if (args.env === "production" && !rollbackTarget) {
         console.error(
-          "[release-cloudflare] verify:cf:prod failed but no rollback target was provided (RELEASE_EXPECT_PRODUCTION_VERSION). Manual rollback required — production-version-history.md has the previous version id.",
+          "[release-cloudflare] verify:cf:prod failed but no rollback target was provided (RELEASE_EXPECT_PRODUCTION_VERSION). Manual rollback required — read the previous version id live via `npx wrangler deployments status --env production` or `npm run snapshot:prod:list` (the Cloudflare API is the source of truth; local history files may be stale).",
         );
       } else if (args.env === "production" && readEnv("DISABLE_AUTO_ROLLBACK") === "1") {
         console.error(
@@ -1038,31 +1208,35 @@ async function main() {
   reportAndExit(finalReport);
 }
 
-main().catch((error) => {
-  // Best-effort failure record. We don't have a fully-populated report
-  // here (the throw may have happened mid-flight), but a "release X
-  // failed" line is still more useful than silence — operators can pair
-  // it with the stderr above to reconstruct what happened.
-  try {
-    const env = process.argv
-      .find((arg) => arg.startsWith("--env="))
-      ?.slice("--env=".length) || "staging";
-    const sha = (() => {
-      const result = spawnSync("git", ["rev-parse", "HEAD"], {
-        cwd: ROOT,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
+main()
+  .catch((error) => {
+    // Best-effort failure record. We don't have a fully-populated report
+    // here (the throw may have happened mid-flight), but a "release X
+    // failed" line is still more useful than silence — operators can pair
+    // it with the stderr above to reconstruct what happened.
+    try {
+      const env = process.argv
+        .find((arg) => arg.startsWith("--env="))
+        ?.slice("--env=".length) || "staging";
+      const sha = (() => {
+        const result = spawnSync("git", ["rev-parse", "HEAD"], {
+          cwd: ROOT,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        });
+        return String(result.stdout || "").trim() || "unknown";
+      })();
+      appendReleaseHistory({
+        env,
+        sha,
+        failure: String(error?.message || error).split("\n")[0]?.slice(0, 240) ?? "unknown",
       });
-      return String(result.stdout || "").trim() || "unknown";
-    })();
-    appendReleaseHistory({
-      env,
-      sha,
-      failure: String(error?.message || error).split("\n")[0]?.slice(0, 240) ?? "unknown",
-    });
-  } catch {
-    // never block the actual error from being printed
-  }
-  console.error(error?.stack || String(error));
-  process.exit(1);
-});
+    } catch {
+      // never block the actual error from being printed
+    }
+    console.error(error?.stack || String(error));
+    // exitCode instead of exit(): the lock release and the in-flight remote
+    // history write still need the event loop to drain.
+    process.exitCode = 1;
+  })
+  .finally(() => heldReleaseLock?.release());

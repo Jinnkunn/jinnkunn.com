@@ -2,40 +2,31 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import {
+  refreshSiteNavActiveLinks,
+  setupSiteNavBehavior,
+} from "@/lib/client/nav/behavior-runtime";
+import {
+  closeOpenSearchOverlay,
+  setupSearchBehavior,
+} from "@/lib/client/search/behavior-runtime";
 
 export default function SiteNavEnhancers() {
   const pathname = usePathname();
 
   useEffect(() => {
-    let closed = false;
-    void (async () => {
-      const [{ setupSiteNavBehavior }, { setupSearchBehavior }] = await Promise.all([
-        import("@/lib/client/nav/behavior-runtime"),
-        import("@/lib/client/search/behavior-runtime"),
-      ]);
-      if (closed) return;
-      setupSiteNavBehavior();
-      setupSearchBehavior();
-    })();
+    const cleanupNav = setupSiteNavBehavior();
+    const cleanupSearch = setupSearchBehavior();
+
     return () => {
-      closed = true;
+      cleanupSearch?.();
+      cleanupNav();
     };
   }, []);
 
   useEffect(() => {
-    let closed = false;
-    void (async () => {
-      const [{ refreshSiteNavActiveLinks }, { closeOpenSearchOverlay }] = await Promise.all([
-        import("@/lib/client/nav/behavior-runtime"),
-        import("@/lib/client/search/behavior-runtime"),
-      ]);
-      if (closed) return;
-      refreshSiteNavActiveLinks();
-      closeOpenSearchOverlay();
-    })();
-    return () => {
-      closed = true;
-    };
+    refreshSiteNavActiveLinks();
+    closeOpenSearchOverlay();
   }, [pathname]);
 
   return null;

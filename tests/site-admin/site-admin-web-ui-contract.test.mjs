@@ -21,6 +21,10 @@ test("site-admin web UI keeps the visual editor and mobile content navigation co
   assert.match(consoleSource, /id="site-admin-editor-panel"/);
   assert.match(styles, /@media \(max-width: 900px\)[\s\S]*?\.sidePanel \{[\s\S]*?position: static/);
   assert.match(styles, /\.sidePanel \.contentNavSection \{\s*display: none/);
+  const editorChromeRule = /\.editorChrome \{([^}]+)\}/.exec(styles)?.[1] || "";
+  assert.match(editorChromeRule, /position: static;/);
+  assert.match(editorChromeRule, /box-shadow: none;/);
+  assert.doesNotMatch(editorChromeRule, /position: sticky;/);
 });
 
 test("site-admin web UI exposes explicit draft and navigation controls", async () => {

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Release agent LaunchAgent. Rendered and installed by
+  scripts/release/setup-runner.mjs — do not hand-edit the installed copy in
+  ~/Library/LaunchAgents; change this template and re-run the setup script.
+  Secrets are NOT in this file: release-agent.mjs loads them from the runner
+  repo's .env/.env.local (see docs/runbooks/runner-secrets.md).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jinnkunn.release-runner</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{NODE_BIN}}</string>
+    <string>{{REPO_ROOT}}/scripts/release/release-agent.mjs</string>
+    <string>--serve</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{{REPO_ROOT}}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+  <key>StandardOutPath</key>
+  <string>{{LOG_DIR}}/release-agent.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{LOG_DIR}}/release-agent.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{PATH_LINE}}</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+  </dict>
+</dict>
+</plist>

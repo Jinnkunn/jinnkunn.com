@@ -215,20 +215,31 @@ function checkLaunchAgents() {
     "com.jinnkunn.release-runner",
     "com.jinnkunn.release-runner-tunnel",
   ];
-  let seen = 0;
+  const missing = [];
   for (const label of labels) {
     const result = spawnSync("launchctl", ["print", `gui/${uid}/${label}`], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
     if (result.status === 0) {
-      seen += 1;
       console.log(`[verify-release-runner] LaunchAgent loaded: ${label}`);
     } else {
+      missing.push(label);
       console.log(`[verify-release-runner] LaunchAgent not loaded: ${label}`);
     }
   }
-  if (seen === 0) {
+  // On the runner host itself a missing LaunchAgent means restart persistence
+  // is gone: the runner keeps working until the next reboot and then silently
+  // never comes back. RELEASE_RUNNER_HOST=1 (set in the runner's .env) makes
+  // that a hard failure; other checkouts legitimately have no LaunchAgents
+  // and only get the log lines above.
+  const runnerHost = String(process.env.RELEASE_RUNNER_HOST || "").trim() === "1";
+  if (runnerHost && missing.length > 0) {
+    throw new Error(
+      `release runner LaunchAgents missing on the runner host: ${missing.join(", ")}. Run \`node scripts/release/setup-runner.mjs\` to reinstall them.`,
+    );
+  }
+  if (missing.length === labels.length && !runnerHost) {
     console.log(
       `[verify-release-runner] warning: no release runner LaunchAgent was detected for gui/${uid}`,
     );

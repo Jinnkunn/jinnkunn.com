@@ -33,14 +33,20 @@ Release Center or the dry-run commands below.
     as a fallback only
 - Prefer `release:prod:from-staging` for routine releases. It reads the
   staging Worker, refuses to proceed unless staging matches the local
-  release-source HEAD, runs the heavy verifications automatically, snapshots the
-  outgoing production version into
-  [production-version-history.md](./production-version-history.md), then
+  release-source HEAD, runs the heavy verifications automatically, snapshots
+  the outgoing production version into the release history audit trail (shared
+  `release_history` table in the control-plane D1, plus the local JSONL), then
   invokes `release:prod --skip-checks` with the confirmation env vars
   pre-populated, preserves production D1, and rebuilds the production static
   overlay from production D1 after the Worker deploy. Fall back to the
   long-form path below if you need finer-grained control or are recovering
   from a partial release.
+- Releases are serialized by a per-environment lock in the shared
+  control-plane D1: a runner job, a laptop CLI release, and the GitHub
+  fallback cannot mutate the same environment concurrently. A refused start
+  prints who holds the lock. `FORCE_RELEASE_LOCK=1` steals a genuinely stuck
+  lock; `RELEASE_CONTROL_PLANE=0` bypasses locking entirely when the
+  control-plane D1 itself is down (both are for emergencies and are loud).
 
 ## Content-from-D1 sync
 
@@ -155,11 +161,13 @@ GitHub Dispatch is intentionally labeled as a fallback in the app. Routine
 staging and production publishing should use the local Cloudflare path so normal
 content/calendar releases do not consume GitHub Actions minutes.
 
-Routine production promotion writes audit entries to
-`.cache/release/release-history.jsonl`, not tracked markdown, so a successful
-release does not dirty the git worktree. `docs/runbooks/production-version-history.md`
-is now a manual/exported rollback report; if it is the only dirty file, the
-local production promotion path still treats it as safe to continue.
+Routine production promotion writes audit entries to the shared
+`release_history` table in the control-plane D1 (machine-independent, survives
+any one machine) and to the local `.cache/release/release-history.jsonl`, not
+tracked markdown, so a successful release does not dirty the git worktree.
+`docs/runbooks/production-version-history.md` is a deprecated manual/exported
+report only; if it is the only dirty file, the local production promotion path
+still treats it as safe to continue.
 
 If the button is greyed out:
 - "Staging stale" — staging hasn't been re-released since
@@ -360,20 +368,24 @@ npm run verify:cf:prod
 Use this when the deployed Worker is bad and the previous Worker version is
 known.
 
-The fastest way to find the previous version ID is
-[production-version-history.md](./production-version-history.md) — every
-production release writes a row there with the outgoing version's ID
-before the new one takes over. The first row under the table header is
-the most recent.
+The Cloudflare API is the source of truth for the previous version ID — read
+it live with either of:
 
-If the history file is empty (or you don't trust it), fall back to
-`npx wrangler deployments status --env production` to enumerate
-versions live.
+```bash
+npm run snapshot:prod:list
+npx wrangler deployments status --env production
+```
+
+The shared `release_history` table in the control-plane D1 records every
+release, promotion, and rollback with its version id, from every machine.
+`production-version-history.md` is a deprecated manual export whose rows only
+exist when someone ran `snapshot:prod` by hand — never trust it during an
+incident.
 
 ```bash
 set -a; source .env; set +a
-# Either: read the previous version ID from production-version-history.md
-# Or:     npx wrangler deployments status --env production
+# Read the previous version ID live (CF API is the source of truth):
+npx wrangler deployments status --env production
 npx wrangler rollback --env production <previous-version-id> \
   --message "rollback production to <previous-version-id>" \
   --yes
@@ -381,6 +393,11 @@ VERIFY_CF_EXPECT_PRODUCTION_VERSION=<previous-version-id> npm run verify:cf:prod
 # Record that we rolled back so the history reflects reality.
 npm run snapshot:prod -- --note "Rolled back to <previous-version-id>"
 ```
+
+Auto-rollback: a failed `verify:cf:prod` during `release:prod` already rolls
+production back to the pre-deploy version automatically (the target is
+pre-fetched from the Cloudflare API before deploying), so this manual path is
+for regressions found after the release verification passed.
 
 ### Source Rollback
 
@@ -401,4 +418,8 @@ after explicit production approval.
 
 - Do not run direct `wrangler deploy --env production` for normal promotion.
 - Do not use `npm run deploy:cf:prod` as a substitute for the guarded release
-  path unless the release owner has approved an emergency manual deploy.
+  path unless the release owner has approved an emergency manual deploy. It
+  now refuses to promote an uploaded version whose `code=`/`content=`
+  annotations do not match the deploying source (same staleness guard as
+  staging); `ALLOW_STALE_PROD_DEPLOY=1` is the explicit override for an
+  intentional emergency re-deploy of the last upload.

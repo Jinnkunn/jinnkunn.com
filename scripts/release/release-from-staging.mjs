@@ -49,6 +49,10 @@ import {
   effectiveCodeSha,
 } from "../_lib/deploy-metadata.mjs";
 import { readMarker } from "../_lib/release-cache.mjs";
+import {
+  acquireReleaseLock,
+  formatHeldLock,
+} from "../_lib/release-control-plane.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -181,6 +185,8 @@ function fail(message) {
   console.error(`[release-from-staging] ${message}`);
   process.exit(1);
 }
+
+let heldReleaseLock = null;
 
 async function main() {
   const args = parseArgs();
@@ -325,6 +331,22 @@ async function main() {
     return;
   }
 
+  // Hold the production lock across the entire promotion — verify, snapshot,
+  // release:prod, and the overlay rebuild — so its child steps run as one
+  // unit instead of each taking and releasing the lock with gaps in between.
+  // The children inherit membership and skip their own acquisition.
+  const lock = await acquireReleaseLock({
+    root: ROOT,
+    environment: "production",
+    operation: `release-from-staging ${git.sha.slice(0, 12)}`,
+  });
+  if (!lock.ok) {
+    console.error(`[release-from-staging] ${formatHeldLock(lock.held)}`);
+    process.exitCode = 1;
+    return;
+  }
+  heldReleaseLock = lock;
+
   const verifyCache = args.forceVerify
     ? null
     : readMarker({
@@ -411,7 +433,10 @@ async function main() {
   console.log(`[release-from-staging] done. main=${git.sha}`);
 }
 
-main().catch((error) => {
-  console.error(error?.stack || String(error));
-  process.exit(1);
-});
+main()
+  .catch((error) => {
+    console.error(error?.stack || String(error));
+    // exitCode instead of exit() so the lock release below still runs.
+    process.exitCode = 1;
+  })
+  .finally(() => heldReleaseLock?.release());

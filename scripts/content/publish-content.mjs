@@ -10,6 +10,12 @@ import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { readActiveDeployment } from "../_lib/cloudflare-api.mjs";
 import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
+import { d1DatabaseIdForEnv } from "../_lib/wrangler-d1.mjs";
+import {
+  acquireReleaseLock,
+  formatHeldLock,
+  recordRemoteReleaseHistory,
+} from "../_lib/release-control-plane.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -118,16 +124,11 @@ function apiToken() {
 }
 
 function databaseIdForEnv(env) {
-  const raw = fs.readFileSync(WRANGLER_TOML, "utf8");
-  const marker = `[[env.${env}.d1_databases]]`;
-  const start = raw.indexOf(marker);
-  if (start < 0) throw new Error(`Missing ${marker} in wrangler.toml`);
-  const rest = raw.slice(start + marker.length);
-  const nextBlock = rest.search(/\n\[/);
-  const block = nextBlock >= 0 ? rest.slice(0, nextBlock) : rest;
-  const match = /^\s*database_id\s*=\s*"([^"]+)"/m.exec(block);
-  if (!match) throw new Error(`Missing database_id for env.${env}.d1_databases`);
-  return match[1];
+  // Resolve by binding name, not block position: env.staging also declares
+  // SITE_ADMIN_DB_LIVE (the production database), so trusting the first
+  // block would let a wrangler.toml reorder point staging publishes —
+  // including DELETEs — at production.
+  return d1DatabaseIdForEnv({ root: ROOT, env });
 }
 
 function workerNameForEnv(env) {
@@ -273,6 +274,12 @@ function appendReleaseHistory(entry) {
       `[publish-content] failed to append release history: ${error?.message || error}`,
     );
   }
+  // Machine-independent copy in the shared control-plane D1. Best-effort and
+  // self-timeboxed; never rejects, so it is safe to leave un-awaited.
+  void recordRemoteReleaseHistory({
+    root: ROOT,
+    entry: { source: "publish-content", ...entry },
+  });
 }
 
 function assertContentPublishBranch(git) {
@@ -1391,23 +1398,45 @@ async function copyStagingOverlayToProduction({ git, dryRun, skipVerify }) {
     git,
     note: "before content overlay copy from staging",
   });
-  await cfD1Query({ env: "production", sql: "DELETE FROM static_shell_overlays" });
-  await insertRows({
-    env: "production",
-    table: "static_shell_overlays",
-    columns: [
-      "asset_path",
-      "body",
-      "content_type",
-      "content_sha",
-      "source_sha",
-      "source_branch",
-      "updated_at",
-    ],
-    rows: copiedRows,
-    chunkSize: 5,
-  });
-  const serving = skipVerify ? null : await verifyOverlayServing("production");
+  // Same restore-on-failure contract as applyOverlayDiff: a network failure
+  // between the DELETE and the chunked inserts must not leave production
+  // serving a partial overlay until someone runs the rollback by hand.
+  try {
+    await cfD1Query({ env: "production", sql: "DELETE FROM static_shell_overlays" });
+    await insertRows({
+      env: "production",
+      table: "static_shell_overlays",
+      columns: [
+        "asset_path",
+        "body",
+        "content_type",
+        "content_sha",
+        "source_sha",
+        "source_branch",
+        "updated_at",
+      ],
+      rows: copiedRows,
+      chunkSize: 5,
+    });
+  } catch (error) {
+    await rollbackFailedOverlayWrite({ env: "production", backupSnapshot });
+    throw new Error(
+      `Content overlay copy to production failed and the previous production overlay was restored: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  let serving = null;
+  if (!skipVerify) {
+    try {
+      serving = await verifyOverlayServing("production");
+    } catch (error) {
+      await rollbackFailedOverlayWrite({ env: "production", backupSnapshot });
+      throw new Error(
+        `Production overlay verification failed after the copy from staging and the previous production overlay was restored: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
   return {
     assets,
     backupSnapshot,
@@ -1418,9 +1447,35 @@ async function copyStagingOverlayToProduction({ git, dryRun, skipVerify }) {
   };
 }
 
+let heldReleaseLock = null;
+
 async function main() {
   const args = parseArgs();
   loadProjectEnv({ cwd: ROOT, override: true, files: [".env"] });
+
+  // Cross-process mutual exclusion with any other release/publish targeting
+  // the same environment (runner job, laptop CLI, fallback workflow). A child
+  // spawned by a script that already holds the lock inherits it instead.
+  if (!args.dryRun && !args.listSnapshots) {
+    const mode = args.fromStaging
+      ? " --from-staging"
+      : args.rollback
+        ? " --rollback"
+        : args.clear
+          ? " --clear"
+          : "";
+    const lock = await acquireReleaseLock({
+      root: ROOT,
+      environment: args.env,
+      operation: `publish-content ${args.env}${mode}`,
+    });
+    if (!lock.ok) {
+      console.error(`[publish-content] ${formatHeldLock(lock.held)}`);
+      process.exitCode = 1;
+      return;
+    }
+    heldReleaseLock = lock;
+  }
 
   if (args.listSnapshots) {
     const snapshots = await listOverlaySnapshots(args.env);
@@ -1732,21 +1787,25 @@ async function main() {
 
 // Only self-run when invoked as a script so tests can import the helpers.
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  main().catch((error) => {
-    try {
-      const env = process.argv
-        .find((arg) => arg.startsWith("--env="))
-        ?.slice("--env=".length) || "staging";
-      appendReleaseHistory({
-        env,
-        sha: gitValue(["rev-parse", "HEAD"]) || "unknown",
-        failure: String(error?.message || error).split("\n")[0]?.slice(0, 240) ?? "unknown",
-        note: "content overlay publish failed",
-      });
-    } catch {
-      // Keep the real error visible.
-    }
-    console.error(error?.stack || String(error));
-    process.exit(1);
-  });
+  main()
+    .catch((error) => {
+      try {
+        const env = process.argv
+          .find((arg) => arg.startsWith("--env="))
+          ?.slice("--env=".length) || "staging";
+        appendReleaseHistory({
+          env,
+          sha: gitValue(["rev-parse", "HEAD"]) || "unknown",
+          failure: String(error?.message || error).split("\n")[0]?.slice(0, 240) ?? "unknown",
+          note: "content overlay publish failed",
+        });
+      } catch {
+        // Keep the real error visible.
+      }
+      console.error(error?.stack || String(error));
+      // exitCode instead of exit(): the lock release and the in-flight remote
+      // history write below still need the event loop.
+      process.exitCode = 1;
+    })
+    .finally(() => heldReleaseLock?.release());
 }

@@ -1,12 +1,20 @@
-# Production Version History
+# Production Version History (deprecated)
+
+> **Deprecated — do not use this file during an incident.** Automated
+> releases stopped writing rows here long ago (`snapshot-prod-version.mjs
+> --auto` deliberately skips the markdown), so this table lags reality by
+> months. Live sources of truth for rollback targets:
+>
+> - `npm run snapshot:prod:list` or
+>   `npx wrangler deployments status --env production` (Cloudflare API)
+> - the shared `release_history` table in the staging control-plane D1
+>   (written by every release, promotion, and rollback, from every machine)
+>
+> Rows below only appear when someone runs `npm run snapshot:prod` by hand
+> (or passes `--markdown`); treat them as historical export, not state.
 
 Append-only log of production Cloudflare Worker versions. Read top-
-to-bottom: most-recent first. The version IDs in this file are the
-fastest path to a known-good rollback target during an incident.
-
-Each row is written by `npm run snapshot:prod` (standalone) or by
-`scripts/release/release-from-staging.mjs` after a successful production
-release.
+to-bottom: most-recent first.
 
 | Snapshot at (UTC) | Version ID | Deployment ID | Code SHA | Branch | Note |
 | --- | --- | --- | --- | --- | --- |

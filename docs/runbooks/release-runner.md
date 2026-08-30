@@ -47,11 +47,35 @@ RELEASE_AGENT_REPO=/Users/jinnkunn/Services/jinnkunn-release-runner/repo
 RELEASE_AGENT_HTTP_PORT=8789
 RELEASE_AGENT_WAKE_TOKEN=...
 RELEASE_AGENT_POLL_MS=60000
+RELEASE_RUNNER_HOST=1
 ```
 
 The token is separate from Cloudflare deploy credentials. It only authorizes
 claiming and updating release jobs. The Cloudflare deploy token stays on the
-Mac mini.
+Mac mini. `RELEASE_RUNNER_HOST=1` marks the machine as the runner host so
+`verify:release-runner` treats missing LaunchAgents as a hard failure instead
+of a log line — without it, lost restart persistence is invisible until the
+next reboot.
+
+The complete secret inventory (every key by name, and where to re-issue each
+one) lives in [runner-secrets.md](./runner-secrets.md).
+
+## Provision / rebuild
+
+The runner's defining state is versioned. Both LaunchAgents are rendered from
+templates in `scripts/release/launchd/` by:
+
+```bash
+node scripts/release/setup-runner.mjs           # install + (re)load both agents
+node scripts/release/setup-runner.mjs --check   # verify only, change nothing
+```
+
+The script renders and installs the agent + tunnel plists, bootstraps and
+kickstarts them, creates the log directory, verifies every required env key by
+name, and warns when system sleep is enabled. Rebuilding a dead machine is:
+clone the repo, `npm ci` (root and `apps/workspace`), recreate `.env` from
+[runner-secrets.md](./runner-secrets.md), run `setup-runner.mjs`, then
+`npm run verify:release-runner`.
 
 ## Run
 

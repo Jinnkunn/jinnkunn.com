@@ -2,6 +2,8 @@
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   parseDeployMessage,
@@ -107,7 +109,7 @@ function readLocalGitHeadSha() {
   return /^[a-f0-9]{7,40}$/.test(raw) ? raw : "";
 }
 
-function describeStagingMismatch({ actual, expectedCodeSha, expectedContentSha }) {
+export function describeVersionMismatch({ actual, expectedCodeSha, expectedContentSha }) {
   const got = effectiveCodeSha(actual);
   if (!got) return `metadata missing code/source SHA; expected ${expectedCodeSha}`;
   if (expectedCodeSha && got !== expectedCodeSha) {
@@ -121,6 +123,25 @@ function describeStagingMismatch({ actual, expectedCodeSha, expectedContentSha }
     return `content=${gotContent} expected ${expectedContentSha}`;
   }
   return "";
+}
+
+/**
+ * Decide whether the latest uploaded version may be deployed. Applies to BOTH
+ * environments: a standalone `deploy:cf:prod` used to promote whatever version
+ * was uploaded last — potentially an old or unintended upload — with no SHA
+ * comparison at all. ALLOW_STALE_PROD_DEPLOY=1 is the explicit emergency
+ * escape hatch for re-deploying the last upload on purpose.
+ */
+export function evaluateStaleVersionGuard({ targetEnv, mismatch, allowStaleProdOverride = false }) {
+  if (!mismatch) return { deploy: true };
+  if (targetEnv === "production" && allowStaleProdOverride) {
+    return { deploy: true, warned: true };
+  }
+  const hint =
+    targetEnv === "staging"
+      ? "Run npm run release:staging to rebuild and re-upload at HEAD."
+      : "Run npm run release:prod (or release:prod:from-staging) to upload a matching version first, or set ALLOW_STALE_PROD_DEPLOY=1 only for an intentional emergency re-deploy of the last upload.";
+  return { deploy: false, hint };
 }
 
 function pickLatestVersion(result) {
@@ -160,8 +181,8 @@ async function main() {
   // db mode keeps code and content as separate metadata: code is the git
   // SHA; content is the post-D1-dump snapshot hash. Direct invocations
   // fall through to the local git HEAD for both.
-  const contentSha =
-    pickContentShaOverride() || pickSourceShaOverride() || codeSha;
+  const contentShaOverride = pickContentShaOverride() || pickSourceShaOverride();
+  const contentSha = contentShaOverride || codeSha;
   if (!workerName) {
     throw new Error(
       targetEnv === "staging"
@@ -180,15 +201,29 @@ async function main() {
   if (!latestVersion) {
     throw new Error("No Worker version available to deploy. Upload a version first.");
   }
-  if (targetEnv === "staging" && codeSha) {
-    const mismatch = describeStagingMismatch({
+  if (codeSha) {
+    const mismatch = describeVersionMismatch({
       actual: parseDeployMessage(latestVersion.message),
       expectedCodeSha: codeSha,
-      expectedContentSha: contentSha,
+      // Only compare content when the caller actually supplied a content
+      // snapshot SHA (release-cloudflare always does). The git-HEAD fallback
+      // can never equal a db-mode content hash, so comparing it would trip
+      // the guard on every manual deploy for pure content noise.
+      expectedContentSha: contentShaOverride,
     });
-    if (mismatch) {
+    const guard = evaluateStaleVersionGuard({
+      targetEnv,
+      mismatch,
+      allowStaleProdOverride: readStringEnv("ALLOW_STALE_PROD_DEPLOY") === "1",
+    });
+    if (guard.warned) {
+      console.warn(
+        `[deploy-cloudflare] WARNING: deploying stale production version ${latestVersion.id} (${mismatch}) because ALLOW_STALE_PROD_DEPLOY=1`,
+      );
+    }
+    if (!guard.deploy) {
       throw new Error(
-        `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match the deploying source (${mismatch}). Run npm run release:staging to rebuild and re-upload at HEAD.`,
+        `DEPLOY_VERSION_STALE: latest uploaded Worker version ${latestVersion.id} does not match the deploying source (${mismatch}). ${guard.hint}`,
       );
     }
   }
@@ -250,7 +285,10 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(err?.stack || String(err));
-  process.exitCode = 1;
-});
+// Only self-run when invoked as a script so tests can import the guard helpers.
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((err) => {
+    console.error(err?.stack || String(err));
+    process.exitCode = 1;
+  });
+}

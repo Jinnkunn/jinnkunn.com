@@ -56,6 +56,7 @@
     "release:status:json": "node scripts/release/release-status.mjs --json --compact",
     "release:status:staging:json": "node scripts/release/release-status.mjs --json --compact --target=staging",
     "verify:release-runner": "node scripts/release/verify-release-runner.mjs",
+    "setup:runner": "node scripts/release/setup-runner.mjs",
     "publish:content:staging": "node scripts/content/publish-content.mjs --env=staging",
     "publish:content:staging:sync-git": "node scripts/content/publish-content.mjs --env=staging --sync-content-to-git --auto-commit-content",
     "publish:content:staging:dry-run": "node scripts/content/publish-content.mjs --env=staging --dry-run",
