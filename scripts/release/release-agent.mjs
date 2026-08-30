@@ -324,12 +324,77 @@ function runRunnerGit({ args, onLine, repo, spawnSyncImpl }) {
   return output;
 }
 
+function readRunnerWorkspacePackages({ executionRepo, fsImpl }) {
+  const packagesRoot = path.join(executionRepo, "packages");
+  if (!fsImpl.existsSync(packagesRoot)) return [];
+
+  const packages = [];
+  for (const entry of fsImpl.readdirSync(packagesRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const packageRoot = path.join(packagesRoot, entry.name);
+    const manifestPath = path.join(packageRoot, "package.json");
+    if (!fsImpl.existsSync(manifestPath)) continue;
+    try {
+      const manifest = JSON.parse(fsImpl.readFileSync(manifestPath, "utf8"));
+      const name = String(manifest?.name || "").trim();
+      if (!name.startsWith("@jinnkunn/")) continue;
+      packages.push({ name, packageRoot });
+    } catch {
+      // The build will report an invalid manifest with its normal package error.
+    }
+  }
+  return packages;
+}
+
+export function linkRunnerDependencies({ repo, executionRepo, fsImpl = fs }) {
+  const workspacePackages = readRunnerWorkspacePackages({ executionRepo, fsImpl });
+  const dependencyRoots = ["", path.join("apps", "workspace")];
+  let linkedRoot = false;
+
+  for (const relativeRoot of dependencyRoots) {
+    const sourceNodeModules = path.join(repo, relativeRoot, "node_modules");
+    if (!fsImpl.existsSync(sourceNodeModules)) continue;
+    const targetNodeModules = path.join(executionRepo, relativeRoot, "node_modules");
+    fsImpl.mkdirSync(targetNodeModules, { recursive: true });
+
+    for (const entry of fsImpl.readdirSync(sourceNodeModules, { withFileTypes: true })) {
+      // Workspace package links inside the persistent cache resolve back to
+      // that cache's checkout. Recreate this scope below against the exact
+      // source selected for the current job instead.
+      if (entry.name === "@jinnkunn") continue;
+      fsImpl.symlinkSync(
+        path.join(sourceNodeModules, entry.name),
+        path.join(targetNodeModules, entry.name),
+        entry.isDirectory() || entry.isSymbolicLink() ? "dir" : "file",
+      );
+    }
+
+    if (workspacePackages.length > 0) {
+      const scopeRoot = path.join(targetNodeModules, "@jinnkunn");
+      fsImpl.mkdirSync(scopeRoot, { recursive: true });
+      for (const workspacePackage of workspacePackages) {
+        fsImpl.symlinkSync(
+          workspacePackage.packageRoot,
+          path.join(scopeRoot, workspacePackage.name.slice("@jinnkunn/".length)),
+          "dir",
+        );
+      }
+    }
+    if (!relativeRoot) linkedRoot = true;
+  }
+
+  if (!linkedRoot) {
+    throw new Error("Release runner dependencies are missing; node_modules was not found.");
+  }
+}
+
 export function syncRepo({
   repo,
   jobId = "manual",
   onLine,
   spawnSyncImpl = spawnSync,
   fsImpl = fs,
+  linkDependenciesImpl = linkRunnerDependencies,
 }) {
   // The long-lived clone is an object/dependency cache, not an execution
   // worktree. Content builds can materialize D1 files and generated indexes;
@@ -381,11 +446,7 @@ export function syncRepo({
       spawnSyncImpl,
     });
 
-    const nodeModules = path.join(repo, "node_modules");
-    if (!fsImpl.existsSync(nodeModules)) {
-      throw new Error("Release runner dependencies are missing; node_modules was not found.");
-    }
-    fsImpl.symlinkSync(nodeModules, path.join(executionRepo, "node_modules"), "dir");
+    linkDependenciesImpl({ repo, executionRepo, fsImpl });
     onLine("status", `Release runner source: main ${canonicalSha.slice(0, 12)} (isolated)`);
   } catch (error) {
     fsImpl.rmSync(executionRepo, { force: true, recursive: true });

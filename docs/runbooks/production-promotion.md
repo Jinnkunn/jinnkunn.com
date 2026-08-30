@@ -334,6 +334,7 @@ Only run this after explicit approval:
 ```bash
 git switch main
 git pull --ff-only
+git push origin main
 export CONFIRM_PRODUCTION_DEPLOY=1
 export CONFIRM_PRODUCTION_SHA="$(git rev-parse HEAD)"
 npm run release:prod

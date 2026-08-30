@@ -106,6 +106,10 @@ The persistent clone is only an object and dependency cache. D1 materialization
 and generated build indexes stay inside the per-job clone, which is deleted
 after completion. This means a previous content build cannot dirty the next
 job's source, while every release guard still sees a clean canonical `main`.
+Third-party dependencies are linked from the persistent cache one package at a
+time; local `@jinnkunn/*` workspace packages are always linked back to the
+isolated clone so a newly fetched package export cannot resolve against stale
+source in the persistent checkout.
 Use `npm run release:agent -- --no-sync` only for local dry-run debugging.
 
 ## Mac mini LaunchAgent

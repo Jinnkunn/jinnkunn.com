@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { wakeReleaseRunnerForJob } from "../../lib/server/release-runner-wake.ts";
 import {
   isWakeAuthorized,
+  linkRunnerDependencies,
   normalizeWakePayload,
   releasePhaseForOutput,
   syncRepo,
@@ -142,6 +146,9 @@ test("release agent sync: executes canonical main from an isolated clone", () =>
       },
     },
     jobId: "job-123",
+    linkDependenciesImpl({ repo, executionRepo }) {
+      fileCalls.push(["link-dependencies", repo, executionRepo]);
+    },
     onLine: (_stream, line) => lines.push(line),
     repo: "/runner/repo",
     spawnSyncImpl: (command, args, options) => {
@@ -187,10 +194,9 @@ test("release agent sync: executes canonical main from an isolated clone", () =>
   );
   assert.equal(execution.repo, "/runner/repo/.cache/release/agent-execution/job-123");
   assert.deepEqual(fileCalls.at(-1), [
-    "symlink",
-    "/runner/repo/node_modules",
-    "/runner/repo/.cache/release/agent-execution/job-123/node_modules",
-    "dir",
+    "link-dependencies",
+    "/runner/repo",
+    "/runner/repo/.cache/release/agent-execution/job-123",
   ]);
   execution.cleanup();
   assert.deepEqual(fileCalls.at(-1), [
@@ -210,6 +216,7 @@ test("release agent sync: never inspects or rewrites the persistent worktree", (
       symlinkSync: () => undefined,
     },
     jobId: "dirty-safe",
+    linkDependenciesImpl: () => undefined,
     onLine: () => undefined,
     repo: "/runner/repo",
     spawnSyncImpl: (_command, args) => {
@@ -226,4 +233,61 @@ test("release agent sync: never inspects or rewrites the persistent worktree", (
   assert.equal(calls.some((args) => args[0] === "status"), false);
   assert.equal(calls.some((args) => args[0] === "reset" || args[0] === "restore"), false);
   execution.cleanup();
+});
+
+test("release agent dependencies: reuse third-party modules but bind workspace packages to the isolated source", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "release-runner-deps-"));
+  t.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  const repo = path.join(root, "repo");
+  const executionRepo = path.join(root, "execution");
+  const packageRoot = path.join(executionRepo, "packages", "calendar-core");
+
+  fs.mkdirSync(path.join(repo, "node_modules", "next"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "node_modules", "@jinnkunn", "calendar-core"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(repo, "apps", "workspace", "node_modules", "vite"), {
+    recursive: true,
+  });
+  fs.mkdirSync(
+    path.join(repo, "apps", "workspace", "node_modules", "@jinnkunn", "calendar-core"),
+    { recursive: true },
+  );
+  fs.mkdirSync(packageRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(packageRoot, "package.json"),
+    `${JSON.stringify({ name: "@jinnkunn/calendar-core" })}\n`,
+  );
+  fs.mkdirSync(path.join(executionRepo, "apps", "workspace"), { recursive: true });
+
+  linkRunnerDependencies({ repo, executionRepo });
+
+  assert.equal(fs.lstatSync(path.join(executionRepo, "node_modules")).isSymbolicLink(), false);
+  assert.equal(
+    fs.realpathSync(path.join(executionRepo, "node_modules", "next")),
+    fs.realpathSync(path.join(repo, "node_modules", "next")),
+  );
+  assert.equal(
+    fs.realpathSync(
+      path.join(executionRepo, "node_modules", "@jinnkunn", "calendar-core"),
+    ),
+    fs.realpathSync(packageRoot),
+  );
+  assert.equal(
+    fs.realpathSync(path.join(executionRepo, "apps", "workspace", "node_modules", "vite")),
+    fs.realpathSync(path.join(repo, "apps", "workspace", "node_modules", "vite")),
+  );
+  assert.equal(
+    fs.realpathSync(
+      path.join(
+        executionRepo,
+        "apps",
+        "workspace",
+        "node_modules",
+        "@jinnkunn",
+        "calendar-core",
+      ),
+    ),
+    fs.realpathSync(packageRoot),
+  );
 });

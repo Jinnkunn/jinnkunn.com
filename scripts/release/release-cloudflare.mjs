@@ -117,6 +117,16 @@ function gitOutput(args) {
   return run("git", args, { capture: true, label: `git ${args.join(" ")}` });
 }
 
+function gitRefContainsCommit(ref, commit) {
+  const result = spawnSync("git", ["merge-base", "--is-ancestor", commit, ref], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return result.status === 0;
+}
+
 function parsePorcelainPath(line) {
   const path = String(line || "").slice(3).trim();
   const renameArrow = " -> ";
@@ -140,6 +150,7 @@ function readGitState() {
     dirty: status.length > 0,
     dirtyFileCount: dirtyFiles.length,
     dirtyFiles,
+    publishedToOriginMain: gitRefContainsCommit("origin/main", sha),
   };
 }
 
@@ -159,6 +170,11 @@ function evaluateProductionGuard(git) {
   }
   if (git.branch !== "main" && readEnv("ALLOW_NON_MAIN_PRODUCTION") !== "1") {
     reasons.push(`current branch is ${git.branch}, not main`);
+  }
+  if (!git.publishedToOriginMain && readEnv("ALLOW_UNPUSHED_PRODUCTION") !== "1") {
+    reasons.push(
+      "current HEAD is not available on origin/main; push main before production so the release runner can rebuild this version",
+    );
   }
   return { ok: reasons.length === 0, reasons };
 }

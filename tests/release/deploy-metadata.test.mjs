@@ -77,6 +77,8 @@ test("release script uses an immutable snapshot for every full release", async (
   assert.match(script, /--sync-content-to-git/);
   assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
   assert.match(script, /evaluateStagingDirtyGuard\(git\)/);
+  assert.match(script, /gitRefContainsCommit\("origin\/main", sha\)/);
+  assert.match(script, /current HEAD is not available on origin\/main/);
   assert.match(script, /ALLOW_D1_BUILD_CACHE/);
   assert.match(script, /RELEASE_REUSE_STAGING_BUILD/);
   assert.match(script, /RELEASE_EXPECT_CONTENT_SHA/);
