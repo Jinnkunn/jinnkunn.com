@@ -2,6 +2,19 @@
 // Kept out of worker-entry.mjs so tests can import them without pulling in
 // `../.open-next/worker.js`, which only exists after a Cloudflare build.
 
+const BYPASS_PREFIXES = [
+  "/api/", "/site-admin", "/auth", "/_next/", "/assets/", "/styles/",
+  "/fonts/", "/web_image/", "/notion-assets/", "/cdn-cgi/", "/.well-known/",
+];
+
+export function shouldBypassStatic(pathname) {
+  if (!pathname) return true;
+  if (pathname === "/blog/list" || pathname.startsWith("/blog/list/")) return true;
+  if (/^\/[0-9a-f]{32}$/i.test(pathname)) return true;
+  if (BYPASS_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix))) return true;
+  return (pathname.split("/").pop() || "").includes(".");
+}
+
 export function normalizePathname(pathname) {
   const raw = String(pathname || "").trim();
   if (!raw || raw === "/") return "/";

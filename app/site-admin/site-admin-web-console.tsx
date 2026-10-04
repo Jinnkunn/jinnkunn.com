@@ -27,7 +27,6 @@ import {
   createSelectionGate,
   editorialStatus,
   liveSyncStatus,
-  releaseJobOutcome,
   visibilityLabel,
 } from "./site-admin-console-model";
 import {
@@ -40,7 +39,6 @@ import {
   buildSiteAdminReleaseProgress,
   selectActiveReleaseJob,
   type SiteAdminReleaseJobLike,
-  type SiteAdminReleaseRunnerLike,
 } from "@/lib/site-admin/release-progress";
 import {
   SiteAdminConflictDialog,
@@ -59,23 +57,16 @@ import {
   componentEntryFingerprint,
   componentEntryState as deriveComponentEntryState,
   componentItemMatches as matchesComponentItem,
-  createComponentEntryId,
-  moveDraftEntry,
   newsEntryIssues,
   publicationEntryIssues,
-  reorderDraftEntries,
   teachingEntryIssues,
   todayInHalifax,
   worksEntryIssues,
   type ComponentGrouping,
   type NewsComponentDraft,
-  type NewsDraftEntry,
-  type PublicationDraftEntry,
   type PublicationsComponentDraft,
   type TeachingComponentDraft,
-  type TeachingDraftEntry,
   type WorksComponentDraft,
-  type WorksDraftEntry,
 } from "./site-admin-structured-collection-model";
 import {
   NEWS_ENTRY_FIELDS,
@@ -84,7 +75,10 @@ import {
   WORKS_ENTRY_FIELDS,
   structuredCollectionSearchValues,
 } from "./site-admin-structured-collection-schema";
-import { reorderWorksEntriesAcrossGroups } from "./site-admin-works-drag";
+import { createCollectionActions } from "./site-admin-collection-actions";
+import { useSiteAdminDraftPersistence } from "./use-site-admin-draft-persistence";
+import { useSiteAdminReleaseMonitor, type ReleaseJobsPayload } from "./use-site-admin-release-monitor";
+import { clearLocalDraft, readLocalDraft, type LocalDraftSnapshot as StoredLocalDraftSnapshot } from "./site-admin-draft-storage";
 import {
   collectionHistory as createCollectionHistory,
   collectionPlainText,
@@ -132,14 +126,6 @@ type SummaryPayload = {
   summary: SiteAdminMobileSummary;
 };
 
-type ReleaseJobsPayload = {
-  jobs: SiteAdminReleaseJobLike[];
-  runners: {
-    agents: SiteAdminReleaseRunnerLike[];
-    queuedCount: number;
-    runningCount: number;
-  };
-};
 
 type ReleaseWakePayload = {
   configured: boolean;
@@ -274,13 +260,7 @@ type EditableContentForm = {
   frontmatterKeys: string[];
 };
 
-type LocalDraftSnapshot = {
-  key: string;
-  source: string;
-  form?: EditableContentForm;
-  collection?: CollectionDraft;
-  savedAt: string;
-};
+type LocalDraftSnapshot = StoredLocalDraftSnapshot<EditableContentForm>;
 
 type CreatePayload = {
   slug: string;
@@ -548,41 +528,6 @@ function titleForKind(kind: EditableKind) {
   return "Components";
 }
 
-function localDraftKey(kind: EditableKind, id: string) {
-  return `site-admin-content-draft:${kind}:${id}`;
-}
-
-const LOCAL_DRAFT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-
-function readLocalDraft(kind: EditableKind, id: string): LocalDraftSnapshot | null {
-  if (typeof window === "undefined") return null;
-  const key = localDraftKey(kind, id);
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<LocalDraftSnapshot>;
-    if (typeof parsed.source !== "string" || typeof parsed.savedAt !== "string") return null;
-    const savedAtMs = Date.parse(parsed.savedAt);
-    if (!Number.isFinite(savedAtMs) || Date.now() - savedAtMs > LOCAL_DRAFT_TTL_MS) {
-      window.localStorage.removeItem(key);
-      return null;
-    }
-    return {
-      key,
-      source: parsed.source,
-      form: parsed.form,
-      collection: parsed.collection,
-      savedAt: parsed.savedAt,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function clearLocalDraft(kind: EditableKind, id: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(localDraftKey(kind, id));
-}
 
 class SiteAdminRequestError extends Error {
   status: number;
@@ -804,10 +749,6 @@ export function SiteAdminWebConsole({
   // editor (delete, rename, conflict resolve, version restore) may lock it.
   const [blockingMutation, setBlockingMutation] = useState(false);
   const [releaseSaving, setReleaseSaving] = useState(false);
-  const [releaseWatchUntil, setReleaseWatchUntil] = useState(0);
-  const [releaseWatchJobId, setReleaseWatchJobId] = useState("");
-  const [releaseActivity, setReleaseActivity] =
-    useState<ReleaseJobsPayload | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [assetPickerTarget, setAssetPickerTarget] = useState<"cover" | "ogImage" | null>(null);
   const [conflict, setConflict] = useState<(SiteAdminConflict & {
@@ -819,6 +760,7 @@ export function SiteAdminWebConsole({
   const [error, setError] = useState("");
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingPublishCount, setPendingPublishCount] = useState(0);
+  const savedContentRevisionRef = useRef(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [announcementDirty, setAnnouncementDirty] = useState(false);
   const [releaseJobs, setReleaseJobs] = useState<SiteAdminReleaseJobLike[] | null>(
@@ -841,6 +783,44 @@ export function SiteAdminWebConsole({
   >(async () => {});
   const saveHomeRef = useRef<() => Promise<void>>(async () => {});
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
+
+  const refreshSummaryOnly = useCallback(async () => {
+    try {
+      const next = await readJson<SummaryPayload>("/api/site-admin/mobile/summary");
+      setSummary(next.summary);
+      setSummaryError("");
+      return next.summary;
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, []);
+
+  const { releaseActivity, watchRelease } = useSiteAdminReleaseMonitor({
+    releaseRunning: summary?.release.recommendedAction.kind === "watch-release",
+    readJobs: () => readJson<ReleaseJobsPayload>("/api/site-admin/release-jobs?limit=30"),
+    refreshSummary: refreshSummaryOnly,
+    onActivity: () => setSummaryError(""),
+    onError: setSummaryError,
+    onFinished: (outcome, coveredRevision) => {
+      if (outcome.state === "succeeded") {
+        const remaining = Math.max(0, savedContentRevisionRef.current - coveredRevision);
+        setPendingPublishCount(remaining);
+        setError("");
+        setNotice(remaining
+          ? "Published successfully. Newer drafts still need publishing."
+          : "Published successfully. The public site is current.");
+      } else {
+        setNotice("");
+        setError(`${outcome.state === "canceled" ? "Publish canceled" : "Publish failed"}: ${outcome.message}`);
+      }
+    },
+  });
+
+  function recordSavedContent() {
+    savedContentRevisionRef.current += 1;
+    setPendingPublishCount((current) => current + 1);
+  }
 
   useEffect(() => {
     if (!inspectorOpen) return;
@@ -1271,58 +1251,18 @@ export function SiteAdminWebConsole({
     void refreshAll();
   }, []);
 
-  useEffect(() => {
-    if (!selected || !selectedDirty) return;
-    const key = localDraftKey(selected.kind, selected.id);
-    const source = selectedSourceDraft;
-    const form = selectedIsStructured ? contentForm : undefined;
-    const collection = collectionDraft;
-    const timer = window.setTimeout(() => {
-      const savedAt = new Date().toISOString();
-      window.localStorage.setItem(
-        key,
-        JSON.stringify({
-          source,
-          form,
-          collection,
-          savedAt,
-        }),
-      );
-      setLocalAutosaveAt(savedAt);
-      setLocalDraftSnapshot(null);
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [
-    contentForm,
-    collectionDraft,
-    selected,
-    selectedDirty,
-    selectedIsStructured,
-    selectedSourceDraft,
-  ]);
-
-  useEffect(() => {
-    if (area !== "content") return;
-    // The create drawer shares `saving`, so an autosave of the document behind
-    // it would turn the new-content editor read-only mid-keystroke.
-    if (contentMode === "create") return;
-    if (!selected || !selectedDirty || saving || conflict || componentSaveBlocked) return;
-    const selectedKey = `${selected.kind}:${selected.id}`;
-    const timer = window.setTimeout(() => {
-      if (`${selected.kind}:${selected.id}` !== selectedKey) return;
-      void saveSelectedContentRef.current({ quiet: true });
-    }, 1600);
-    return () => window.clearTimeout(timer);
-  }, [
-    area,
-    componentSaveBlocked,
-    conflict,
-    contentMode,
-    saving,
-    selected,
-    selectedDirty,
-    selectedSourceDraft,
-  ]);
+  const recoverySnapshot = useMemo(() => ({
+    source: selectedSourceDraft,
+    form: selectedIsStructured ? contentForm : undefined,
+    collection: collectionDraft || undefined,
+  }), [selectedSourceDraft, selectedIsStructured, contentForm, collectionDraft]);
+  useSiteAdminDraftPersistence({
+    kind: selected?.kind || "", id: selected?.id || "", dirty: selectedDirty, snapshot: recoverySnapshot,
+    autosaveEnabled: area === "content" && contentMode !== "create" && !saving && !conflict && !componentSaveBlocked,
+    onSave: () => void saveSelectedContentRef.current({ quiet: true }),
+    onRecoverySaved: (at) => { setLocalAutosaveAt(at); setLocalDraftSnapshot(null); },
+    onRecoveryFailure: () => setWarning("This browser could not keep a recovery copy. Save the draft before leaving."),
+  });
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -1398,104 +1338,6 @@ export function SiteAdminWebConsole({
     setInspectorOpen(false);
   }
 
-  const refreshSummaryOnly = useCallback(async () => {
-    try {
-      const next = await readJson<SummaryPayload>("/api/site-admin/mobile/summary");
-      setSummary(next.summary);
-      setSummaryError("");
-      return next.summary;
-    } catch (err) {
-      setSummaryError(err instanceof Error ? err.message : String(err));
-      return null;
-    }
-  }, []);
-
-  useEffect(() => {
-    const watchDeadline = releaseWatchUntil;
-    if (!releaseWatchJobId && !releaseIsRunning && watchDeadline <= Date.now()) return;
-    let cancelled = false;
-    let timer: number | undefined;
-
-    const refreshReleaseActivity = async () => {
-      try {
-        const next = await readJson<ReleaseJobsPayload>(
-          "/api/site-admin/release-jobs?limit=30",
-        );
-        if (cancelled) return;
-        const watchedJob = releaseWatchJobId
-          ? next.jobs.find((job) => job.id === releaseWatchJobId) || null
-          : null;
-        const watchedOutcome = watchedJob ? releaseJobOutcome(watchedJob) : null;
-        if (watchedOutcome && watchedOutcome.state !== "active") {
-          setReleaseActivity(null);
-          setReleaseWatchUntil(0);
-          setReleaseWatchJobId("");
-          if (watchedOutcome.state === "succeeded") {
-            setPendingPublishCount(0);
-            setError("");
-            setNotice("Published successfully. The public site is current.");
-          } else {
-            setNotice("");
-            setError(
-              `${watchedOutcome.state === "canceled" ? "Publish canceled" : "Publish failed"}: ${
-                watchedOutcome.message
-              }`,
-            );
-          }
-          await refreshSummaryOnly();
-          return;
-        }
-        const nextJob = selectActiveReleaseJob(next.jobs);
-        if (!nextJob) {
-          if (releaseWatchJobId && watchDeadline > Date.now()) {
-            setReleaseActivity(null);
-            timer = window.setTimeout(refreshReleaseActivity, 3_000);
-            return;
-          }
-          const nextSummary = await refreshSummaryOnly();
-          if (cancelled) return;
-          setReleaseActivity(null);
-          // Keep polling for the whole watch window: a freshly queued job can
-          // take a few ticks to appear. Stop at the deadline instead of
-          // leaving the chain running for the rest of the session.
-          if (
-            nextSummary?.release.recommendedAction.kind !== "watch-release" ||
-            watchDeadline <= Date.now()
-          ) {
-            setReleaseWatchUntil(0);
-            setReleaseWatchJobId("");
-            return;
-          }
-          timer = window.setTimeout(refreshReleaseActivity, 4_000);
-          return;
-        }
-
-        setReleaseActivity(next);
-        setSummaryError("");
-        const progress = buildSiteAdminReleaseProgress({
-          job: nextJob,
-          jobs: next.jobs,
-          runners: next.runners.agents,
-          now: Date.now(),
-        });
-        const delay =
-          nextJob.status === "queued" && progress.runnerState === "offline"
-            ? 10_000
-            : 3_000;
-        timer = window.setTimeout(refreshReleaseActivity, delay);
-      } catch (err) {
-        if (cancelled) return;
-        setSummaryError(err instanceof Error ? err.message : String(err));
-        timer = window.setTimeout(refreshReleaseActivity, 5_000);
-      }
-    };
-
-    void refreshReleaseActivity();
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [refreshSummaryOnly, releaseIsRunning, releaseWatchJobId, releaseWatchUntil]);
 
   function applySelectedDetail(
     nextKind: EditableKind,
@@ -1532,7 +1374,7 @@ export function SiteAdminWebConsole({
     setComponentDropId("");
     setLocalAutosaveAt("");
     setContentSavedAt("");
-    const localDraft = readLocalDraft(nextKind, id);
+    const localDraft = readLocalDraft<EditableContentForm>(nextKind, id);
     setLocalDraftSnapshot(
       localDraft && (localDraft.source !== baseline ||
         (localDraft.collection && JSON.stringify(localDraft.collection) !== JSON.stringify(draft)))
@@ -1651,7 +1493,7 @@ export function SiteAdminWebConsole({
       }
       setContentSavedAt(new Date().toISOString());
       if (!newerLocalEdits) setLocalDraftSnapshot(null);
-      setPendingPublishCount((current) => current + 1);
+      recordSavedContent();
       saved = true;
       if (effects.announce) setNotice(`${next.title} saved.`);
     } catch (err) {
@@ -1661,6 +1503,7 @@ export function SiteAdminWebConsole({
           const remotePayload = await readJson<EditableDetailPayload>(
             endpointFor(selectedAtStart.kind, selectedAtStart.id),
           );
+          if (selectionGateRef.current.isStale(token)) return;
           const remote = toEditableDetail(
             selectedAtStart.kind,
             selectedAtStart.id,
@@ -1963,6 +1806,7 @@ export function SiteAdminWebConsole({
   }, [area, refreshReleaseJobs]);
 
   async function runSmartRelease() {
+    const coveredRevision = savedContentRevisionRef.current;
     setReleaseSaving(true);
     setError("");
     setWarning("");
@@ -1992,9 +1836,7 @@ export function SiteAdminWebConsole({
             ? " Runner wake sent."
             : "";
       setNotice(`Publish job created${jobId}.${wakeNotice}`);
-      setReleaseActivity(null);
-      setReleaseWatchJobId(payload.job.id);
-      setReleaseWatchUntil(Date.now() + 15 * 60 * 1000);
+      watchRelease(payload.job.id, coveredRevision);
       await refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2006,6 +1848,7 @@ export function SiteAdminWebConsole({
   async function queueSavedContentPublish(reason: string): Promise<string> {
     const action = contentPublishActionForBrowser();
     if (!action) return "";
+    const coveredRevision = savedContentRevisionRef.current;
     try {
       const payload = await writeJson<{
         job?: SiteAdminReleaseJobLike;
@@ -2025,9 +1868,7 @@ export function SiteAdminWebConsole({
       if (!payload.job?.id) {
         throw new Error("The release API did not return a job to track.");
       }
-      setReleaseActivity(null);
-      setReleaseWatchJobId(payload.job.id);
-      setReleaseWatchUntil(Date.now() + 15 * 60 * 1000);
+      watchRelease(payload.job.id, coveredRevision);
       const jobId = ` Job ${payload.job.id}.`;
       if (payload.wake?.configured && !payload.wake.ok) {
         setWarning(
@@ -2187,328 +2028,20 @@ export function SiteAdminWebConsole({
     }
   }
 
-  function updateNewsDraft(
-    updater: (draft: NewsComponentDraft) => NewsComponentDraft,
-    group = "",
-  ) {
-    setCollectionHistory((current) => current?.present.name === "news"
-      ? commitCollectionDraft(current, { name: "news", value: updater(current.present.value) }, group) : current);
-  }
-
-  function addNewsEntry() {
-    const id = createComponentEntryId("news");
-    updateNewsDraft((draft) => ({
-      ...draft,
-      items: [
-        {
-          id,
-          type: "entry",
-          date: todayInHalifax(),
-          body: "",
-        },
-        ...draft.items,
-      ],
-    }));
-    setComponentExpandedIds([id]);
-    setComponentSearch("");
-  }
-
-  function addNewsDivider() {
-    const id = createComponentEntryId("divider");
-    updateNewsDraft((draft) => ({
-      ...draft,
-      items: [
-        {
-          id,
-          type: "divider",
-        },
-        ...draft.items,
-      ],
-    }));
-  }
-
-  function updateNewsItem(nextItem: NewsDraftEntry) {
-    updateNewsDraft((draft) => ({
-      ...draft,
-      items: draft.items.map((item) => {
-        if (item.id !== nextItem.id || item.type !== "entry") return item;
-        return nextItem;
-      }),
-    }), `edit:${nextItem.id}`);
-  }
-
-  function deleteNewsItem(id: string) {
-    updateNewsDraft((draft) => ({
-      ...draft,
-      items: draft.items.filter((item) => item.id !== id),
-    }));
-    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
-  }
-
-  function duplicateNewsItem(id: string) {
-    const copyId = createComponentEntryId("news");
-    updateNewsDraft((draft) => {
-      const index = draft.items.findIndex((item) => item.id === id);
-      const source = draft.items[index];
-      if (!source || source.type !== "entry") return draft;
-      const copy = { ...source, id: copyId };
-      return {
-        ...draft,
-        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
-      };
-    });
-    setComponentExpandedIds([copyId]);
-    setComponentSearch("");
-  }
-
-  function moveSelectedNewsItem(id: string, direction: -1 | 1) {
-    updateNewsDraft((draft) => ({
-      ...draft,
-      items: moveDraftEntry(
-        draft.items,
-        draft.items.findIndex((item) => item.id === id),
-        direction,
-      ),
-    }));
-  }
-
-  function updateTeachingDraft(
-    updater: (draft: TeachingComponentDraft) => TeachingComponentDraft,
-    group = "",
-  ) {
-    setCollectionHistory((current) => current?.present.name === "teaching"
-      ? commitCollectionDraft(current, { name: "teaching", value: updater(current.present.value) }, group) : current);
-  }
-
-  function addTeachingEntry(term = selectedTeachingDraft?.items[0]?.term || "") {
-    const id = createComponentEntryId("teaching");
-    updateTeachingDraft((draft) => ({
-      ...draft,
-      items: [
-        {
-          id,
-          term,
-          period: "",
-          role: "",
-          courseCode: "",
-          courseName: "",
-        },
-        ...draft.items,
-      ],
-    }));
-    setComponentExpandedIds([id]);
-    setComponentSearch("");
-  }
-
-  function updateTeachingItem(nextItem: TeachingDraftEntry) {
-    updateTeachingDraft((draft) => ({
-      ...draft,
-      items: draft.items.map((item) =>
-        item.id === nextItem.id ? nextItem : item,
-      ),
-    }), `edit:${nextItem.id}`);
-  }
-
-  function deleteTeachingItem(id: string) {
-    updateTeachingDraft((draft) => ({
-      ...draft,
-      items: draft.items.filter((item) => item.id !== id),
-    }));
-    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
-  }
-
-  function duplicateTeachingItem(id: string) {
-    const copyId = createComponentEntryId("teaching");
-    updateTeachingDraft((draft) => {
-      const index = draft.items.findIndex((item) => item.id === id);
-      const source = draft.items[index];
-      if (!source) return draft;
-      const copy = { ...source, id: copyId };
-      return {
-        ...draft,
-        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
-      };
-    });
-    setComponentExpandedIds([copyId]);
-    setComponentSearch("");
-  }
-
-  function moveSelectedTeachingItem(id: string, direction: -1 | 1) {
-    updateTeachingDraft((draft) => ({
-      ...draft,
-      items: moveDraftEntry(
-        draft.items,
-        draft.items.findIndex((item) => item.id === id),
-        direction,
-      ),
-    }));
-  }
-
-  function updateWorksDraft(updater: (draft: WorksComponentDraft) => WorksComponentDraft, group = "") {
-    setCollectionHistory((current) => current?.present.name === "works"
-      ? commitCollectionDraft(current, { name: "works", value: updater(current.present.value) }, group) : current);
-  }
-
-  function addWorksEntry(category: WorksDraftEntry["category"] = "recent") {
-    const id = createComponentEntryId("works");
-    updateWorksDraft((draft) => ({
-      ...draft,
-      items: [
-        {
-          id,
-          category,
-          role: "",
-          affiliation: "",
-          location: "",
-          period: "",
-          body: "",
-        },
-        ...draft.items,
-      ],
-    }));
-    setComponentExpandedIds([id]);
-    setComponentSearch("");
-  }
-
-  function updateWorksItem(nextItem: WorksDraftEntry) {
-    updateWorksDraft((draft) => ({
-      ...draft,
-      items: draft.items.map((item) =>
-        item.id === nextItem.id ? nextItem : item,
-      ),
-    }), `edit:${nextItem.id}`);
-  }
-
-  function deleteWorksItem(id: string) {
-    updateWorksDraft((draft) => ({
-      ...draft,
-      items: draft.items.filter((item) => item.id !== id),
-    }));
-    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
-  }
-
-  function duplicateWorksItem(id: string) {
-    const copyId = createComponentEntryId("works");
-    updateWorksDraft((draft) => {
-      const index = draft.items.findIndex((item) => item.id === id);
-      const source = draft.items[index];
-      if (!source) return draft;
-      const copy = { ...source, id: copyId };
-      return {
-        ...draft,
-        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
-      };
-    });
-    setComponentExpandedIds([copyId]);
-    setComponentSearch("");
-  }
-
-  function moveSelectedWorksItem(id: string, direction: -1 | 1) {
-    updateWorksDraft((draft) => ({
-      ...draft,
-      items: moveDraftEntry(
-        draft.items,
-        draft.items.findIndex((item) => item.id === id),
-        direction,
-      ),
-    }));
-  }
-
-  function updatePublicationsDraft(
-    updater: (draft: PublicationsComponentDraft) => PublicationsComponentDraft,
-    group = "",
-  ) {
-    setCollectionHistory((current) => current?.present.name === "publications"
-      ? commitCollectionDraft(current, { name: "publications", value: updater(current.present.value) }, group) : current);
-  }
-
-  function addPublicationEntry(year = new Date().getFullYear().toString()) {
-    const id = createComponentEntryId("publication");
-    updatePublicationsDraft((draft) => ({
-      ...draft,
-      items: [
-        {
-          id,
-          title: "",
-          year,
-          url: "",
-          labels: [],
-        },
-        ...draft.items,
-      ],
-    }));
-    setComponentExpandedIds([id]);
-    setComponentSearch("");
-  }
-
-  function updatePublicationItem(nextItem: PublicationDraftEntry) {
-    updatePublicationsDraft((draft) => ({
-      ...draft,
-      items: draft.items.map((item) =>
-        item.id === nextItem.id ? nextItem : item,
-      ),
-    }), `edit:${nextItem.id}`);
-  }
-
-  function deletePublicationItem(id: string) {
-    updatePublicationsDraft((draft) => ({
-      ...draft,
-      items: draft.items.filter((item) => item.id !== id),
-    }));
-    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
-  }
-
-  function duplicatePublicationItem(id: string) {
-    const copyId = createComponentEntryId("publication");
-    updatePublicationsDraft((draft) => {
-      const index = draft.items.findIndex((item) => item.id === id);
-      const source = draft.items[index];
-      if (!source) return draft;
-      const copy = { ...source, id: copyId };
-      return {
-        ...draft,
-        items: [...draft.items.slice(0, index + 1), copy, ...draft.items.slice(index + 1)],
-      };
-    });
-    setComponentExpandedIds([copyId]);
-    setComponentSearch("");
-  }
-
-  function moveSelectedPublicationItem(id: string, direction: -1 | 1) {
-    updatePublicationsDraft((draft) => ({
-      ...draft,
-      items: moveDraftEntry(
-        draft.items,
-        draft.items.findIndex((item) => item.id === id),
-        direction,
-      ),
-    }));
-  }
-
-  function reorderSelectedComponentItems(sourceId: string, targetId: string) {
-    if (!sourceId || !targetId || componentSearch.trim()) return;
-    if (selectedComponentName === "news") {
-      updateNewsDraft((draft) => ({
-        ...draft,
-        items: reorderDraftEntries(draft.items, sourceId, targetId),
-      }));
-    } else if (selectedComponentName === "teaching") {
-      updateTeachingDraft((draft) => ({
-        ...draft,
-        items: reorderDraftEntries(draft.items, sourceId, targetId),
-      }));
-    } else if (selectedComponentName === "works") {
-      updateWorksDraft((draft) => ({
-        ...draft,
-        items: reorderWorksEntriesAcrossGroups(draft.items, sourceId, targetId),
-      }));
-    } else if (selectedComponentName === "publications") {
-      updatePublicationsDraft((draft) => ({
-        ...draft,
-        items: reorderDraftEntries(draft.items, sourceId, targetId),
-      }));
-    }
-  }
+  const {
+    addNewsEntry, addNewsDivider, updateNewsItem, deleteNewsItem,
+    duplicateNewsItem, moveSelectedNewsItem,
+    addTeachingEntry, updateTeachingItem, deleteTeachingItem,
+    duplicateTeachingItem, moveSelectedTeachingItem,
+    addWorksEntry, updateWorksItem, deleteWorksItem,
+    duplicateWorksItem, moveSelectedWorksItem,
+    addPublicationEntry, updatePublicationItem, deletePublicationItem,
+    duplicatePublicationItem, moveSelectedPublicationItem,
+    reorderSelectedComponentItems,
+  } = createCollectionActions({
+    setCollectionHistory, setComponentExpandedIds, setComponentSearch, selectedComponentName, componentSearch,
+    teachingTerm: selectedTeachingDraft?.items[0]?.term || "",
+  });
 
   function handleComponentDragStart(event: DragEvent<HTMLElement>, id: string) {
     if (componentSearch.trim()) {
@@ -4414,7 +3947,7 @@ export function SiteAdminWebConsole({
           <SiteAdminAnnouncementsPanel
             onDirtyChange={setAnnouncementDirty}
             onSaved={(action) => {
-              setPendingPublishCount((count) => count + 1);
+              recordSavedContent();
               void (async () => {
                 const publishNotice = await queueSavedContentPublish(
                   `announcement:${action}`,

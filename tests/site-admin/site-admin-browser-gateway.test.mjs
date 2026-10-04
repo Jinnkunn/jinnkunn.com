@@ -106,8 +106,8 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("queueSavedContentPublish"));
   assert.ok(source.includes("Content was saved, but publishing could not be queued"));
   assert.ok(source.includes("moveSelectedContent"));
-  assert.ok(source.includes("localDraftKey"));
-  assert.ok(source.includes("releaseWatchUntil"));
+  assert.ok(source.includes("useSiteAdminDraftPersistence"));
+  assert.ok(source.includes("useSiteAdminReleaseMonitor"));
   assert.ok(source.includes("/api/site-admin/release-jobs?limit=30"));
   assert.ok(source.includes("buildSiteAdminReleaseProgress"));
   assert.ok(source.includes("SiteAdminPublishingProgress"));
@@ -191,8 +191,9 @@ test("site-admin content management includes recovery, media, settings, and vers
   assert.ok(source.includes("SiteAdminVersionHistory"));
   assert.ok(source.includes("SiteAdminConflictDialog"));
   assert.ok(source.includes("beforeunload"));
-  assert.ok(source.includes("window.localStorage"));
-  assert.ok(source.includes("LOCAL_DRAFT_TTL_MS"));
+  const storage = fs.readFileSync("app/site-admin/site-admin-draft-storage.ts", "utf8");
+  assert.ok(storage.includes("window.localStorage"));
+  assert.ok(storage.includes("TTL_MS"));
   assert.ok(source.includes("duplicatePublicationItem"));
   assert.ok(source.includes("duplicateTeachingItem"));
   assert.ok(source.includes("duplicateWorksItem"));

@@ -68,18 +68,11 @@ test("opening a document claims the selection before its detail request", () => 
 });
 
 test("autosave stands down outside the document editor", () => {
-  const end = CONSOLE.indexOf("}, 1600);");
-  assert.ok(end > 0, "expected the 1.6s autosave timer");
-  const effect = CONSOLE.slice(
-    CONSOLE.lastIndexOf("useEffect(() => {", end),
-    CONSOLE.indexOf("]);", end) + 3,
-  );
-  assert.match(effect, /if \(area !== "content"\) return;/);
-  assert.match(effect, /if \(contentMode === "create"\) return;/);
-  // Guards that are not dependencies re-arm on the next unrelated render.
-  const deps = effect.slice(effect.lastIndexOf("}, ["));
-  assert.match(deps, /\barea\b/);
-  assert.match(deps, /\bcontentMode\b/);
+  const persistence = readFileSync(new URL("../../app/site-admin/use-site-admin-draft-persistence.ts", import.meta.url), "utf8");
+  assert.match(CONSOLE, /autosaveEnabled: area === "content" && contentMode !== "create"/);
+  assert.match(persistence, /if \(!id \|\| !dirty \|\| !autosaveEnabled\) return;/);
+  assert.match(persistence, /onSave\(\), 1600\)/);
+  assert.match(persistence, /\[kind, id, dirty, snapshot, autosaveEnabled\]/);
 });
 
 test("the publish queue is gated on the save effects, not called unconditionally", () => {

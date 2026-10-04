@@ -12,36 +12,8 @@ import {
   isInternalStaticAssetPath,
   isRscRequest,
   normalizePathname,
+  shouldBypassStatic,
 } from "./worker-entry-guards.mjs";
-
-const BYPASS_PREFIXES = [
-  "/api/",
-  "/site-admin",
-  "/auth",
-  "/_next/",
-  "/assets/",
-  "/styles/",
-  "/fonts/",
-  "/web_image/",
-  "/notion-assets/",
-  "/cdn-cgi/",
-  "/.well-known/",
-];
-
-function hasLikelyFileExtension(pathname) {
-  const last = pathname.split("/").pop() || "";
-  return last.includes(".");
-}
-
-function shouldBypassStatic(pathname) {
-  if (!pathname) return true;
-  if (pathname === "/blog/list" || pathname.startsWith("/blog/list/")) return true;
-  if (/^\/[0-9a-f]{32}$/i.test(pathname)) return true;
-  for (const prefix of BYPASS_PREFIXES) {
-    if (pathname === prefix || pathname.startsWith(prefix)) return true;
-  }
-  return hasLikelyFileExtension(pathname);
-}
 
 function staticAssetPathForRoute(pathname) {
   const p = normalizePathname(pathname);

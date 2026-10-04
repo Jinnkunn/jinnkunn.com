@@ -11,6 +11,7 @@ import { readActiveDeployment } from "../_lib/cloudflare-api.mjs";
 import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 import { d1DatabaseIdForEnv } from "../_lib/wrangler-d1.mjs";
+import { verifyOverlayContent } from "../_lib/overlay-serving-verification.mjs";
 import {
   acquireReleaseLock,
   formatHeldLock,
@@ -778,49 +779,11 @@ async function assertReferencedAssetsExistForRows({ env, rows }) {
   return { checked: refs.size };
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function verifyOverlayServing(env) {
-  logPhase(`verifying ${env} overlay on public routes`);
-  const origin = normalizeOrigin(env);
-  const cookie = await stagingCookieIfNeeded(env);
-  const paths = ["/", "/news"];
-  const attempts = 8;
-  let last = null;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const results = [];
-    for (const pathname of paths) {
-      const response = await fetch(`${origin}${pathname}`, {
-        redirect: "manual",
-        cache: "no-store",
-        headers: cookie ? { cookie } : {},
-      });
-      await response.arrayBuffer().catch(() => null);
-      results.push({
-        path: pathname,
-        status: response.status,
-        staticShell: response.headers.get("x-static-shell") || "",
-        staticOverlay: response.headers.get("x-static-overlay") || "",
-      });
-    }
-    last = results;
-    if (
-      results.every(
-        (item) =>
-          item.status === 200 &&
-          item.staticShell === "1" &&
-          item.staticOverlay === "1",
-      )
-    ) {
-      return { ok: true, attempts: attempt, routes: results };
-    }
-    await sleep(2_000);
-  }
-  throw new Error(
-    `Overlay upload completed, but ${env} did not serve overlay shells yet: ${JSON.stringify(last)}`,
-  );
+async function verifyOverlayServing(env, rows) {
+  logPhase(`verifying ${env} public page content fingerprints`);
+  return verifyOverlayContent({
+    origin: normalizeOrigin(env), rows, cookie: await stagingCookieIfNeeded(env),
+  });
 }
 
 function overlaySnapshot(files) {
@@ -1038,6 +1001,7 @@ async function prepareOverlayDiff({
     statusCurrent.contentType !== statusRow.content_type;
   const changedRows = statusChanged ? [...shellChanged, statusRow] : shellChanged;
   return {
+    expectedRows: shellRows,
     changedAssetPaths: new Set(changedRows.map((row) => row.asset_path)),
     changedRows,
     deleted,
@@ -1428,7 +1392,7 @@ async function copyStagingOverlayToProduction({ git, dryRun, skipVerify }) {
   let serving = null;
   if (!skipVerify) {
     try {
-      serving = await verifyOverlayServing("production");
+      serving = await verifyOverlayServing("production", copiedRows);
     } catch (error) {
       await rollbackFailedOverlayWrite({ env: "production", backupSnapshot });
       throw new Error(
@@ -1494,7 +1458,7 @@ async function main() {
     const serving =
       args.dryRun || args.skipVerify
         ? null
-        : await verifyOverlayServing(args.env);
+        : await verifyOverlayServing(args.env, await readSnapshotRows(args.env, rollback.snapshotId));
     if (!args.dryRun) {
       appendReleaseHistory({
         env: args.env,
@@ -1656,6 +1620,8 @@ async function main() {
     currentStatus.targetBuildId === liveBuildId
   ) {
     logPhase("content overlay is already current; skipping build and upload");
+    const serving = args.dryRun || args.skipVerify
+      ? null : await verifyOverlayServing(args.env, await readOverlayRows(args.env));
     console.log(
       JSON.stringify(
         {
@@ -1677,7 +1643,7 @@ async function main() {
           deleted: 0,
           unchanged: Number(currentStatus.fileCount || 0),
           backupSnapshotId: "",
-          serving: null,
+          serving,
         },
         null,
         2,
@@ -1718,9 +1684,9 @@ async function main() {
   let assets = { checked: nextStaticFiles.length };
   try {
     serving =
-      args.dryRun || args.skipVerify || (upload.uploaded === 0 && upload.deleted === 0)
+      args.dryRun || args.skipVerify
         ? null
-        : await verifyOverlayServing(args.env);
+        : await verifyOverlayServing(args.env, diff.expectedRows);
     assets =
       args.dryRun || args.skipVerify
         ? assets
