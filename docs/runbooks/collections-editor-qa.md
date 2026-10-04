@@ -24,7 +24,7 @@ Screenshots are written to `/tmp/collections-workflow-desktop.png` and `/tmp/col
 
 ## Published Content Verification
 
-The content publisher verifies every unprotected HTML route in the expected static overlay, excluding intentional runtime-only `/blog/list` routes. A 200 response or overlay header alone is not success: the response body SHA-1, ETag, and served asset path must match the exact overlay snapshot. Protected routes remain protected and are skipped.
+The content publisher verifies every unprotected HTML route in the expected static overlay, excluding intentional runtime-only `/blog/list` routes. A 200 response or overlay header alone is not success: the response body SHA-1 and served asset path must match the exact overlay snapshot. An ETag, when present, must also match (weak ETags are accepted). CDNs may omit ETags, so their absence does not override the actual byte verification. Protected routes remain protected and are skipped.
 
 Retries apply only to failed routes. A mismatch follows the existing publish rollback flow. Copy-from-staging, rollback, and already-current publishes also verify the served snapshot. No content bodies or credentials are logged in verification output.
 

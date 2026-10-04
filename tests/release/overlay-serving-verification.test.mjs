@@ -33,6 +33,24 @@ test("200 with overlay headers and a current ETag cannot pass with old content",
   }), /Overlay content verification failed.*\/works/);
 });
 
+test("accepts matching response bytes when a CDN omits or weakens the ETag", async () => {
+  const target = row("/");
+  for (const etag of ["", `W/"${target.content_sha}"`]) {
+    const result = await verifyOverlayContent({ origin: "https://example.test", rows: [target], attempts: 1,
+      fetchImpl: async () => response(target, target.body, { etag }),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.routes[0].actualSha, target.content_sha);
+  }
+});
+
+test("missing ETag never lets stale response bytes pass", async () => {
+  const target = row("/");
+  await assert.rejects(verifyOverlayContent({ origin: "https://example.test", rows: [target], attempts: 1,
+    fetchImpl: async () => response(target, "old content", { etag: "" }),
+  }), /Overlay content verification failed/);
+});
+
 test("retries stale pages only and tolerates a temporary network failure", async () => {
   const calls = new Map();
   const result = await verifyOverlayContent({ origin: "https://example.test", rows, wait: async () => {},

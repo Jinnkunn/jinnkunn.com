@@ -55,9 +55,11 @@ export async function verifyOverlayContent({
           servedAssetPath: response.headers.get("x-static-shell-path") || "",
           etag: response.headers.get("etag") || "",
         };
+        // CDNs may omit or weaken ETags; the decoded response bytes remain authoritative.
+        const etagMatches = !result.etag || result.etag.replace(/^W\//, "") === `"${target.expectedSha}"`;
         result.ok = result.status === 200 && result.staticShell === "1" &&
           result.staticOverlay === "1" && result.servedAssetPath === target.assetPath &&
-          result.etag === `"${target.expectedSha}"` && actualSha === target.expectedSha;
+          etagMatches && actualSha === target.expectedSha;
       } catch (error) {
         result = { ...target, ok: false, error: error instanceof Error ? error.message : String(error) };
       }
