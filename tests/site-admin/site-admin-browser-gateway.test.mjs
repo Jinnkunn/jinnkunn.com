@@ -87,8 +87,8 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("frontmatterKeys"));
   assert.ok(source.includes("contentSavedAt"));
   assert.ok(source.includes("Unsaved edits"));
-  assert.ok(source.includes("Publish live when you are ready"));
-  assert.ok(source.includes("Save first"));
+  assert.ok(source.includes("Publish updates when ready"));
+  assert.ok(source.includes("publishCurrentContent"));
   assert.ok(source.includes("editorTitleGrid"));
   assert.ok(source.includes("editorDetails"));
   assert.ok(source.includes("editorBodyShell"));
@@ -165,7 +165,7 @@ test("site-admin browser console keeps advanced workflows progressive and keyboa
   assert.ok(source.includes("inert={!inspectorOpen}"));
   assert.ok(source.includes("Diagnostics and recovery"));
   assert.ok(source.includes("Release activity"));
-  assert.ok(collection.includes('role="dialog"'));
+  assert.ok(collection.includes('role={panel.compact ? "dialog" : "region"}'));
   assert.ok(collection.includes("collectionEntryDrawer"));
   assert.ok(collection.includes('event.key === "Escape"'));
   assert.ok(media.includes('view === "grid"'));
@@ -242,7 +242,12 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(collectionModel.includes("entryId"));
   assert.ok(source.includes("reorderSelectedComponentItems"));
   assert.ok(collectionEditor.includes("Review {issueCount}"));
-  assert.ok(collectionEditor.includes("Expand all"));
+  assert.ok(!collectionEditor.includes("Expand all"));
+  assert.ok(collectionEditor.includes("Previous entry"));
+  assert.ok(collectionEditor.includes("Next entry"));
+  assert.ok(collectionEditor.includes("Apply source"));
+  assert.ok(collectionEditor.includes("Save draft"));
+  assert.ok(collectionEditor.includes("Publish updates"));
   assert.ok(collectionEditor.includes("Group entries"));
   assert.ok(collectionEditor.includes("StructuredCollectionEntry"));
   assert.ok(collectionEditor.includes("StructuredCollectionEntryForm"));
@@ -254,7 +259,7 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(collectionSchema.includes("writePublicationAuthors"));
   assert.ok(collectionSchema.includes("writePrimaryPublicationVenue"));
   assert.ok(collectionEditor.includes("Option + Down"));
-  assert.ok(collectionEditor.includes("⌘↵ Done"));
+  assert.ok(collectionEditor.includes('panel?.onSave()'));
   assert.ok(!source.includes("function renderComponentEditorHeader"));
   assert.ok(!source.includes("function renderComponentItemActions"));
   assert.ok(collectionSchema.includes("Highlighted author"));

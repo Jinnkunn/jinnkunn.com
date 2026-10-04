@@ -364,7 +364,7 @@ button.statusPill:disabled {
   flex-direction: column;
   gap: 16px;
   padding: clamp(18px, 2.2vw, 28px);
-  scroll-margin-top: 142px;
+  scroll-margin-top: calc(var(--admin-chrome-height, 154px) + 16px);
 }
 
 .createPanel {
@@ -3073,8 +3073,8 @@ button.statusPill:disabled {
 }
 
 .sidePanel {
-  top: 126px;
-  max-height: calc(100vh - 142px);
+  top: calc(var(--admin-chrome-height, 154px) + 16px);
+  max-height: calc(100dvh - var(--admin-chrome-height, 154px) - 32px);
 }
 
 .editorChrome {
@@ -3174,20 +3174,18 @@ button.statusPill:disabled {
 }
 
 .collectionEntryDrawer {
-  position: fixed;
-  z-index: 52;
-  top: 16px;
-  right: 16px;
+  position: relative;
   display: flex;
-  width: min(620px, calc(100vw - 32px));
-  height: calc(100vh - 32px);
+  width: 100%;
+  height: var(--collection-panel-height, calc(100dvh - var(--admin-chrome-height, 154px) - 32px));
+  min-height: 360px;
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--ds-radius-lg);
+  border-radius: var(--ds-radius-md);
   background: var(--ds-surface-elevated);
-  box-shadow: var(--ds-shadow-overlay);
+  animation: collection-panel-in 140ms ease-out;
 }
 
 .collectionEntryDrawerHeader,
@@ -3226,7 +3224,8 @@ button.statusPill:disabled {
 }
 
 .collectionEntryDrawerBody {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   flex: 1;
   gap: 16px;
@@ -3235,8 +3234,13 @@ button.statusPill:disabled {
   overscroll-behavior: contain;
 }
 
+.collectionEntryDrawerBody > * {
+  flex: none;
+}
+
 .collectionEntryActionsMenu {
-  overflow: hidden;
+  min-height: 38px;
+  overflow: visible;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-md);
   background: var(--ds-surface-soft);
@@ -3256,6 +3260,66 @@ button.statusPill:disabled {
 
 .collectionEntryDrawerFooter {
   border-top: 1px solid var(--ds-border-subtle);
+  flex-wrap: wrap;
+}
+
+.collectionWorkspace {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+  align-items: start;
+}
+
+.collectionWorkspace[data-editing="true"] {
+  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.2fr);
+}
+
+.collectionPanelHost {
+  position: sticky;
+  top: calc(var(--admin-chrome-height, 154px) + 16px);
+  min-width: 0;
+}
+
+.collectionPanelHost:empty { display: none; }
+
+.collectionEntryTitle { display: grid; min-width: 0; gap: 4px; }
+.collectionEntryTitle small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-text-secondary); font-size: 12px; }
+.collectionWorkspace[data-editing="true"] .collectionEntryTrigger { grid-template-columns: 1fr; gap: 5px; }
+.newsEntryCard[data-selected="true"] { border-color: var(--ds-accent); box-shadow: inset 3px 0 var(--ds-accent); }
+.collectionPanelNav { display: flex; flex: 0 0 auto; gap: 2px; }
+.collectionPanelStatus { display: grid; flex: 1 1 160px; gap: 3px; min-width: 0; }
+.collectionPanelStatus strong { font-size: 12px; }
+.collectionPanelStatus small { font-size: 11px; color: var(--ds-text-secondary); line-height: 1.4; }
+.collectionFormSection { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.collectionFormSection h4 { margin: 4px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; }
+.collectionFieldGroup { display: grid; min-width: 0; padding: 0; margin: 0; gap: 8px; border: 0; }
+.collectionFieldGroup legend { margin-bottom: 8px; font-size: 12px; font-weight: 700; color: var(--ds-text-secondary); }
+.collectionTermFields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.collectionTokens { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.collectionTokens li { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; }
+.collectionTokens li > span { min-width: 0; overflow-wrap: anywhere; }
+.collectionTokenInput { display: flex; gap: 8px; }
+.collectionTokenInput input { flex: 1; min-width: 0; }
+.collectionSourceActions { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
+.componentCollectionHeader { display: block; }
+.componentCollectionIntro { display: contents; }
+.componentCollectionTools { width: 100%; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: center; }
+.componentCollectionTools .panelActions { grid-column: auto; }
+.componentViewControls { grid-column: auto; }
+.collectionGroupHeading { display: flex; align-items: center; gap: 10px; }
+.collectionGroupHeading > span { flex: 1; }
+.collectionGroupHeading::after { display: none; }
+.collectionCustomTerm { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ds-text-secondary); }
+
+@keyframes collection-panel-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .collectionEntryDrawer { animation: none; } }
+@media (max-width: 1100px) {
+  .collectionWorkspace[data-editing="true"] { grid-template-columns: 1fr; }
+  .collectionPanelHost { position: static; }
+  .collectionEntryDrawer { position: fixed; z-index: 52; top: 12px; right: 12px; width: min(620px, calc(100vw - 24px)); height: calc(100dvh - 24px); min-height: 0; }
+  .componentCollectionTools { grid-template-columns: minmax(0, 1fr) auto; }
+  .componentViewControls { grid-column: 1 / -1; justify-content: flex-start; }
+  .componentCollectionTools .panelActions { grid-column: 1 / -1; }
 }
 
 .collectionEntryDrawerFooter > small {
@@ -3454,7 +3518,7 @@ button.statusPill:disabled {
 
 .settingsSubnav {
   position: sticky;
-  top: 126px;
+  top: calc(var(--admin-chrome-height, 154px) + 16px);
   display: grid;
   gap: 5px;
 }
@@ -3852,7 +3916,7 @@ button.statusPill:disabled {
     top: 8px;
     right: 8px;
     width: calc(100vw - 16px);
-    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
   }
 
   .collectionEntryDrawerHeader,

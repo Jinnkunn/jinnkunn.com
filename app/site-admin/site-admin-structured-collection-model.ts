@@ -1,13 +1,15 @@
 import {
+  parseJsxAttrs,
   parsePublicationsEntries,
   parseTeachingEntries,
   parseWorksEntries,
   type TeachingComponentEntry,
   type WorksComponentEntry,
-} from "@/lib/components/parse";
+} from "../../lib/components/parse.ts";
 import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
 import type { SiteComponentName } from "@jinnkunn/content-core/components";
-import { parseMonthRangePeriod } from "./site-admin-month-range";
+import { parseMonthRangePeriod, type MonthRangeValue } from "./site-admin-month-range.ts";
+import { parseTeachingTerm } from "./site-admin-teaching-term.ts";
 
 export type NewsDraftEntry = {
   id: string;
@@ -30,6 +32,7 @@ export type NewsComponentDraft = {
 
 export type TeachingDraftEntry = Omit<TeachingComponentEntry, "entryId"> & {
   id: string;
+  periodRange?: MonthRangeValue;
 };
 
 export type TeachingComponentDraft = {
@@ -39,6 +42,7 @@ export type TeachingComponentDraft = {
 
 export type WorksDraftEntry = Omit<WorksComponentEntry, "entryId"> & {
   id: string;
+  periodRange?: MonthRangeValue;
 };
 
 export type WorksComponentDraft = {
@@ -63,7 +67,6 @@ export type ComponentEntryIssue = {
 
 export type ComponentGrouping = "auto" | "none";
 
-const NEWS_ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{([^}]*)\})/g;
 const NEWS_ENTRY_RE = /<NewsEntry\b([\s\S]*?)>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
 
 export function todayInHalifax(): string {
@@ -100,6 +103,18 @@ export function teachingEntryIssues(item: TeachingDraftEntry): ComponentEntryIss
   const issues: ComponentEntryIssue[] = [];
   if (!item.term.trim()) {
     issues.push({ entryId: item.id, field: "term", message: "Add a term." });
+  } else if (parseTeachingTerm(item.term)?.season === "") {
+    issues.push({ entryId: item.id, field: "term", message: "Choose a season for this academic year." });
+  }
+  if (item.periodRange) {
+    const period = item.periodRange;
+    if (!period.start && (period.end || period.ongoing)) {
+      issues.push({ entryId: item.id, field: "period", message: "Choose a start month." });
+    } else if (period.start && !period.ongoing && !period.end) {
+      issues.push({ entryId: item.id, field: "period", message: "Choose an end month or mark this course as ongoing." });
+    } else if (period.start && period.end && period.end < period.start) {
+      issues.push({ entryId: item.id, field: "period", message: "End month must be after the start month." });
+    }
   }
   if (!item.courseCode.trim() && !item.courseName.trim()) {
     issues.push({
@@ -119,7 +134,7 @@ export function worksEntryIssues(item: WorksDraftEntry): ComponentEntryIssue[] {
   if (!item.role.trim()) {
     issues.push({ entryId: item.id, field: "role", message: "Add a role." });
   }
-  const period = parseMonthRangePeriod(item.period);
+  const period = item.periodRange || parseMonthRangePeriod(item.period);
   if (!item.period.trim()) {
     issues.push({ entryId: item.id, field: "period", message: "Add a period." });
   } else if (!period.valid || !period.start) {
@@ -175,7 +190,7 @@ export function parseNewsComponentDraft(source: string): NewsComponentDraft {
   NEWS_ENTRY_RE.lastIndex = 0;
   while ((match = NEWS_ENTRY_RE.exec(body)) !== null) {
     items.push(...parseNewsDividerItems(body.slice(cursor, match.index), `before-${entryIndex}`));
-    const attrs = parseNewsAttrs(match[1] ?? "");
+    const attrs = parseJsxAttrs(match[1] ?? "");
     items.push({
       id: normalizeComponentEntryId(attrs.entryId, "news", entryIndex),
       type: "entry",
@@ -404,14 +419,6 @@ function normalizeComponentEntryId(
   return /^[a-z0-9][a-z0-9._:-]{0,95}$/i.test(candidate)
     ? candidate
     : `${prefix}-${index + 1}`;
-}
-
-function parseNewsAttrs(raw: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  for (const match of String(raw || "").matchAll(NEWS_ATTR_RE)) {
-    attrs[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
-  }
-  return attrs;
 }
 
 function componentFrontmatterFromSource(

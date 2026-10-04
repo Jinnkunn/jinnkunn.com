@@ -151,35 +151,35 @@ async function main() {
     await page.getByRole("button", { name: "Add update" }).click();
     const form = page.locator("[data-structured-entry-form]").first();
     await form.waitFor();
-    const body = form.locator('[data-component-field="body"]');
+    const body = form.locator('[contenteditable="true"][aria-label="Body"]');
     await body.fill("");
     await page.getByRole("button", { name: /Review 1/ }).click();
     assert.equal(
-      await page.evaluate(() => document.activeElement?.getAttribute("data-component-field")),
+      await page.evaluate(() => document.activeElement?.closest("[data-component-field]")?.getAttribute("data-component-field")),
       "body",
     );
 
     await body.fill("Interaction smoke update. This value is never saved.");
     await body.press("Meta+Enter");
     await page.waitForTimeout(50);
-    assert.equal(await form.isVisible(), false, "Command+Enter should collapse the entry");
+    assert.equal(await form.isVisible(), true, "A failed save must leave the entry editor open");
+    assert.equal(await page.getByRole("region", { name: /^Edit / }).count(), 1, "Only one side editor should be open");
 
-    const card = page.locator("details[data-invalid]").first();
-    await card.locator("summary").click();
+    const editor = page.getByRole("region", { name: /^Edit / });
     await page.screenshot({ path: desktopScreenshot, fullPage: false });
-    const beforeDuplicate = await page.locator("details[data-invalid]").count();
-    await card.getByRole("button", { name: "Duplicate" }).click();
+    const beforeDuplicate = await page.locator("article[data-invalid]").count();
+    await editor.getByText("Entry actions", { exact: true }).click();
+    await editor.getByRole("button", { name: "Duplicate" }).click();
     assert.equal(
-      await page.locator("details[data-invalid]").count(),
+      await page.locator("article[data-invalid]").count(),
       beforeDuplicate + 1,
       "Duplicate should add one entry",
     );
 
     page.once("dialog", (dialog) => dialog.accept());
-    const duplicateCard = page.locator("details[data-invalid]").first();
-    await duplicateCard.getByRole("button", { name: "Delete" }).click();
+    await page.getByRole("region", { name: /^Edit / }).getByRole("button", { name: "Delete", exact: true }).click();
     assert.equal(
-      await page.locator("details[data-invalid]").count(),
+      await page.locator("article[data-invalid]").count(),
       beforeDuplicate,
       "Delete should remove the duplicate",
     );

@@ -73,14 +73,19 @@ test("quiet autosave saves the draft and never queues a publish", () => {
   assert.equal(quiet.announce, false);
 });
 
-test("an explicit save publishes, reconciles, and reports back", () => {
+test("an explicit save persists the draft without publishing", () => {
   for (const options of [{}, { quiet: false }, undefined]) {
     const effects = contentSaveEffects(options);
     assert.equal(effects.persist, true);
-    assert.equal(effects.publish, true);
+    assert.equal(effects.publish, false);
     assert.equal(effects.reconcileLists, true);
     assert.equal(effects.announce, true);
   }
+});
+
+test("publishing is explicit and quiet autosave cannot opt in", () => {
+  assert.equal(contentSaveEffects({ publish: true }).publish, true);
+  assert.equal(contentSaveEffects({ quiet: true, publish: true }).publish, false);
 });
 
 test("release outcome: failed jobs stay failed instead of becoming live", () => {

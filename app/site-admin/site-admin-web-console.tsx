@@ -62,16 +62,8 @@ import {
   createComponentEntryId,
   moveDraftEntry,
   newsEntryIssues,
-  parseNewsComponentDraft,
-  parsePublicationsComponentDraft,
-  parseTeachingComponentDraft,
-  parseWorksComponentDraft,
   publicationEntryIssues,
   reorderDraftEntries,
-  serializeNewsComponentDraft,
-  serializePublicationsComponentDraft,
-  serializeTeachingComponentDraft,
-  serializeWorksComponentDraft,
   teachingEntryIssues,
   todayInHalifax,
   worksEntryIssues,
@@ -93,6 +85,18 @@ import {
   structuredCollectionSearchValues,
 } from "./site-admin-structured-collection-schema";
 import { reorderWorksEntriesAcrossGroups } from "./site-admin-works-drag";
+import {
+  collectionHistory as createCollectionHistory,
+  collectionPlainText,
+  commitCollectionDraft,
+  groupCollectionItems,
+  parseCollectionDraft,
+  redoCollectionDraft,
+  serializeCollectionDraft,
+  undoCollectionDraft,
+  type CollectionDraft,
+  type CollectionHistory,
+} from "./site-admin-collection-draft";
 import {
   SiteAdminMediaLibrary,
   type SiteAdminAsset,
@@ -274,6 +278,7 @@ type LocalDraftSnapshot = {
   key: string;
   source: string;
   form?: EditableContentForm;
+  collection?: CollectionDraft;
   savedAt: string;
 };
 
@@ -566,6 +571,7 @@ function readLocalDraft(kind: EditableKind, id: string): LocalDraftSnapshot | nu
       key,
       source: parsed.source,
       form: parsed.form,
+      collection: parsed.collection,
       savedAt: parsed.savedAt,
     };
   } catch {
@@ -767,6 +773,8 @@ export function SiteAdminWebConsole({
   const [componentGrouping, setComponentGrouping] =
     useState<ComponentGrouping>("auto");
   const [componentExpandedIds, setComponentExpandedIds] = useState<string[]>([]);
+  const [collectionHistory, setCollectionHistory] = useState<CollectionHistory | null>(null);
+  const [collectionBaseline, setCollectionBaseline] = useState("");
   const [componentDragId, setComponentDragId] = useState("");
   const [componentDropId, setComponentDropId] = useState("");
   const [componentReturnTarget, setComponentReturnTarget] =
@@ -824,8 +832,12 @@ export function SiteAdminWebConsole({
   // row is dropped without also dropping a click on a different row.
   const selectionLoadingRef = useRef("");
   const selectedSourceDraftRef = useRef("");
+  const shellRef = useRef<HTMLElement>(null);
+  const chromeRef = useRef<HTMLElement>(null);
+  const collectionDraftRef = useRef<CollectionDraft | null>(null);
+  const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number }>());
   const saveSelectedContentRef = useRef<
-    (options?: { quiet?: boolean }) => Promise<void>
+    (options?: { quiet?: boolean; publish?: boolean }) => Promise<void>
   >(async () => {});
   const saveHomeRef = useRef<() => Promise<void>>(async () => {});
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
@@ -881,6 +893,17 @@ export function SiteAdminWebConsole({
   }, [inspectorOpen]);
 
   const selectedContentKey = selected ? `${selected.kind}:${selected.id}` : "";
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    const chrome = chromeRef.current;
+    if (!shell || !chrome) return;
+    const measure = () => shell.style.setProperty("--admin-chrome-height", `${chrome.getBoundingClientRect().height}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(chrome);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!selectedContentKey) return;
@@ -960,28 +983,17 @@ export function SiteAdminWebConsole({
     ? componentDefinitions.find((definition) => definition.name === selectedComponentName) || null
     : null;
   const selectedIsNewsComponent = selectedComponentName === "news";
-  const selectedNewsDraft = useMemo(
-    () => (selectedIsNewsComponent ? parseNewsComponentDraft(sourceDraft) : null),
-    [selectedIsNewsComponent, sourceDraft],
+  const collectionDraft = collectionHistory?.present.name === selectedComponentName
+    ? collectionHistory.present : null;
+  collectionDraftRef.current = collectionDraft;
+  const collectionSource = useMemo(
+    () => collectionDraft ? serializeCollectionDraft(collectionDraft) : sourceDraft,
+    [collectionDraft, sourceDraft],
   );
-  const selectedTeachingDraft = useMemo(
-    () =>
-      selectedComponentName === "teaching"
-        ? parseTeachingComponentDraft(sourceDraft)
-        : null,
-    [selectedComponentName, sourceDraft],
-  );
-  const selectedWorksDraft = useMemo(
-    () => (selectedComponentName === "works" ? parseWorksComponentDraft(sourceDraft) : null),
-    [selectedComponentName, sourceDraft],
-  );
-  const selectedPublicationsDraft = useMemo(
-    () =>
-      selectedComponentName === "publications"
-        ? parsePublicationsComponentDraft(sourceDraft)
-        : null,
-    [selectedComponentName, sourceDraft],
-  );
+  const selectedNewsDraft = collectionDraft?.name === "news" ? collectionDraft.value : null;
+  const selectedTeachingDraft = collectionDraft?.name === "teaching" ? collectionDraft.value : null;
+  const selectedWorksDraft = collectionDraft?.name === "works" ? collectionDraft.value : null;
+  const selectedPublicationsDraft = collectionDraft?.name === "publications" ? collectionDraft.value : null;
   const selectedComponentIssues = useMemo(() => {
     if (selectedNewsDraft) {
       return selectedNewsDraft.items.flatMap((item) =>
@@ -1008,18 +1020,14 @@ export function SiteAdminWebConsole({
     if (!selected || selected.kind !== "components" || !selectedComponentName) {
       return new Map<string, string>();
     }
-    const items: Array<{ id: string }> =
-      selectedComponentName === "news"
-        ? parseNewsComponentDraft(selected.source).items
-        : selectedComponentName === "teaching"
-          ? parseTeachingComponentDraft(selected.source).items
-          : selectedComponentName === "works"
-            ? parseWorksComponentDraft(selected.source).items
-            : parsePublicationsComponentDraft(selected.source).items;
+    const baseline: CollectionDraft = collectionBaseline
+      ? JSON.parse(collectionBaseline)
+      : parseCollectionDraft(selectedComponentName, selected.source);
+    const items: Array<{ id: string }> = baseline.value.items;
     return new Map(
       items.map((item) => [item.id, componentEntryFingerprint(item)]),
     );
-  }, [selected, selectedComponentName]);
+  }, [collectionBaseline, selected, selectedComponentName]);
   const componentSaveBlocked = selectedComponentIssues.length > 0;
   const release = summary?.release;
   const source = summary?.source;
@@ -1073,13 +1081,15 @@ export function SiteAdminWebConsole({
   const selectedSourceDraft = selected
     ? selectedIsStructured
       ? sourceForEditedContent(selected.kind, contentForm)
-      : sourceDraft
+      : collectionSource
     : "";
   const selectedDirty = Boolean(
     selected &&
       (selectedIsStructured
         ? selectedSourceDraft !== contentFormBaseline
-        : selectedSourceDraft !== selected.source),
+        : collectionDraft
+          ? JSON.stringify(collectionDraft) !== collectionBaseline
+          : selectedSourceDraft !== selected.source),
   );
   selectedSourceDraftRef.current = selectedSourceDraft;
   saveSelectedContentRef.current = saveSelectedContent;
@@ -1144,22 +1154,12 @@ export function SiteAdminWebConsole({
       ? releaseProgress.detail
     : liveSync.state === "pending"
       ? contentSavedAt
-        ? `Saved ${formatWhen(contentSavedAt)}. ${liveSync.label} — use Publish live when you are ready.`
+        ? `Draft saved ${formatWhen(contentSavedAt)}. Publish updates when ready.`
         : release?.detail || "Saved content is ahead of the live site."
       : contentSavedAt
         ? `Saved ${formatWhen(contentSavedAt)}. ${release?.detail || ""}`.trim()
         : release?.headline || "Publish status unavailable";
   const selectedVisibility = visibilityLabel(contentForm.draft);
-  const publishButtonLabel = releaseSaving
-    ? "Starting"
-    : selectedDirty
-      ? "Save first"
-      : liveSync.state === "live"
-        ? "Live current"
-        : releaseUnavailable && liveSync.pendingCount === 0
-          ? "Refresh status"
-          : "Publish live";
-
   async function refreshAll() {
     setLoading(true);
     setError("");
@@ -1276,6 +1276,7 @@ export function SiteAdminWebConsole({
     const key = localDraftKey(selected.kind, selected.id);
     const source = selectedSourceDraft;
     const form = selectedIsStructured ? contentForm : undefined;
+    const collection = collectionDraft;
     const timer = window.setTimeout(() => {
       const savedAt = new Date().toISOString();
       window.localStorage.setItem(
@@ -1283,6 +1284,7 @@ export function SiteAdminWebConsole({
         JSON.stringify({
           source,
           form,
+          collection,
           savedAt,
         }),
       );
@@ -1292,6 +1294,7 @@ export function SiteAdminWebConsole({
     return () => window.clearTimeout(timer);
   }, [
     contentForm,
+    collectionDraft,
     selected,
     selectedDirty,
     selectedIsStructured,
@@ -1366,6 +1369,8 @@ export function SiteAdminWebConsole({
     setSelected(null);
     setContentMode("browse");
     setSourceDraft("");
+    setCollectionHistory(null);
+    setCollectionBaseline("");
     setContentForm(EMPTY_CONTENT_FORM);
     setContentFormBaseline("");
     setSlugDraft("");
@@ -1507,6 +1512,10 @@ export function SiteAdminWebConsole({
     setContentMode("edit");
     setSelected(next);
     setSourceDraft(next.source);
+    const draft = nextKind === "components" && isSiteComponentName(id)
+      ? parseCollectionDraft(id, next.source) : null;
+    setCollectionHistory(draft ? createCollectionHistory(draft) : null);
+    setCollectionBaseline(draft ? JSON.stringify(draft) : "");
     setSlugDraft(id);
     const form = formFromEditablePayload(nextKind, id, detail);
     setContentForm(form);
@@ -1515,8 +1524,9 @@ export function SiteAdminWebConsole({
         ? sourceForEditedContent(nextKind, form)
         : next.source;
     setContentFormBaseline(baseline);
-    setComponentSearch("");
-    setComponentGrouping("auto");
+    const view = collectionViewsRef.current.get(id);
+    setComponentSearch(view?.search || "");
+    setComponentGrouping(view?.grouping || "auto");
     setComponentExpandedIds([]);
     setComponentDragId("");
     setComponentDropId("");
@@ -1524,10 +1534,15 @@ export function SiteAdminWebConsole({
     setContentSavedAt("");
     const localDraft = readLocalDraft(nextKind, id);
     setLocalDraftSnapshot(
-      localDraft && localDraft.source !== baseline ? localDraft : null,
+      localDraft && (localDraft.source !== baseline ||
+        (localDraft.collection && JSON.stringify(localDraft.collection) !== JSON.stringify(draft)))
+        ? localDraft : null,
     );
     setArea("content");
     setInspectorOpen(false);
+    if (view) window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => window.scrollTo({ top: view.scroll }));
+    });
     return next;
   }
 
@@ -1539,6 +1554,7 @@ export function SiteAdminWebConsole({
     ) {
       return false;
     }
+    rememberCollectionView();
     // A double-click used to fire two detail GETs whose responses could land
     // out of order. Only the repeat click is dropped: opening a *different*
     // document must still supersede the load in flight, and the gate below
@@ -1572,7 +1588,7 @@ export function SiteAdminWebConsole({
     }
   }
 
-  async function saveSelectedContent(options: { quiet?: boolean } = {}) {
+  async function saveSelectedContent(options: { quiet?: boolean; publish?: boolean } = {}) {
     if (!selected) return;
     if (componentSaveBlocked) {
       setWarning(
@@ -1583,6 +1599,7 @@ export function SiteAdminWebConsole({
       return;
     }
     const sourceAtStart = selectedSourceDraft;
+    const collectionAtStart = collectionDraft;
     const selectedAtStart = selected;
     const token = selectionGateRef.current.current();
     const effects = contentSaveEffects(options);
@@ -1607,7 +1624,8 @@ export function SiteAdminWebConsole({
       // in flight; writing this response into it would overwrite their body.
       if (selectionGateRef.current.isStale(token)) return;
       const next = toEditableDetail(selectedAtStart.kind, selectedAtStart.id, detail);
-      const newerLocalEdits = selectedSourceDraftRef.current !== sourceAtStart;
+      const newerLocalEdits = selectedSourceDraftRef.current !== sourceAtStart ||
+        JSON.stringify(collectionDraftRef.current) !== JSON.stringify(collectionAtStart);
       setSelected(next);
       setSlugDraft(next.id);
       const form = formFromEditablePayload(
@@ -1626,6 +1644,7 @@ export function SiteAdminWebConsole({
             ? sourceForEditedContent(selectedAtStart.kind, form)
             : next.source,
       );
+      if (collectionAtStart) setCollectionBaseline(JSON.stringify(collectionAtStart));
       if (!newerLocalEdits) {
         clearLocalDraft(selectedAtStart.kind, selectedAtStart.id);
         setLocalAutosaveAt("");
@@ -1827,6 +1846,12 @@ export function SiteAdminWebConsole({
       setContentForm(localDraftSnapshot.form);
     } else {
       setSourceDraft(localDraftSnapshot.source);
+      if (selected.kind === "components" && isSiteComponentName(selected.id)) {
+        const draft = localDraftSnapshot.collection?.name === selected.id
+          ? localDraftSnapshot.collection
+          : parseCollectionDraft(selected.id, localDraftSnapshot.source);
+        setCollectionHistory(createCollectionHistory(draft));
+      }
     }
     setLocalAutosaveAt(localDraftSnapshot.savedAt);
     setLocalDraftSnapshot(null);
@@ -2164,9 +2189,10 @@ export function SiteAdminWebConsole({
 
   function updateNewsDraft(
     updater: (draft: NewsComponentDraft) => NewsComponentDraft,
+    group = "",
   ) {
-    const base = parseNewsComponentDraft(sourceDraft);
-    setSourceDraft(serializeNewsComponentDraft(updater(base)));
+    setCollectionHistory((current) => current?.present.name === "news"
+      ? commitCollectionDraft(current, { name: "news", value: updater(current.present.value) }, group) : current);
   }
 
   function addNewsEntry() {
@@ -2178,12 +2204,13 @@ export function SiteAdminWebConsole({
           id,
           type: "entry",
           date: todayInHalifax(),
-          body: "New update.",
+          body: "",
         },
         ...draft.items,
       ],
     }));
     setComponentExpandedIds([id]);
+    setComponentSearch("");
   }
 
   function addNewsDivider() {
@@ -2207,11 +2234,10 @@ export function SiteAdminWebConsole({
         if (item.id !== nextItem.id || item.type !== "entry") return item;
         return nextItem;
       }),
-    }));
+    }), `edit:${nextItem.id}`);
   }
 
   function deleteNewsItem(id: string) {
-    if (!window.confirm("Delete this News item?")) return;
     updateNewsDraft((draft) => ({
       ...draft,
       items: draft.items.filter((item) => item.id !== id),
@@ -2232,6 +2258,7 @@ export function SiteAdminWebConsole({
       };
     });
     setComponentExpandedIds([copyId]);
+    setComponentSearch("");
   }
 
   function moveSelectedNewsItem(id: string, direction: -1 | 1) {
@@ -2247,19 +2274,20 @@ export function SiteAdminWebConsole({
 
   function updateTeachingDraft(
     updater: (draft: TeachingComponentDraft) => TeachingComponentDraft,
+    group = "",
   ) {
-    const base = parseTeachingComponentDraft(sourceDraft);
-    setSourceDraft(serializeTeachingComponentDraft(updater(base)));
+    setCollectionHistory((current) => current?.present.name === "teaching"
+      ? commitCollectionDraft(current, { name: "teaching", value: updater(current.present.value) }, group) : current);
   }
 
-  function addTeachingEntry() {
+  function addTeachingEntry(term = selectedTeachingDraft?.items[0]?.term || "") {
     const id = createComponentEntryId("teaching");
     updateTeachingDraft((draft) => ({
       ...draft,
       items: [
         {
           id,
-          term: "New term",
+          term,
           period: "",
           role: "",
           courseCode: "",
@@ -2269,6 +2297,7 @@ export function SiteAdminWebConsole({
       ],
     }));
     setComponentExpandedIds([id]);
+    setComponentSearch("");
   }
 
   function updateTeachingItem(nextItem: TeachingDraftEntry) {
@@ -2277,11 +2306,10 @@ export function SiteAdminWebConsole({
       items: draft.items.map((item) =>
         item.id === nextItem.id ? nextItem : item,
       ),
-    }));
+    }), `edit:${nextItem.id}`);
   }
 
   function deleteTeachingItem(id: string) {
-    if (!window.confirm("Delete this Teaching row?")) return;
     updateTeachingDraft((draft) => ({
       ...draft,
       items: draft.items.filter((item) => item.id !== id),
@@ -2302,6 +2330,7 @@ export function SiteAdminWebConsole({
       };
     });
     setComponentExpandedIds([copyId]);
+    setComponentSearch("");
   }
 
   function moveSelectedTeachingItem(id: string, direction: -1 | 1) {
@@ -2315,20 +2344,20 @@ export function SiteAdminWebConsole({
     }));
   }
 
-  function updateWorksDraft(updater: (draft: WorksComponentDraft) => WorksComponentDraft) {
-    const base = parseWorksComponentDraft(sourceDraft);
-    setSourceDraft(serializeWorksComponentDraft(updater(base)));
+  function updateWorksDraft(updater: (draft: WorksComponentDraft) => WorksComponentDraft, group = "") {
+    setCollectionHistory((current) => current?.present.name === "works"
+      ? commitCollectionDraft(current, { name: "works", value: updater(current.present.value) }, group) : current);
   }
 
-  function addWorksEntry() {
+  function addWorksEntry(category: WorksDraftEntry["category"] = "recent") {
     const id = createComponentEntryId("works");
     updateWorksDraft((draft) => ({
       ...draft,
       items: [
         {
           id,
-          category: "recent",
-          role: "New role",
+          category,
+          role: "",
           affiliation: "",
           location: "",
           period: "",
@@ -2338,6 +2367,7 @@ export function SiteAdminWebConsole({
       ],
     }));
     setComponentExpandedIds([id]);
+    setComponentSearch("");
   }
 
   function updateWorksItem(nextItem: WorksDraftEntry) {
@@ -2346,11 +2376,10 @@ export function SiteAdminWebConsole({
       items: draft.items.map((item) =>
         item.id === nextItem.id ? nextItem : item,
       ),
-    }));
+    }), `edit:${nextItem.id}`);
   }
 
   function deleteWorksItem(id: string) {
-    if (!window.confirm("Delete this Work row?")) return;
     updateWorksDraft((draft) => ({
       ...draft,
       items: draft.items.filter((item) => item.id !== id),
@@ -2371,6 +2400,7 @@ export function SiteAdminWebConsole({
       };
     });
     setComponentExpandedIds([copyId]);
+    setComponentSearch("");
   }
 
   function moveSelectedWorksItem(id: string, direction: -1 | 1) {
@@ -2386,20 +2416,21 @@ export function SiteAdminWebConsole({
 
   function updatePublicationsDraft(
     updater: (draft: PublicationsComponentDraft) => PublicationsComponentDraft,
+    group = "",
   ) {
-    const base = parsePublicationsComponentDraft(sourceDraft);
-    setSourceDraft(serializePublicationsComponentDraft(updater(base)));
+    setCollectionHistory((current) => current?.present.name === "publications"
+      ? commitCollectionDraft(current, { name: "publications", value: updater(current.present.value) }, group) : current);
   }
 
-  function addPublicationEntry() {
+  function addPublicationEntry(year = new Date().getFullYear().toString()) {
     const id = createComponentEntryId("publication");
     updatePublicationsDraft((draft) => ({
       ...draft,
       items: [
         {
           id,
-          title: "Untitled publication",
-          year: new Date().getFullYear().toString(),
+          title: "",
+          year,
           url: "",
           labels: [],
         },
@@ -2407,6 +2438,7 @@ export function SiteAdminWebConsole({
       ],
     }));
     setComponentExpandedIds([id]);
+    setComponentSearch("");
   }
 
   function updatePublicationItem(nextItem: PublicationDraftEntry) {
@@ -2415,11 +2447,10 @@ export function SiteAdminWebConsole({
       items: draft.items.map((item) =>
         item.id === nextItem.id ? nextItem : item,
       ),
-    }));
+    }), `edit:${nextItem.id}`);
   }
 
   function deletePublicationItem(id: string) {
-    if (!window.confirm("Delete this publication?")) return;
     updatePublicationsDraft((draft) => ({
       ...draft,
       items: draft.items.filter((item) => item.id !== id),
@@ -2440,6 +2471,7 @@ export function SiteAdminWebConsole({
       };
     });
     setComponentExpandedIds([copyId]);
+    setComponentSearch("");
   }
 
   function moveSelectedPublicationItem(id: string, direction: -1 | 1) {
@@ -2504,6 +2536,7 @@ export function SiteAdminWebConsole({
   }
 
   function toggleComponentEntry(id: string) {
+    checkpointCollectionEdit();
     setComponentExpandedIds((current) =>
       current.includes(id) ? current.filter((entryId) => entryId !== id) : [id],
     );
@@ -2521,10 +2554,12 @@ export function SiteAdminWebConsole({
       window.requestAnimationFrame(() => {
         const card = document.getElementById(componentEntryDomId(issue.entryId));
         card?.scrollIntoView({ behavior: "smooth", block: "center" });
-        const field = card?.querySelector<HTMLElement>(
+        const field = document.getElementById(`${componentEntryDomId(issue.entryId)}-drawer`)?.querySelector<HTMLElement>(
           `[data-component-field="${issue.field}"]`,
         );
-        field?.focus({ preventScroll: true });
+        const input = field?.matches('input, textarea, select, [contenteditable="true"]')
+          ? field : field?.querySelector<HTMLElement>('input, textarea, select, [contenteditable="true"]');
+        input?.focus({ preventScroll: true });
       });
     });
   }
@@ -2549,15 +2584,47 @@ export function SiteAdminWebConsole({
     focusComponentIssue(selectedComponentIssues[nextIndex]);
   }
 
-  function completeComponentEntry(id: string) {
-    setComponentExpandedIds((current) => current.filter((entryId) => entryId !== id));
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById(componentEntryDomId(id))
-        ?.querySelector<HTMLElement>("[data-entry-trigger]")
-        ?.focus({ preventScroll: true });
+  function checkpointCollectionEdit() {
+    setCollectionHistory((current) => current ? { ...current, group: "" } : null);
+  }
+
+  function applyCollectionSource(source: string) {
+    if (!selectedComponentName) return;
+    const next = parseCollectionDraft(selectedComponentName, source);
+    setCollectionHistory((current) => current
+      ? commitCollectionDraft(current, next) : createCollectionHistory(next));
+    setSourceDraft(source);
+    setComponentExpandedIds([]);
+  }
+
+  function rememberCollectionView() {
+    if (!selectedComponentName) return;
+    collectionViewsRef.current.set(selectedComponentName, {
+      search: componentSearch, grouping: componentGrouping, scroll: window.scrollY,
     });
   }
+
+  async function publishCurrentContent() {
+    if (selectedDirty) await saveSelectedContent({ publish: true });
+    else await publishSavedContent();
+  }
+
+  const collectionEditorActions = {
+    canUndo: Boolean(collectionHistory?.past.length),
+    canRedo: Boolean(collectionHistory?.future.length),
+    onUndo: () => setCollectionHistory((current) => current ? undoCollectionDraft(current) : null),
+    onRedo: () => setCollectionHistory((current) => current ? redoCollectionDraft(current) : null),
+    onCheckpoint: checkpointCollectionEdit,
+    status: documentStatus.label,
+    statusDetail: componentSaveBlocked
+      ? "Incomplete entries are kept in this browser. Complete required fields before saving."
+      : selectedDirty ? (saving ? "Saving draft…" : "Changes will be saved automatically.") : liveSync.state === "pending"
+        ? "Draft saved. Not yet published." : documentStatus.label,
+    onSave: () => void saveSelectedContent(),
+    saveDisabled: saving || !selectedDirty || componentSaveBlocked || loading || Boolean(conflict),
+    onPublish: () => void publishCurrentContent(),
+    publishDisabled: saving || releaseSaving || releaseIsRunning || componentSaveBlocked || loading || Boolean(conflict) || (!selectedDirty && publishBlocked),
+  };
 
   function renderNewsEditor(draft: NewsComponentDraft) {
     const searching = Boolean(componentSearch.trim());
@@ -2573,6 +2640,8 @@ export function SiteAdminWebConsole({
 
     return (
       <StructuredCollectionEditor
+        key="news"
+        {...collectionEditorActions}
         title="News entries"
         description="Edit dated updates directly. The public News page keeps using the same reusable collection."
         count={draft.items.filter((item) => item.type === "entry").length}
@@ -2597,9 +2666,9 @@ export function SiteAdminWebConsole({
         source={{
           fileName: `${selected?.id || "news"}.mdx`,
           label: `${selected?.title || "News"} MDX source`,
-          value: sourceDraft,
-          onChange: setSourceDraft,
-          disabled: saving,
+          value: collectionSource,
+          onChange: applyCollectionSource,
+          disabled: blockingMutation,
         }}
       >
         {items.length === 0 ? (
@@ -2643,7 +2712,7 @@ export function SiteAdminWebConsole({
               groupLabel={groupLabel}
               previousGroupLabel={previousGroup}
               grouping={componentGrouping}
-              title={item.body.split("\n")[0] || "Untitled update"}
+              title={collectionPlainText(item.body) || "Untitled update"}
               detail={item.date || "No date"}
               state={deriveComponentEntryState(componentBaselineFingerprints, item)}
               issues={issues}
@@ -2668,7 +2737,6 @@ export function SiteAdminWebConsole({
                 issues={issues}
                 disabled={blockingMutation}
                 onChange={updateNewsItem}
-                onComplete={() => completeComponentEntry(item.id)}
               />
             </StructuredCollectionEntry>
           );
@@ -2679,8 +2747,10 @@ export function SiteAdminWebConsole({
 
   function renderTeachingEditor(draft: TeachingComponentDraft) {
     const searching = Boolean(componentSearch.trim());
-    const items = draft.items
-      .map((item, index) => ({ item, index }))
+    const ordered = componentGrouping === "auto"
+      ? groupCollectionItems(draft.items, (item) => item.term) : draft.items;
+    const items = ordered
+      .map((item) => ({ item, index: draft.items.findIndex((entry) => entry.id === item.id) }))
       .filter(({ item }) =>
         matchesComponentItem(
           componentSearch,
@@ -2689,12 +2759,16 @@ export function SiteAdminWebConsole({
       );
     return (
       <StructuredCollectionEditor
+        key="teaching"
+        {...collectionEditorActions}
         title="Teaching rows"
         description="Edit course rows directly. The MDX source remains available under Advanced."
         count={draft.items.length}
         entryLabel="courses"
         addLabel="Add course"
-        onAdd={addTeachingEntry}
+        onAdd={() => addTeachingEntry()}
+        secondaryLabel="New term"
+        onSecondary={() => addTeachingEntry("")}
         search={componentSearch}
         onSearchChange={setComponentSearch}
         grouping={componentGrouping}
@@ -2709,9 +2783,9 @@ export function SiteAdminWebConsole({
         source={{
           fileName: `${selected?.id || "teaching"}.mdx`,
           label: `${selected?.title || "Teaching"} MDX source`,
-          value: sourceDraft,
-          onChange: setSourceDraft,
-          disabled: saving,
+          value: collectionSource,
+          onChange: applyCollectionSource,
+          disabled: blockingMutation,
         }}
       >
         {items.length === 0 ? (
@@ -2719,10 +2793,9 @@ export function SiteAdminWebConsole({
         ) : null}
         {items.map(({ item, index }, visibleIndex) => {
           const issues = issuesForComponentEntry(item.id);
-          const groupLabel =
-            item.term.match(/^\d{4}\/\d{2}/)?.[0] || item.term || "No term";
+          const groupLabel = item.term || "No term";
           const previousTerm = items[visibleIndex - 1]?.item.term || "";
-          const previousGroup = previousTerm.match(/^\d{4}\/\d{2}/)?.[0] || previousTerm;
+          const previousGroup = previousTerm;
           return (
             <StructuredCollectionEntry
               key={item.id}
@@ -2732,6 +2805,8 @@ export function SiteAdminWebConsole({
               grouping={componentGrouping}
               title={item.courseCode || item.courseName || item.term || "Untitled course"}
               detail={item.term || item.period || "Course"}
+              description={[item.courseName, item.role].filter(Boolean).join(" · ")}
+              onAddToGroup={() => addTeachingEntry(item.term)}
               state={deriveComponentEntryState(componentBaselineFingerprints, item)}
               issues={issues}
               expanded={componentExpandedIds.includes(item.id)}
@@ -2758,7 +2833,6 @@ export function SiteAdminWebConsole({
                 issues={issues}
                 disabled={blockingMutation}
                 onChange={updateTeachingItem}
-                onComplete={() => completeComponentEntry(item.id)}
               />
             </StructuredCollectionEntry>
           );
@@ -2769,8 +2843,10 @@ export function SiteAdminWebConsole({
 
   function renderWorksEditor(draft: WorksComponentDraft) {
     const searching = Boolean(componentSearch.trim());
-    const items = draft.items
-      .map((item, index) => ({ item, index }))
+    const ordered = componentGrouping === "auto"
+      ? groupCollectionItems(draft.items, (item) => item.category) : draft.items;
+    const items = ordered
+      .map((item) => ({ item, index: draft.items.findIndex((entry) => entry.id === item.id) }))
       .filter(({ item }) =>
         matchesComponentItem(
           componentSearch,
@@ -2779,12 +2855,14 @@ export function SiteAdminWebConsole({
       );
     return (
       <StructuredCollectionEditor
+        key="works"
+        {...collectionEditorActions}
         title="Work rows"
         description="Edit roles, affiliations, periods, and body text without touching MDX tags."
         count={draft.items.length}
         entryLabel="roles"
         addLabel="Add role"
-        onAdd={addWorksEntry}
+        onAdd={() => addWorksEntry()}
         search={componentSearch}
         onSearchChange={setComponentSearch}
         grouping={componentGrouping}
@@ -2799,9 +2877,9 @@ export function SiteAdminWebConsole({
         source={{
           fileName: `${selected?.id || "works"}.mdx`,
           label: `${selected?.title || "Works"} MDX source`,
-          value: sourceDraft,
-          onChange: setSourceDraft,
-          disabled: saving,
+          value: collectionSource,
+          onChange: applyCollectionSource,
+          disabled: blockingMutation,
         }}
       >
         {items.length === 0 ? (
@@ -2825,6 +2903,8 @@ export function SiteAdminWebConsole({
               grouping={componentGrouping}
               title={item.role || item.affiliation || "Untitled work"}
               detail={item.period || item.category}
+              description={[item.affiliation, item.location].filter(Boolean).join(" · ")}
+              onAddToGroup={() => addWorksEntry(item.category)}
               state={deriveComponentEntryState(componentBaselineFingerprints, item)}
               issues={issues}
               expanded={componentExpandedIds.includes(item.id)}
@@ -2851,7 +2931,6 @@ export function SiteAdminWebConsole({
                 issues={issues}
                 disabled={blockingMutation}
                 onChange={updateWorksItem}
-                onComplete={() => completeComponentEntry(item.id)}
               />
             </StructuredCollectionEntry>
           );
@@ -2862,8 +2941,10 @@ export function SiteAdminWebConsole({
 
   function renderPublicationsEditor(draft: PublicationsComponentDraft) {
     const searching = Boolean(componentSearch.trim());
-    const items = draft.items
-      .map((item, index) => ({ item, index }))
+    const ordered = componentGrouping === "auto"
+      ? groupCollectionItems(draft.items, (item) => item.year) : draft.items;
+    const items = ordered
+      .map((item) => ({ item, index: draft.items.findIndex((entry) => entry.id === item.id) }))
       .filter(({ item }) =>
         matchesComponentItem(
           componentSearch,
@@ -2872,12 +2953,14 @@ export function SiteAdminWebConsole({
       );
     return (
       <StructuredCollectionEditor
+        key="publications"
+        {...collectionEditorActions}
         title="Publication rows"
         description="Edit titles, authors, venue, links, and labels directly. Advanced JSON remains preserved."
         count={draft.items.length}
         entryLabel="publications"
         addLabel="Add publication"
-        onAdd={addPublicationEntry}
+        onAdd={() => addPublicationEntry()}
         search={componentSearch}
         onSearchChange={setComponentSearch}
         grouping={componentGrouping}
@@ -2892,9 +2975,9 @@ export function SiteAdminWebConsole({
         source={{
           fileName: `${selected?.id || "publications"}.mdx`,
           label: `${selected?.title || "Publications"} MDX source`,
-          value: sourceDraft,
-          onChange: setSourceDraft,
-          disabled: saving,
+          value: collectionSource,
+          onChange: applyCollectionSource,
+          disabled: blockingMutation,
         }}
       >
         {items.length === 0 ? (
@@ -2912,6 +2995,8 @@ export function SiteAdminWebConsole({
               grouping={componentGrouping}
               title={item.title || "Untitled publication"}
               detail={item.year || "Publication"}
+              description={(item.authors || item.authorsRich?.map((author) => author.name) || []).join(", ")}
+              onAddToGroup={() => addPublicationEntry(item.year)}
               state={deriveComponentEntryState(componentBaselineFingerprints, item)}
               issues={issues}
               expanded={componentExpandedIds.includes(item.id)}
@@ -2938,7 +3023,6 @@ export function SiteAdminWebConsole({
                 issues={issues}
                 disabled={blockingMutation}
                 onChange={updatePublicationItem}
-                onComplete={() => completeComponentEntry(item.id)}
               />
             </StructuredCollectionEntry>
           );
@@ -3008,12 +3092,15 @@ export function SiteAdminWebConsole({
 
   function closeSelectedContent() {
     if (!confirmDiscardChanges()) return;
+    rememberCollectionView();
     setContentMode("browse");
     if (selected?.kind === "posts" || selected?.kind === "pages") {
       setDocumentKind(selected.kind);
     }
     setSelected(null);
     setSourceDraft("");
+    setCollectionHistory(null);
+    setCollectionBaseline("");
     setContentForm(EMPTY_CONTENT_FORM);
     setContentFormBaseline("");
     setSlugDraft("");
@@ -3328,8 +3415,8 @@ export function SiteAdminWebConsole({
   const resolvedCreateSlug = createSlug.trim() || slugFromTitle(createTitle);
 
   return (
-    <main className={styles.shell} data-area={area}>
-      <header className={styles.adminChrome}>
+    <main ref={shellRef} className={styles.shell} data-area={area}>
+      <header ref={chromeRef} className={styles.adminChrome}>
         <section className={styles.hero}>
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>Site Admin · {actor}</p>
@@ -3444,9 +3531,17 @@ export function SiteAdminWebConsole({
                       variant={selectedDirty ? "solid" : "subtle"}
                       tone={selectedDirty ? "accent" : "neutral"}
                       size="sm"
-                      disabled={saving || !selectedDirty || componentSaveBlocked}
+                      disabled={saving || !selectedDirty || componentSaveBlocked || Boolean(conflict)}
                     >
-                      {saving ? "Saving" : "Save"}
+                      {saving ? "Saving draft" : "Save draft"}
+                    </Button>
+                    <Button
+                      onClick={() => void publishCurrentContent()}
+                      tone="accent"
+                      size="sm"
+                      disabled={collectionEditorActions.publishDisabled}
+                    >
+                      {releaseIsRunning ? "Publishing" : "Publish updates"}
                     </Button>
                   </div>
                 </div>
@@ -3505,15 +3600,6 @@ export function SiteAdminWebConsole({
                         size="sm"
                       >
                         View release
-                      </Button>
-                    ) : liveSync.state !== "live" ? (
-                      <Button
-                        onClick={() => void publishSavedContent()}
-                        tone="accent"
-                        size="sm"
-                        disabled={selectedDirty || publishBlocked}
-                      >
-                        {publishButtonLabel}
                       </Button>
                     ) : null}
                   </div>

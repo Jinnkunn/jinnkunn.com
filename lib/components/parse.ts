@@ -69,7 +69,12 @@ export function stripMdxFrontmatter(source: string): string {
 export function parseJsxAttrs(raw: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   for (const match of String(raw || "").matchAll(ATTR_RE)) {
-    attrs[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
+    const quoted = match[2] ?? match[3];
+    // Decode one layer of the entities emitted by the structured editor.
+    attrs[match[1]] = quoted === undefined ? match[4] ?? "" : quoted.replace(
+      /&(quot|lt|gt|amp);/g,
+      (entity) => ({ "&quot;": '"', "&lt;": "<", "&gt;": ">", "&amp;": "&" })[entity] || entity,
+    );
   }
   return attrs;
 }

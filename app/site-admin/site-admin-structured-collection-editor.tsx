@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
+import { CollectionListField, CollectionTermField } from "./site-admin-collection-fields";
 import {
   formatMonthRangePeriod,
   parseMonthRangePeriod,
@@ -33,6 +35,17 @@ type StructuredCollectionEditorProps = {
   visibleEntryIds: string[];
   expandedEntryIds: string[];
   onExpandedEntryIdsChange: (value: string[]) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  onCheckpoint: () => void;
+  status: string;
+  statusDetail: string;
+  onSave: () => void;
+  saveDisabled: boolean;
+  onPublish: () => void;
+  publishDisabled: boolean;
   issueCount: number;
   onReviewIssues: () => void;
   onReviewPreviousIssue: () => void;
@@ -54,6 +67,8 @@ type StructuredCollectionEntryProps = {
   grouping: ComponentGrouping;
   title: string;
   detail: string;
+  description?: string;
+  onAddToGroup?: () => void;
   state: string;
   issues: ComponentEntryIssue[];
   expanded: boolean;
@@ -73,6 +88,15 @@ type StructuredCollectionEntryProps = {
   children: ReactNode;
 };
 
+type CollectionPanel = Pick<StructuredCollectionEditorProps,
+  "visibleEntryIds" | "onExpandedEntryIdsChange" | "onCheckpoint" | "status" |
+  "statusDetail" | "onSave" | "saveDisabled" | "onPublish" | "publishDisabled"> & {
+    host: HTMLElement | null;
+    activeId: string;
+    compact: boolean;
+  };
+const CollectionPanelContext = createContext<CollectionPanel | null>(null);
+
 type StructuredCollectionDividerProps = {
   dragging: boolean;
   dropTarget: boolean;
@@ -89,7 +113,6 @@ type StructuredCollectionDividerProps = {
 
 export function StructuredCollectionEditor({
   title,
-  description,
   count,
   entryLabel,
   addLabel,
@@ -103,6 +126,17 @@ export function StructuredCollectionEditor({
   visibleEntryIds,
   expandedEntryIds,
   onExpandedEntryIdsChange,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  onCheckpoint,
+  status,
+  statusDetail,
+  onSave,
+  saveDisabled,
+  onPublish,
+  publishDisabled,
   issueCount,
   onReviewIssues,
   onReviewPreviousIssue,
@@ -110,6 +144,26 @@ export function StructuredCollectionEditor({
   source,
   children,
 }: StructuredCollectionEditorProps) {
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+  const [compact, setCompact] = useState(false);
+  const activeId = expandedEntryIds.find((id) => visibleEntryIds.includes(id)) || "";
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1100px)");
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!compact || !activeId) return;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = overflow; };
+  }, [activeId, compact]);
+  const panel: CollectionPanel = {
+    host, activeId, compact, visibleEntryIds, onExpandedEntryIdsChange, onCheckpoint,
+    status, statusDetail, onSave, saveDisabled, onPublish, publishDisabled,
+  };
   const handleEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
     event.preventDefault();
@@ -118,12 +172,11 @@ export function StructuredCollectionEditor({
   };
 
   return (
+    <CollectionPanelContext.Provider value={panel}>
     <div className={styles.newsEditor} onKeyDown={handleEditorKeyDown}>
       <div className={styles.componentCollectionHeader}>
         <div className={styles.componentCollectionIntro}>
-          <p className={styles.cardLabel}>Structured entries</p>
-          <h3>{title}</h3>
-          <p>{description}</p>
+          <h3 className={styles.visuallyHidden}>{title}</h3>
         </div>
         <div className={styles.componentCollectionTools}>
           <label className={styles.componentSearchField}>
@@ -153,22 +206,8 @@ export function StructuredCollectionEditor({
                 <option value="none">No groups</option>
               </select>
             </label>
-            <Button
-              onClick={() => onExpandedEntryIdsChange(visibleEntryIds)}
-              variant="subtle"
-              size="sm"
-              disabled={visibleEntryIds.length === 0}
-            >
-              Expand all
-            </Button>
-            <Button
-              onClick={() => onExpandedEntryIdsChange([])}
-              variant="subtle"
-              size="sm"
-              disabled={expandedEntryIds.length === 0}
-            >
-              Collapse
-            </Button>
+            <Button onClick={onUndo} variant="ghost" size="sm" disabled={!canUndo} title="Undo last edit or deletion" aria-label="Undo collection edit">↶</Button>
+            <Button onClick={onRedo} variant="ghost" size="sm" disabled={!canRedo} title="Redo collection edit" aria-label="Redo collection edit">↷</Button>
             {issueCount > 0 ? (
               <div className={styles.collectionIssueControls}>
                 <Button
@@ -209,26 +248,21 @@ export function StructuredCollectionEditor({
           </div>
         </div>
       </div>
-      <div className={styles.newsEntryList}>{children}</div>
+      <div className={styles.collectionWorkspace} data-editing={Boolean(activeId)}>
+        <div className={styles.newsEntryList}>{children}</div>
+        <div ref={setHost} className={styles.collectionPanelHost} />
+      </div>
       <details className={styles.editorDetails}>
         <summary>
           <span>Advanced component source</span>
           <small>{source.fileName}</small>
         </summary>
         <div className={styles.editorDetailsBody}>
-          <SiteAdminMarkdownEditor
-            label={source.label}
-            value={source.value}
-            onChange={source.onChange}
-            minHeight={420}
-            size="large"
-            disabled={source.disabled}
-            initialMode="source"
-            visualEditing={false}
-          />
+          <CollectionSourceEditor source={source} />
         </div>
       </details>
     </div>
+    </CollectionPanelContext.Provider>
   );
 }
 
@@ -239,6 +273,7 @@ export function StructuredCollectionGroup({
   dropTarget = false,
   onDragOver,
   onDrop,
+  onAdd,
 }: {
   label: string;
   previousLabel: string;
@@ -246,6 +281,7 @@ export function StructuredCollectionGroup({
   dropTarget?: boolean;
   onDragOver?: (event: DragEvent<HTMLElement>) => void;
   onDrop?: (event: DragEvent<HTMLElement>) => void;
+  onAdd?: () => void;
 }) {
   if (grouping === "none" || !label || label === previousLabel) return null;
   return (
@@ -255,7 +291,8 @@ export function StructuredCollectionGroup({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      {label}
+      <span>{label}</span>
+      {onAdd ? <Button onClick={onAdd} variant="ghost" size="sm" aria-label={`Add entry to ${label}`}>+ Add</Button> : null}
     </div>
   );
 }
@@ -267,6 +304,8 @@ export function StructuredCollectionEntry({
   grouping,
   title,
   detail,
+  description,
+  onAddToGroup,
   state,
   issues,
   expanded,
@@ -285,8 +324,32 @@ export function StructuredCollectionEntry({
   onDrop,
   children,
 }: StructuredCollectionEntryProps) {
+  const panel = useContext(CollectionPanelContext);
+  expanded = expanded && panel?.activeId === id;
   const wasExpandedRef = useRef(false);
   const drawerId = `${componentEntryDomId(id)}-drawer`;
+
+  useEffect(() => {
+    if (!expanded || panel?.compact) return;
+    let frame = 0;
+    const measure = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const drawer = document.getElementById(drawerId);
+        if (!drawer) return;
+        const height = Math.max(360, window.innerHeight - drawer.getBoundingClientRect().top - 16);
+        drawer.style.setProperty("--collection-panel-height", `${height}px`);
+      });
+    };
+    measure();
+    window.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [drawerId, expanded, panel?.compact]);
 
   useEffect(() => {
     const trigger = document
@@ -295,17 +358,20 @@ export function StructuredCollectionEntry({
     if (expanded) {
       window.requestAnimationFrame(() => {
         const drawer = document.getElementById(drawerId);
+        if (!panel?.compact) drawer?.scrollIntoView({ block: "nearest" });
         const preferred = drawer?.querySelector<HTMLElement>(
-          "input:not([disabled]), textarea:not([disabled]), select:not([disabled])",
+          'input:not([disabled]):not([type="checkbox"]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"]',
         );
         const fallback = drawer?.querySelector<HTMLElement>("button:not([disabled])");
-        (preferred || fallback || drawer)?.focus();
+        (preferred || fallback || drawer)?.focus({ preventScroll: true });
       });
     } else if (wasExpandedRef.current) {
-      window.requestAnimationFrame(() => trigger?.focus());
+      window.requestAnimationFrame(() => {
+        if (!panel?.activeId) trigger?.focus({ preventScroll: true });
+      });
     }
     wasExpandedRef.current = expanded;
-  }, [drawerId, expanded, id]);
+  }, [drawerId, expanded, id, panel?.activeId, panel?.compact]);
 
   const handleDrawerKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -313,7 +379,7 @@ export function StructuredCollectionEntry({
       onToggle();
       return;
     }
-    if (event.key !== "Tab") return;
+    if (event.key !== "Tab" || !panel?.compact) return;
     const focusable = Array.from(
       event.currentTarget.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -344,6 +410,7 @@ export function StructuredCollectionEntry({
         dropTarget={dropTarget}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        onAdd={onAddToGroup}
       />
       <article
         id={componentEntryDomId(id)}
@@ -351,6 +418,7 @@ export function StructuredCollectionEntry({
         data-dragging={dragging}
         data-drop-target={dropTarget}
         data-invalid={issues.length > 0}
+        data-selected={expanded}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
@@ -368,37 +436,38 @@ export function StructuredCollectionEntry({
             aria-controls={drawerId}
             onClick={onToggle}
           >
-            <strong>{title}</strong>
+            <span className={styles.collectionEntryTitle}><strong>{title}</strong>{description ? <small>{description}</small> : null}</span>
             <CollectionEntryMeta detail={detail} state={state} issueCount={issues.length} />
           </button>
         </div>
-        {expanded ? (
+        {expanded && panel?.host ? createPortal(
           <>
-            <button
+            {panel.compact ? <button
               type="button"
               className={styles.collectionEntryScrim}
               aria-hidden="true"
               tabIndex={-1}
               onClick={onToggle}
-            />
+            /> : null}
             <aside
               id={drawerId}
               className={styles.collectionEntryDrawer}
-              role="dialog"
-              aria-modal="true"
+              role={panel.compact ? "dialog" : "region"}
+              aria-modal={panel.compact ? true : undefined}
               aria-label={`Edit ${title}`}
               tabIndex={-1}
               onKeyDown={handleDrawerKeyDown}
             >
               <header className={styles.collectionEntryDrawerHeader}>
                 <div>
-                  <p className={styles.cardLabel}>Structured entry</p>
                   <h3>{title}</h3>
                   <small>{detail}</small>
                 </div>
-                <Button onClick={onToggle} variant="ghost" size="sm">
-                  Close
-                </Button>
+                <div className={styles.collectionPanelNav}>
+                  <Button onClick={() => { panel.onCheckpoint(); panel.onExpandedEntryIdsChange([panel.visibleEntryIds[panel.visibleEntryIds.indexOf(id) - 1]]); }} disabled={panel.visibleEntryIds.indexOf(id) <= 0} variant="ghost" size="sm" title="Previous entry" aria-label="Previous entry">↑</Button>
+                  <Button onClick={() => { panel.onCheckpoint(); panel.onExpandedEntryIdsChange([panel.visibleEntryIds[panel.visibleEntryIds.indexOf(id) + 1]]); }} disabled={panel.visibleEntryIds.indexOf(id) >= panel.visibleEntryIds.length - 1} variant="ghost" size="sm" title="Next entry" aria-label="Next entry">↓</Button>
+                  <Button onClick={onToggle} variant="ghost" size="sm" title="Close editor" aria-label="Close entry editor">×</Button>
+                </div>
               </header>
               <div className={styles.collectionEntryDrawerBody}>
                 <details className={styles.collectionEntryActionsMenu}>
@@ -417,13 +486,12 @@ export function StructuredCollectionEntry({
                 <Button onClick={onDelete} variant="subtle" tone="danger" size="sm">
                   Delete
                 </Button>
-                <small>Changes remain in this draft until you use Save.</small>
-                <Button onClick={onToggle} tone="accent" size="sm">
-                  Done editing
-                </Button>
+                <div className={styles.collectionPanelStatus} role="status"><strong>{panel.status}</strong><small>{panel.statusDetail}</small></div>
+                <Button onClick={panel.onSave} disabled={panel.saveDisabled} variant="subtle" size="sm">Save draft</Button>
+                <Button onClick={panel.onPublish} disabled={panel.publishDisabled} tone="accent" size="sm">Publish updates</Button>
               </footer>
             </aside>
-          </>
+          </>, panel.host
         ) : null}
       </article>
     </>
@@ -517,20 +585,20 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
   issues,
   disabled,
   onChange,
-  onComplete,
 }: {
   item: T;
   fields: readonly StructuredCollectionFieldSchema<T>[];
   issues: ComponentEntryIssue[];
   disabled: boolean;
   onChange: (next: T) => void;
-  onComplete: () => void;
 }) {
-  const issueFor = (field: string) => issues.find((issue) => issue.field === field);
+  const panel = useContext(CollectionPanelContext);
+  const [touched, setTouched] = useState(new Set<string>());
+  const issueFor = (field: string) => touched.has(field) ? issues.find((issue) => issue.field === field) : undefined;
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
     event.preventDefault();
-    onComplete();
+    if (!panel?.saveDisabled) panel?.onSave();
   };
 
   return (
@@ -539,7 +607,11 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
       data-structured-entry-form={item.id}
       onKeyDown={handleKeyDown}
     >
-      {fields.map((field) => {
+      {Array.from(new Set(fields.map((field) => field.section || ""))).sort((a, b) =>
+        ["", "Publication", "Authors", "Venue", "Links"].indexOf(a) - ["", "Publication", "Authors", "Venue", "Links"].indexOf(b)
+      ).map((section) => <section key={section} className={styles.collectionFormSection} aria-label={section || "Entry fields"}>
+        {section ? <h4>{section}</h4> : null}
+        {fields.filter((field) => (field.section || "") === section).map((field) => {
         const issue = issueFor(field.key);
         const value = field.read(item);
         const fieldOptions =
@@ -552,18 +624,40 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
           placeholder: field.placeholder,
           "data-component-field": field.key,
           "aria-invalid": Boolean(issue),
+          onBlur: () => { setTouched((current) => new Set([...current, field.key])); panel?.onCheckpoint(); },
           onChange: (
             event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
           ) => onChange(field.write(item, event.target.value)),
         };
 
+        if (field.control === "term") return <div key={field.key} data-component-field={field.key} onBlur={common.onBlur}>
+          <CollectionTermField value={value} onChange={(next) => onChange(field.write(item, next))} disabled={disabled} />
+          <StructuredCollectionFieldIssue issue={issue} />
+        </div>;
+        if (field.control === "list" && field.readList && field.writeList) return <div key={field.key} onBlur={common.onBlur}>
+          <CollectionListField label={field.label} values={field.readList(item)} onChange={(values) => onChange(field.writeList!(item, values))} disabled={disabled} placeholder={field.placeholder} />
+          <StructuredCollectionFieldIssue issue={issue} />
+        </div>;
+        if (field.control === "markdown") return <div key={field.key} data-component-field={field.key} onBlur={common.onBlur}>
+          <span className={styles.fieldLabel}>{field.label}</span>
+          <SiteAdminMarkdownEditor label={field.label} value={value} onChange={(next) => onChange(field.write(item, next))} blocking={disabled} minHeight={180} size="compact" allowImageUpload={false} />
+          <StructuredCollectionFieldIssue issue={issue} />
+        </div>;
+
         if (field.control === "month-range") {
-          const range = parseMonthRangePeriod(value);
+          const range = field.readRange?.(item) || parseMonthRangePeriod(value);
           const writeRange = (next: {
             start: string;
             end: string;
             ongoing: boolean;
-          }) => onChange(field.write(item, formatMonthRangePeriod(next)));
+          }) => onChange(field.writeRange
+            ? field.writeRange(item, { ...next, valid: true })
+            : field.write(item, formatMonthRangePeriod(next)));
+
+          if (!range.valid && !field.readRange?.(item)?.start) return <label key={field.key} className={styles.fieldLabel}>
+            {field.label}<input {...common} type="text" />
+            <Button variant="ghost" size="sm" onClick={() => writeRange({ start: "", end: "", ongoing: false })}>Choose months</Button>
+          </label>;
 
           return (
             <fieldset
@@ -571,6 +665,7 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
                 field.wide ? ` ${styles.componentFieldWide}` : ""
               }`}
               key={field.key}
+              onBlur={common.onBlur}
             >
               <legend>{field.label}</legend>
               <div className={styles.monthRangeControl}>
@@ -639,15 +734,35 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
                 ))}
               </select>
             ) : (
-              <input {...common} type={field.inputType || "text"} />
+              <>
+                <input {...common} type={field.inputType || "text"} list={field.control === "combobox" ? `${item.id}-${field.key}-options` : undefined} />
+                {field.control === "combobox" ? <datalist id={`${item.id}-${field.key}-options`}>
+                  {fieldOptions.map((option) => <option key={option.value} value={option.value} />)}
+                </datalist> : null}
+              </>
             )}
             <StructuredCollectionFieldIssue issue={issue} />
           </label>
         );
-      })}
-      <small className={styles.collectionShortcutHint}>⌘↵ Done</small>
+      })}</section>)}
     </div>
   );
+}
+
+function CollectionSourceEditor({ source }: { source: StructuredCollectionEditorProps["source"] }) {
+  const [pending, setPending] = useState({ base: source.value, value: source.value });
+  const value = pending.value === pending.base ? source.value : pending.value;
+  const dirty = value !== source.value;
+  return <div>
+    <div className={styles.collectionSourceActions}>
+      <Button variant="subtle" size="sm" disabled={!dirty || source.disabled} onClick={() => setPending({ base: source.value, value: source.value })}>Discard source edits</Button>
+      <Button tone="accent" size="sm" disabled={!dirty || source.disabled} onClick={() => {
+        source.onChange(value);
+        setPending({ base: value, value });
+      }}>Apply source</Button>
+    </div>
+    <SiteAdminMarkdownEditor label={source.label} value={value} onChange={(next) => setPending({ base: source.value, value: next })} minHeight={320} size="large" blocking={source.disabled} initialMode="source" visualEditing={false} allowImageUpload={false} />
+  </div>;
 }
 
 function CollectionEntryActions({
@@ -700,12 +815,12 @@ function CollectionEntryMeta({
   return (
     <span className={styles.collectionEntryMeta}>
       <small>{detail}</small>
-      <span
+      {state !== "Saved" || issueCount > 0 ? <span
         className={styles.entryReadiness}
         data-state={issueCount > 0 ? "invalid" : state.toLocaleLowerCase()}
       >
         {issueCount > 0 ? `Fix ${issueCount}` : state}
-      </span>
+      </span> : null}
     </span>
   );
 }

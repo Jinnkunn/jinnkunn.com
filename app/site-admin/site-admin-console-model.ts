@@ -56,12 +56,12 @@ export type ContentSaveEffects = {
  * and a silent save that also woke the release runner had no way to say so.
  */
 export function contentSaveEffects(
-  options: { quiet?: boolean } = {},
+  options: { quiet?: boolean; publish?: boolean } = {},
 ): ContentSaveEffects {
   const quiet = options.quiet === true;
   return {
     persist: true,
-    publish: !quiet,
+    publish: !quiet && options.publish === true,
     reconcileLists: !quiet,
     announce: !quiet,
   };

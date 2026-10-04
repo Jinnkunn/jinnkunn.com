@@ -45,6 +45,8 @@ test("site-admin web UI exposes explicit draft and navigation controls", async (
   assert.match(announcementsPanel, /SiteAdminMarkdownEditor/);
   assert.match(announcementsPanel, /Single flexible flow/);
   assert.match(announcementsPanel, /Two columns/);
-  assert.match(collectionEditor, /Changes remain in this draft until you use Save/);
+  assert.match(collectionEditor, /Save draft/);
+  assert.match(collectionEditor, /Publish updates/);
+  assert.match(collectionEditor, /collectionPanelStatus/);
   assert.match(collectionEditor, /aria-hidden="true"/);
 });
