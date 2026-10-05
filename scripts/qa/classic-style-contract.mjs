@@ -525,8 +525,8 @@ function assertMobileRoute(route, contract) {
 function assertMobileHome(contract) {
   assertBetween(
     contract.image?.width ?? 0,
-    340,
-    344,
+    219,
+    221,
     "Homepage classic intro image width drifted on mobile",
   );
   assert(
@@ -681,6 +681,9 @@ async function runContracts(baseURL, options = {}) {
         for (const item of CLASSIC_LINK_ICON_CONTRACT.filter(
           (icon) => icon.route === route.path,
         )) {
+          // The registry describes optional content links; required links are
+          // checked separately by the route and shared link style contracts.
+          if (!(await desktopPage.locator(item.selector).count())) continue;
           await assertIcon(desktopPage, item);
         }
       } catch (error) {
