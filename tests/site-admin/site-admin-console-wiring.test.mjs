@@ -117,3 +117,21 @@ test("the CodeMirror view is not rebuilt when props change while typing", () => 
   assert.equal(depsMatch[1].trim(), "");
   assert.match(SOURCE_EDITOR, /editableCompartmentRef\.current\.reconfigure/);
 });
+
+test("collections return to their own index and restore the entry and filters", () => {
+  const close = CONSOLE.slice(CONSOLE.indexOf("function closeSelectedContent"), CONSOLE.indexOf("function openCollectionIndex"));
+  assert.match(close, /selected\?\.kind === "components" \? "collections"/);
+  assert.match(close, /selectionGateRef\.current\.open\(\)/);
+  assert.match(CONSOLE, /setComponentExpandedIds\(view\?\.expanded \|\| \[\]\)/);
+  assert.match(CONSOLE, /scroll: window\.scrollY, expanded: componentExpandedIds/);
+  assert.match(CONSOLE, /showCollectionIndex \? renderCollectionIndex\(\) : renderDocumentIndex\(\)/);
+});
+
+test("publication is confirmed and conflicts no longer publish implicitly", () => {
+  const conflict = CONSOLE.slice(CONSOLE.indexOf("async function keepConflictEdits"), CONSOLE.indexOf("async function deleteSelectedContent"));
+  assert.doesNotMatch(conflict, /queueSavedContentPublish/);
+  assert.match(conflict, /recordSavedContent/);
+  assert.match(CONSOLE, /title="Review publication"/);
+  assert.match(CONSOLE, /This publishes all saved site content/);
+  assert.match(CONSOLE, /item\.revision > coveredRevision/);
+});

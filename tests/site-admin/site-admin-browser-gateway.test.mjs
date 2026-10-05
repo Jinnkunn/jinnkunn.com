@@ -86,8 +86,8 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("sourceForEditedContent"));
   assert.ok(source.includes("frontmatterKeys"));
   assert.ok(source.includes("contentSavedAt"));
-  assert.ok(source.includes("Unsaved edits"));
-  assert.ok(source.includes("Publish updates when ready"));
+  assert.ok(source.includes("Autosave pending"));
+  assert.ok(source.includes("Review publication"));
   assert.ok(source.includes("publishCurrentContent"));
   assert.ok(source.includes("editorTitleGrid"));
   assert.ok(source.includes("editorDetails"));

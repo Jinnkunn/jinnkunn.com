@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import { CollectionListField, CollectionTermField } from "./site-admin-collection-fields";
 import {
@@ -69,6 +70,8 @@ type StructuredCollectionEntryProps = {
   detail: string;
   description?: string;
   onAddToGroup?: () => void;
+  onEditGroup?: () => void;
+  groupCount?: number;
   state: string;
   issues: ComponentEntryIssue[];
   expanded: boolean;
@@ -274,6 +277,8 @@ export function StructuredCollectionGroup({
   onDragOver,
   onDrop,
   onAdd,
+  onEdit,
+  count,
 }: {
   label: string;
   previousLabel: string;
@@ -282,6 +287,8 @@ export function StructuredCollectionGroup({
   onDragOver?: (event: DragEvent<HTMLElement>) => void;
   onDrop?: (event: DragEvent<HTMLElement>) => void;
   onAdd?: () => void;
+  onEdit?: () => void;
+  count?: number;
 }) {
   if (grouping === "none" || !label || label === previousLabel) return null;
   return (
@@ -291,8 +298,9 @@ export function StructuredCollectionGroup({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <span>{label}</span>
-      {onAdd ? <Button onClick={onAdd} variant="ghost" size="sm" aria-label={`Add entry to ${label}`}>+ Add</Button> : null}
+      <span>{label}{count !== undefined ? <small className={styles.groupCount}>{count}</small> : null}</span>
+      {onEdit ? <IconButton onClick={onEdit} variant="ghost" size="sm" label={`Manage ${label}`}>⋯</IconButton> : null}
+      {onAdd ? <IconButton onClick={onAdd} variant="ghost" size="sm" label={`Add entry to ${label}`}>+</IconButton> : null}
     </div>
   );
 }
@@ -306,6 +314,8 @@ export function StructuredCollectionEntry({
   detail,
   description,
   onAddToGroup,
+  onEditGroup,
+  groupCount,
   state,
   issues,
   expanded,
@@ -337,7 +347,7 @@ export function StructuredCollectionEntry({
       frame = window.requestAnimationFrame(() => {
         const drawer = document.getElementById(drawerId);
         if (!drawer) return;
-        const height = Math.max(360, window.innerHeight - drawer.getBoundingClientRect().top - 16);
+        const height = Math.max(200, window.innerHeight - drawer.getBoundingClientRect().top - 16);
         drawer.style.setProperty("--collection-panel-height", `${height}px`);
       });
     };
@@ -411,6 +421,8 @@ export function StructuredCollectionEntry({
         onDragOver={onDragOver}
         onDrop={onDrop}
         onAdd={onAddToGroup}
+        onEdit={onEditGroup}
+        count={groupCount}
       />
       <article
         id={componentEntryDomId(id)}
@@ -470,6 +482,7 @@ export function StructuredCollectionEntry({
                 </div>
               </header>
               <div className={styles.collectionEntryDrawerBody}>
+                {children}
                 <details className={styles.collectionEntryActionsMenu}>
                   <summary>Entry actions</summary>
                   <CollectionEntryActions
@@ -480,15 +493,16 @@ export function StructuredCollectionEntry({
                     onDuplicate={onDuplicate}
                   />
                 </details>
-                {children}
               </div>
               <footer className={styles.collectionEntryDrawerFooter}>
                 <Button onClick={onDelete} variant="subtle" tone="danger" size="sm">
                   Delete
                 </Button>
                 <div className={styles.collectionPanelStatus} role="status"><strong>{panel.status}</strong><small>{panel.statusDetail}</small></div>
-                <Button onClick={panel.onSave} disabled={panel.saveDisabled} variant="subtle" size="sm">Save draft</Button>
-                <Button onClick={panel.onPublish} disabled={panel.publishDisabled} tone="accent" size="sm">Publish updates</Button>
+                {panel.compact ? <>
+                  <Button onClick={panel.onSave} disabled={panel.saveDisabled} variant="ghost" size="sm">Save draft</Button>
+                  <Button onClick={panel.onPublish} disabled={panel.publishDisabled} tone="accent" size="sm">Publish updates</Button>
+                </> : <Button onClick={onToggle} variant="subtle" size="sm">Done</Button>}
               </footer>
             </aside>
           </>, panel.host

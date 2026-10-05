@@ -134,14 +134,14 @@ export const NEWS_ENTRY_FIELDS: readonly StructuredCollectionFieldSchema<NewsDra
 ];
 
 export const TEACHING_ENTRY_FIELDS: readonly StructuredCollectionFieldSchema<TeachingDraftEntry>[] = [
-  stringField<TeachingDraftEntry, "term">("term", "Term", { control: "term" }),
-  periodField<TeachingDraftEntry>(),
+  stringField<TeachingDraftEntry, "courseCode">("courseCode", "Course code"),
+  stringField<TeachingDraftEntry, "courseName">("courseName", "Course name"),
   stringField<TeachingDraftEntry, "role">("role", "Role", {
     control: "combobox",
     options: ["Instructor", "Teaching Assistant", "Marker", "Guest Lecturer"].map((value) => ({ value, label: value })),
   }),
-  stringField<TeachingDraftEntry, "courseCode">("courseCode", "Course code"),
-  stringField<TeachingDraftEntry, "courseName">("courseName", "Course name"),
+  stringField<TeachingDraftEntry, "term">("term", "Term", { control: "term" }),
+  periodField<TeachingDraftEntry>(),
   stringField<TeachingDraftEntry, "instructor">("instructor", "Instructor"),
   stringField<TeachingDraftEntry, "courseUrl">("courseUrl", "Course URL", {
     inputType: "url",

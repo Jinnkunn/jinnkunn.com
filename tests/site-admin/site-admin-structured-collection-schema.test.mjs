@@ -126,11 +126,11 @@ test("publication schema preserves rich authors and non-primary venues", () => {
 test("structured collection schemas expose stable field keys", () => {
   assert.deepEqual(NEWS_ENTRY_FIELDS.map((item) => item.key), ["date", "body"]);
   assert.deepEqual(TEACHING_ENTRY_FIELDS.map((item) => item.key), [
-    "term",
-    "period",
-    "role",
     "courseCode",
     "courseName",
+    "role",
+    "term",
+    "period",
     "instructor",
     "courseUrl",
   ]);

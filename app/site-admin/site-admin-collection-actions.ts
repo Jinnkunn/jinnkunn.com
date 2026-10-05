@@ -110,24 +110,31 @@ export function createCollectionActions({
       ? commitCollectionDraft(current, { name: "teaching", value: updater(current.present.value) }, group) : current);
   }
 
-  function addTeachingEntry(term = teachingTerm) {
+  function addTeachingEntry(term = teachingTerm, defaults?: Pick<TeachingDraftEntry, "role" | "period">) {
     const id = createComponentEntryId("teaching");
-    updateTeachingDraft((draft) => ({
-      ...draft,
-      items: [
-        {
-          id,
-          term,
-          period: "",
-          role: "",
-          courseCode: "",
-          courseName: "",
-        },
-        ...draft.items,
-      ],
-    }));
+    updateTeachingDraft((draft) => {
+      const previous = draft.items.find((item) => item.term === term);
+      const entry = {
+        id, term, period: defaults?.period ?? previous?.period ?? "",
+        role: defaults?.role ?? previous?.role ?? "", courseCode: "", courseName: "",
+      };
+      const groupIndex = draft.items.findIndex((item) => item.term === term);
+      const insertAt = groupIndex < 0 ? 0 : groupIndex;
+      return { ...draft, items: [...draft.items.slice(0, insertAt), entry, ...draft.items.slice(insertAt)] };
+    });
     setComponentExpandedIds([id]);
     setComponentSearch("");
+  }
+
+  function updateTeachingTerm(term: string, nextTerm: string, defaults: Pick<TeachingDraftEntry, "role" | "period">, fillEmpty = false) {
+    updateTeachingDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item) => item.term !== term ? item : {
+        ...item, term: nextTerm,
+        role: fillEmpty && !item.role.trim() ? defaults.role : item.role,
+        period: fillEmpty && !item.period.trim() ? defaults.period : item.period,
+      }),
+    }));
   }
 
   function updateTeachingItem(nextItem: TeachingDraftEntry) {
@@ -209,6 +216,13 @@ export function createCollectionActions({
     }), `edit:${nextItem.id}`);
   }
 
+  function moveWorksGroup(category: WorksDraftEntry["category"], target: WorksDraftEntry["category"]) {
+    updateWorksDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item) => item.category === category ? { ...item, category: target } : item),
+    }));
+  }
+
   function deleteWorksItem(id: string) {
     updateWorksDraft((draft) => ({
       ...draft,
@@ -280,6 +294,13 @@ export function createCollectionActions({
     }), `edit:${nextItem.id}`);
   }
 
+  function updatePublicationYear(year: string, nextYear: string) {
+    updatePublicationsDraft((draft) => ({
+      ...draft,
+      items: draft.items.map((item) => item.year === year ? { ...item, year: nextYear } : item),
+    }));
+  }
+
   function deletePublicationItem(id: string) {
     updatePublicationsDraft((draft) => ({
       ...draft,
@@ -343,11 +364,11 @@ export function createCollectionActions({
   return {
     addNewsEntry, addNewsDivider, updateNewsItem, deleteNewsItem,
     duplicateNewsItem, moveSelectedNewsItem,
-    addTeachingEntry, updateTeachingItem, deleteTeachingItem,
+    addTeachingEntry, updateTeachingTerm, updateTeachingItem, deleteTeachingItem,
     duplicateTeachingItem, moveSelectedTeachingItem,
-    addWorksEntry, updateWorksItem, deleteWorksItem,
+    addWorksEntry, moveWorksGroup, updateWorksItem, deleteWorksItem,
     duplicateWorksItem, moveSelectedWorksItem,
-    addPublicationEntry, updatePublicationItem, deletePublicationItem,
+    addPublicationEntry, updatePublicationYear, updatePublicationItem, deletePublicationItem,
     duplicatePublicationItem, moveSelectedPublicationItem,
     reorderSelectedComponentItems,
   };

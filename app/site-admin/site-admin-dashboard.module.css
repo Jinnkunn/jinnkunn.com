@@ -2794,6 +2794,7 @@ button.statusPill:disabled {
 }
 
 .contentIndexPrimary strong {
+  max-width: 100%;
   overflow: hidden;
   font-size: 14px;
   font-weight: 760;
@@ -2809,6 +2810,7 @@ button.statusPill:disabled {
 }
 
 .contentIndexPrimary small {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3044,14 +3046,19 @@ button.statusPill:disabled {
 
 .adminChrome .heroCopy {
   max-width: 780px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .adminChrome .title {
-  margin-top: 5px;
-  font-size: clamp(32px, 4vw, 46px);
-  line-height: 1;
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
   letter-spacing: 0;
 }
+
+.adminChrome .eyebrow { order: 1; font-size: 11px; font-weight: 500; letter-spacing: 0; }
 
 .adminChrome .description {
   margin-top: 7px;
@@ -3086,6 +3093,14 @@ button.statusPill:disabled {
   background: var(--ds-surface-page);
   box-shadow: none;
 }
+
+.editorChrome .panelHeader { align-items: center; gap: 14px; }
+.editorChrome .panelHeader > div:first-child { min-width: 0; flex: 1; }
+.editorChrome .panelTitle { font-size: 22px; line-height: 1.25; overflow-wrap: anywhere; }
+.editorChrome .cardLabel { margin-bottom: 4px; font-size: 10px; }
+.editorChrome .cardText { margin-top: 3px; font-size: 12px; }
+.shell:has(.collectionEntryDrawer[role="dialog"]) .editorSaveButton,
+.shell:has(.collectionEntryDrawer[role="dialog"]) .editorPublishButton { display: none; }
 
 .editorStatusBar {
   min-height: 38px;
@@ -3178,13 +3193,13 @@ button.statusPill:disabled {
   display: flex;
   width: 100%;
   height: var(--collection-panel-height, calc(100dvh - var(--admin-chrome-height, 154px) - 32px));
-  min-height: 360px;
+  min-height: 200px;
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-md);
-  background: var(--ds-surface-elevated);
+  background: var(--ds-surface-page);
   animation: collection-panel-in 140ms ease-out;
 }
 
@@ -3194,8 +3209,9 @@ button.statusPill:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 16px 18px;
-  background: var(--ds-surface-elevated);
+  padding: 10px 14px;
+  flex-shrink: 0;
+  background: var(--ds-surface-page);
 }
 
 .collectionEntryDrawerHeader {
@@ -3212,7 +3228,7 @@ button.statusPill:disabled {
 .collectionEntryDrawerHeader h3 {
   margin-top: 5px;
   color: var(--ds-text-primary);
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1.15;
   letter-spacing: 0;
 }
@@ -3271,7 +3287,7 @@ button.statusPill:disabled {
 }
 
 .collectionWorkspace[data-editing="true"] {
-  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.2fr);
+  grid-template-columns: minmax(220px, 0.65fr) minmax(400px, 1.35fr);
 }
 
 .collectionPanelHost {
@@ -3309,6 +3325,27 @@ button.statusPill:disabled {
 .collectionGroupHeading { display: flex; align-items: center; gap: 10px; }
 .collectionGroupHeading > span { flex: 1; }
 .collectionGroupHeading::after { display: none; }
+.groupCount { margin-left: 8px; font-size: 11px; font-weight: 500; }
+.actionDialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  padding: 20px;
+  overflow-y: auto;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-page);
+  color: var(--ds-text-primary);
+}
+.actionDialog::backdrop { background: color-mix(in srgb, var(--ds-text-primary) 28%, transparent); }
+.actionDialog .panelHeader { margin-bottom: 16px; }
+.actionDialog .panelTitle { font-size: 20px; letter-spacing: 0; }
+.actionDialog form { display: grid; gap: 16px; }
+.reviewHeading { margin: 20px 0 8px; font-size: 13px; }
+.publishReviewList { list-style: none; margin: 0; padding: 0; }
+.publishReviewList li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; }
+.publishReviewList strong { min-width: 0; overflow-wrap: anywhere; }
+.publishReviewList span { flex-shrink: 0; color: var(--ds-text-secondary); font-size: 11px; }
 .collectionCustomTerm { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ds-text-secondary); }
 
 @keyframes collection-panel-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
@@ -3735,12 +3772,19 @@ button.statusPill:disabled {
   }
 
   .heroActions {
-    width: 100%;
+    width: auto;
   }
 
   .heroActions :global(.ds-button) {
     flex: 1 1 auto;
   }
+
+  .adminChrome .hero { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .adminChrome .heroCopy { display: block; }
+  .adminChrome .eyebrow { display: none; }
+  .adminChrome .title { font-size: 24px; }
+  .editorChrome .panelHeader { align-items: stretch; }
+  .publishReviewList li { align-items: flex-start; flex-direction: column; gap: 4px; }
 
   .publishingProgressHeader,
   .publishingProgressMeta {

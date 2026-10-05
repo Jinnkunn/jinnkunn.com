@@ -76,6 +76,8 @@ import {
   structuredCollectionSearchValues,
 } from "./site-admin-structured-collection-schema";
 import { createCollectionActions } from "./site-admin-collection-actions";
+import { SiteAdminActionDialog } from "./site-admin-action-dialog";
+import { SiteAdminCollectionGroupDialog, type CollectionGroupEdit, type CollectionGroupChange } from "./site-admin-collection-group-dialog";
 import { useSiteAdminDraftPersistence } from "./use-site-admin-draft-persistence";
 import { useSiteAdminReleaseMonitor, type ReleaseJobsPayload } from "./use-site-admin-release-monitor";
 import { clearLocalDraft, readLocalDraft, type LocalDraftSnapshot as StoredLocalDraftSnapshot } from "./site-admin-draft-storage";
@@ -712,6 +714,7 @@ export function SiteAdminWebConsole({
   const [components, setComponents] = useState<ComponentsPayload | null>(null);
   const [, setKind] = useState<EditableKind>("posts");
   const [documentKind, setDocumentKind] = useState<"posts" | "pages">("posts");
+  const [showCollectionIndex, setShowCollectionIndex] = useState(false);
   const [contentMode, setContentMode] = useState<ContentMode>("browse");
   const [contentSearch, setContentSearch] = useState("");
   const [componentSearch, setComponentSearch] = useState("");
@@ -720,6 +723,8 @@ export function SiteAdminWebConsole({
   const [componentExpandedIds, setComponentExpandedIds] = useState<string[]>([]);
   const [collectionHistory, setCollectionHistory] = useState<CollectionHistory | null>(null);
   const [collectionBaseline, setCollectionBaseline] = useState("");
+  const [groupEdit, setGroupEdit] = useState<CollectionGroupEdit | null>(null);
+  const teachingDefaultsRef = useRef(new Map<string, { role: string; period: string }>());
   const [componentDragId, setComponentDragId] = useState("");
   const [componentDropId, setComponentDropId] = useState("");
   const [componentReturnTarget, setComponentReturnTarget] =
@@ -760,6 +765,8 @@ export function SiteAdminWebConsole({
   const [error, setError] = useState("");
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingPublishCount, setPendingPublishCount] = useState(0);
+  const [publishReviewOpen, setPublishReviewOpen] = useState(false);
+  const [pendingDocuments, setPendingDocuments] = useState<Record<string, { title: string; revision: number }>>({});
   const savedContentRevisionRef = useRef(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [announcementDirty, setAnnouncementDirty] = useState(false);
@@ -777,7 +784,8 @@ export function SiteAdminWebConsole({
   const shellRef = useRef<HTMLElement>(null);
   const chromeRef = useRef<HTMLElement>(null);
   const collectionDraftRef = useRef<CollectionDraft | null>(null);
-  const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number }>());
+  const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number; expanded: string[] }>());
+  const documentViewsRef = useRef(new Map<string, { search: string; scroll: number }>());
   const saveSelectedContentRef = useRef<
     (options?: { quiet?: boolean; publish?: boolean }) => Promise<void>
   >(async () => {});
@@ -806,6 +814,7 @@ export function SiteAdminWebConsole({
       if (outcome.state === "succeeded") {
         const remaining = Math.max(0, savedContentRevisionRef.current - coveredRevision);
         setPendingPublishCount(remaining);
+        setPendingDocuments((current) => Object.fromEntries(Object.entries(current).filter(([, item]) => item.revision > coveredRevision)));
         setError("");
         setNotice(remaining
           ? "Published successfully. Newer drafts still need publishing."
@@ -817,9 +826,13 @@ export function SiteAdminWebConsole({
     },
   });
 
-  function recordSavedContent() {
+  function recordSavedContent(document?: { key: string; title: string }) {
     savedContentRevisionRef.current += 1;
     setPendingPublishCount((current) => current + 1);
+    if (document) {
+      const revision = savedContentRevisionRef.current;
+      setPendingDocuments((current) => ({ ...current, [document.key]: { title: document.title, revision } }));
+    }
   }
 
   useEffect(() => {
@@ -1049,14 +1062,6 @@ export function SiteAdminWebConsole({
         : area === "settings"
           ? "Settings"
           : "Content";
-  const areaDescription =
-    area === "media"
-      ? "Upload and reuse images across pages, posts, and social metadata."
-      : area === "release"
-        ? "Publish saved content to the live site and inspect recovery only when needed."
-        : area === "settings"
-          ? "Manage site identity and navigation."
-          : "Write, organize, and publish every part of the site from one workspace.";
   const selectedIsStructured = selected?.kind === "posts" || selected?.kind === "pages";
   const selectedSourceDraft = selected
     ? selectedIsStructured
@@ -1123,22 +1128,22 @@ export function SiteAdminWebConsole({
       ? "Publishing"
       : liveSync.label;
   const editorStatusHint = componentSaveBlocked
-    ? `Fix ${selectedComponentIssues.length} validation ${
+    ? `${selectedComponentIssues.length} validation ${
         selectedComponentIssues.length === 1 ? "issue" : "issues"
-      } before saving. Your recovery copy is still kept in this browser.`
+      } · recovery copy kept locally`
     : selectedDirty
     ? localAutosaveAt
-      ? `Recovery copy saved ${formatWhen(localAutosaveAt)}. Save before publishing.`
-      : "Unsaved edits are protected in this browser until saved."
+      ? `Recovery copy saved ${formatWhen(localAutosaveAt)}`
+      : "Autosave pending"
     : releaseIsRunning && releaseProgress
       ? releaseProgress.detail
     : liveSync.state === "pending"
       ? contentSavedAt
-        ? `Draft saved ${formatWhen(contentSavedAt)}. Publish updates when ready.`
-        : release?.detail || "Saved content is ahead of the live site."
+        ? `Draft saved ${formatWhen(contentSavedAt)} · not yet live`
+        : "Saved content is not yet live"
       : contentSavedAt
-        ? `Saved ${formatWhen(contentSavedAt)}. ${release?.detail || ""}`.trim()
-        : release?.headline || "Publish status unavailable";
+        ? `Saved ${formatWhen(contentSavedAt)}`
+        : liveSync.state === "live" ? "Saved content matches the public site" : "Publish status unavailable";
   const selectedVisibility = visibilityLabel(contentForm.draft);
   async function refreshAll() {
     setLoading(true);
@@ -1350,6 +1355,7 @@ export function SiteAdminWebConsole({
     setKind(nextKind);
     if (nextKind === "posts" || nextKind === "pages") {
       setDocumentKind(nextKind);
+      setShowCollectionIndex(false);
     }
     setContentMode("edit");
     setSelected(next);
@@ -1369,7 +1375,7 @@ export function SiteAdminWebConsole({
     const view = collectionViewsRef.current.get(id);
     setComponentSearch(view?.search || "");
     setComponentGrouping(view?.grouping || "auto");
-    setComponentExpandedIds([]);
+    setComponentExpandedIds(view?.expanded || []);
     setComponentDragId("");
     setComponentDropId("");
     setLocalAutosaveAt("");
@@ -1493,7 +1499,7 @@ export function SiteAdminWebConsole({
       }
       setContentSavedAt(new Date().toISOString());
       if (!newerLocalEdits) setLocalDraftSnapshot(null);
-      recordSavedContent();
+      recordSavedContent({ key: `${selectedAtStart.kind}:${selectedAtStart.id}`, title: next.title });
       saved = true;
       if (effects.announce) setNotice(`${next.title} saved.`);
     } catch (err) {
@@ -1585,11 +1591,9 @@ export function SiteAdminWebConsole({
       setWarning("");
       setContentSavedAt(new Date().toISOString());
       await refreshLists();
-      const publishNotice = await queueSavedContentPublish(
-        `${selected.kind}:${selected.id}:conflict-save`,
-      );
+      recordSavedContent({ key: `${selected.kind}:${selected.id}`, title: selected.title });
       await refreshSummaryOnly();
-      setNotice(`Your edits were saved as the latest Draft.${publishNotice}`);
+      setNotice("Your edits were saved as the latest Draft.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2031,11 +2035,11 @@ export function SiteAdminWebConsole({
   const {
     addNewsEntry, addNewsDivider, updateNewsItem, deleteNewsItem,
     duplicateNewsItem, moveSelectedNewsItem,
-    addTeachingEntry, updateTeachingItem, deleteTeachingItem,
+    addTeachingEntry, updateTeachingTerm, updateTeachingItem, deleteTeachingItem,
     duplicateTeachingItem, moveSelectedTeachingItem,
-    addWorksEntry, updateWorksItem, deleteWorksItem,
+    addWorksEntry, moveWorksGroup, updateWorksItem, deleteWorksItem,
     duplicateWorksItem, moveSelectedWorksItem,
-    addPublicationEntry, updatePublicationItem, deletePublicationItem,
+    addPublicationEntry, updatePublicationYear, updatePublicationItem, deletePublicationItem,
     duplicatePublicationItem, moveSelectedPublicationItem,
     reorderSelectedComponentItems,
   } = createCollectionActions({
@@ -2133,8 +2137,27 @@ export function SiteAdminWebConsole({
   function rememberCollectionView() {
     if (!selectedComponentName) return;
     collectionViewsRef.current.set(selectedComponentName, {
-      search: componentSearch, grouping: componentGrouping, scroll: window.scrollY,
+      search: componentSearch, grouping: componentGrouping, scroll: window.scrollY, expanded: componentExpandedIds,
     });
+  }
+
+  function addCourseToTerm(term: string) {
+    addTeachingEntry(term, teachingDefaultsRef.current.get(term));
+  }
+
+  function applyGroupChange(change: CollectionGroupChange) {
+    if (!groupEdit) return;
+    if (groupEdit.kind === "teaching") {
+      const defaults = { role: change.role, period: change.period };
+      teachingDefaultsRef.current.set(change.label, defaults);
+      if (groupEdit.term === null) addTeachingEntry(change.label, defaults);
+      else {
+        updateTeachingTerm(groupEdit.term, change.label, defaults, change.fillEmpty);
+        if (groupEdit.term !== change.label) teachingDefaultsRef.current.delete(groupEdit.term);
+      }
+    } else if (groupEdit.kind === "publications") updatePublicationYear(groupEdit.year, change.label);
+    else moveWorksGroup(groupEdit.category, change.label === "passed" ? "passed" : "recent");
+    setGroupEdit(null);
   }
 
   async function publishCurrentContent() {
@@ -2149,14 +2172,12 @@ export function SiteAdminWebConsole({
     onRedo: () => setCollectionHistory((current) => current ? redoCollectionDraft(current) : null),
     onCheckpoint: checkpointCollectionEdit,
     status: documentStatus.label,
-    statusDetail: componentSaveBlocked
-      ? "Incomplete entries are kept in this browser. Complete required fields before saving."
-      : selectedDirty ? (saving ? "Saving draft…" : "Changes will be saved automatically.") : liveSync.state === "pending"
-        ? "Draft saved. Not yet published." : documentStatus.label,
+    statusDetail: componentSaveBlocked ? "Recovery copy kept locally"
+      : selectedDirty ? (saving ? "Saving draft…" : "Autosave pending") : contentSavedAt ? `Saved ${formatWhen(contentSavedAt)}` : "Draft saved",
     onSave: () => void saveSelectedContent(),
     saveDisabled: saving || !selectedDirty || componentSaveBlocked || loading || Boolean(conflict),
-    onPublish: () => void publishCurrentContent(),
-    publishDisabled: saving || releaseSaving || releaseIsRunning || componentSaveBlocked || loading || Boolean(conflict) || (!selectedDirty && publishBlocked),
+    onPublish: () => setPublishReviewOpen(true),
+    publishDisabled: saving || releaseSaving || releaseIsRunning || componentSaveBlocked || loading || Boolean(conflict) || !contentPublishActionForBrowser() || (!selectedDirty && publishBlocked),
   };
 
   function renderNewsEditor(draft: NewsComponentDraft) {
@@ -2299,9 +2320,9 @@ export function SiteAdminWebConsole({
         count={draft.items.length}
         entryLabel="courses"
         addLabel="Add course"
-        onAdd={() => addTeachingEntry()}
+        onAdd={() => addCourseToTerm(draft.items.find((item) => componentExpandedIds.includes(item.id))?.term || draft.items[0]?.term || "")}
         secondaryLabel="New term"
-        onSecondary={() => addTeachingEntry("")}
+        onSecondary={() => setGroupEdit({ kind: "teaching", term: null, role: "", period: "", count: 0 })}
         search={componentSearch}
         onSearchChange={setComponentSearch}
         grouping={componentGrouping}
@@ -2339,7 +2360,9 @@ export function SiteAdminWebConsole({
               title={item.courseCode || item.courseName || item.term || "Untitled course"}
               detail={item.term || item.period || "Course"}
               description={[item.courseName, item.role].filter(Boolean).join(" · ")}
-              onAddToGroup={() => addTeachingEntry(item.term)}
+              onAddToGroup={() => addCourseToTerm(item.term)}
+              groupCount={draft.items.filter((entry) => entry.term === item.term).length}
+              onEditGroup={() => setGroupEdit({ kind: "teaching", term: item.term, ...(teachingDefaultsRef.current.get(item.term) || { role: item.role, period: item.period }), count: draft.items.filter((entry) => entry.term === item.term).length })}
               state={deriveComponentEntryState(componentBaselineFingerprints, item)}
               issues={issues}
               expanded={componentExpandedIds.includes(item.id)}
@@ -2438,6 +2461,8 @@ export function SiteAdminWebConsole({
               detail={item.period || item.category}
               description={[item.affiliation, item.location].filter(Boolean).join(" · ")}
               onAddToGroup={() => addWorksEntry(item.category)}
+              groupCount={draft.items.filter((entry) => entry.category === item.category).length}
+              onEditGroup={() => setGroupEdit({ kind: "works", category: item.category, count: draft.items.filter((entry) => entry.category === item.category).length })}
               state={deriveComponentEntryState(componentBaselineFingerprints, item)}
               issues={issues}
               expanded={componentExpandedIds.includes(item.id)}
@@ -2493,7 +2518,7 @@ export function SiteAdminWebConsole({
         count={draft.items.length}
         entryLabel="publications"
         addLabel="Add publication"
-        onAdd={() => addPublicationEntry()}
+        onAdd={() => addPublicationEntry(draft.items.find((item) => componentExpandedIds.includes(item.id))?.year || undefined)}
         search={componentSearch}
         onSearchChange={setComponentSearch}
         grouping={componentGrouping}
@@ -2530,6 +2555,8 @@ export function SiteAdminWebConsole({
               detail={item.year || "Publication"}
               description={(item.authors || item.authorsRich?.map((author) => author.name) || []).join(", ")}
               onAddToGroup={() => addPublicationEntry(item.year)}
+              groupCount={draft.items.filter((entry) => entry.year === item.year).length}
+              onEditGroup={() => setGroupEdit({ kind: "publications", year: item.year, count: draft.items.filter((entry) => entry.year === item.year).length })}
               state={deriveComponentEntryState(componentBaselineFingerprints, item)}
               issues={issues}
               expanded={componentExpandedIds.includes(item.id)}
@@ -2601,18 +2628,28 @@ export function SiteAdminWebConsole({
   }
 
   async function selectLibraryContent(nextKind: EditableKind, id: string) {
+    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
     const opened = await selectContent(nextKind, id);
     if (opened) setComponentReturnTarget(null);
   }
 
   function openDocumentKind(nextKind: "posts" | "pages") {
     if (!confirmDiscardChanges()) return;
+    rememberCollectionView();
+    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
     setArea("content");
+    selectionGateRef.current.open();
+    selectionLoadingRef.current = "";
+    setLoading(false);
     setKind(nextKind);
     setDocumentKind(nextKind);
-    setContentSearch("");
+    setShowCollectionIndex(false);
+    const view = documentViewsRef.current.get(nextKind);
+    setContentSearch(view?.search || "");
     setContentMode("browse");
     setSelected(null);
+    setCollectionHistory(null);
+    setCollectionBaseline("");
     setSourceDraft("");
     setContentForm(EMPTY_CONTENT_FORM);
     setContentFormBaseline("");
@@ -2621,12 +2658,22 @@ export function SiteAdminWebConsole({
     setLocalDraftSnapshot(null);
     setInspectorOpen(false);
     setComponentReturnTarget(null);
+    restoreBrowseScroll(view?.scroll || 0);
+  }
+
+  function restoreBrowseScroll(scroll: number) {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top: scroll })));
   }
 
   function closeSelectedContent() {
-    if (!confirmDiscardChanges()) return;
+    if (!confirmDiscardChanges()) return false;
     rememberCollectionView();
+    selectionGateRef.current.open();
+    selectionLoadingRef.current = "";
+    setLoading(false);
     setContentMode("browse");
+    const index = selected?.kind === "components" ? "collections" : selected?.kind || documentKind;
+    setShowCollectionIndex(index === "collections");
     if (selected?.kind === "posts" || selected?.kind === "pages") {
       setDocumentKind(selected.kind);
     }
@@ -2641,9 +2688,26 @@ export function SiteAdminWebConsole({
     setLocalDraftSnapshot(null);
     setInspectorOpen(false);
     setComponentReturnTarget(null);
+    const view = documentViewsRef.current.get(index);
+    setContentSearch(view?.search || "");
+    restoreBrowseScroll(view?.scroll || 0);
+    return true;
+  }
+
+  function openCollectionIndex() {
+    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
+    if (!closeSelectedContent()) return;
+    setArea("content");
+    setShowCollectionIndex(true);
+    setContentSearch("");
+    restoreBrowseScroll(documentViewsRef.current.get("collections")?.scroll || 0);
   }
 
   function changeContentPicker(value: string) {
+    if (value === "collections") {
+      openCollectionIndex();
+      return;
+    }
     if (value === "home" || value === "now" || value === "announcements") {
       changeArea(value);
       return;
@@ -2663,7 +2727,7 @@ export function SiteAdminWebConsole({
         ? area
         : selected?.kind === "components"
           ? `component:${selected.id}`
-          : documentKind;
+          : showCollectionIndex ? "collections" : documentKind;
     return (
       <Card className={styles.sidePanel}>
         <div className={styles.panelHeader}>
@@ -2689,6 +2753,7 @@ export function SiteAdminWebConsole({
               <option value="pages">Pages</option>
             </optgroup>
             <optgroup label="Collections">
+              <option value="collections">All collections</option>
               {componentDefinitions.map((definition) => (
                 <option key={definition.name} value={`component:${definition.name}`}>
                   {definition.label}
@@ -2738,6 +2803,7 @@ export function SiteAdminWebConsole({
               className={styles.contentNavButton}
               data-active={
                 area === "content" &&
+                !showCollectionIndex &&
                 documentKind === value &&
                 selected?.kind !== "components"
               }
@@ -2753,6 +2819,7 @@ export function SiteAdminWebConsole({
 
         <div className={styles.contentNavSection}>
           <p className={styles.inspectorLabel}>Collections</p>
+          <button type="button" className={styles.contentNavButton} data-active={!selected && showCollectionIndex && area === "content"} onClick={openCollectionIndex}><span>All collections</span><small>{componentDefinitions.length} collections</small></button>
           {componentDefinitions.map((definition) => {
             const summary = componentSummaryFor(components, definition.name);
             return (
@@ -2945,6 +3012,23 @@ export function SiteAdminWebConsole({
     );
   }
 
+  function renderCollectionIndex() {
+    return <Card className={`${styles.editorPanel} ${styles.contentIndexPanel}`}>
+      <div className={styles.contentIndexHeader}>
+        <h2 className={styles.panelTitle}>Collections</h2>
+        <span className={styles.contentIndexCount}>{componentDefinitions.length} collections</span>
+      </div>
+      <ul className={styles.contentIndexList}>
+        {componentDefinitions.map((definition) => <li key={definition.name}>
+          <button type="button" className={styles.contentIndexRow} onClick={() => void selectLibraryContent("components", definition.name)}>
+            <span className={styles.contentIndexPrimary}><strong>{definition.label}</strong><small>{definition.primaryRoute}</small></span>
+            <span className={styles.contentIndexMeta}><small>{formatEntryCount(componentSummaryFor(components, definition.name)?.count ?? 0)}</small></span>
+          </button>
+        </li>)}
+      </ul>
+    </Card>;
+  }
+
   const resolvedCreateSlug = createSlug.trim() || slugFromTitle(createTitle);
 
   return (
@@ -2954,7 +3038,6 @@ export function SiteAdminWebConsole({
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>Site Admin · {actor}</p>
             <h1 className={styles.title}>{areaTitle}</h1>
-            <p className={styles.description}>{areaDescription}</p>
           </div>
           <div className={styles.heroActions}>
             <Button onClick={() => void refreshAll()} variant="subtle" size="sm" disabled={loading}>
@@ -3042,7 +3125,7 @@ export function SiteAdminWebConsole({
                       {componentReturnTarget
                         ? `Back to ${componentReturnTarget.title}`
                         : selected.kind === "components"
-                          ? "Back to content"
+                          ? "Back to collections"
                           : `Back to ${selected.kind}`}
                     </Button>
                     <Button
@@ -3061,15 +3144,16 @@ export function SiteAdminWebConsole({
                     ) : null}
                     <Button
                       onClick={() => void saveSelectedContent()}
-                      variant={selectedDirty ? "solid" : "subtle"}
-                      tone={selectedDirty ? "accent" : "neutral"}
+                      className={styles.editorSaveButton}
+                      variant="ghost"
                       size="sm"
                       disabled={saving || !selectedDirty || componentSaveBlocked || Boolean(conflict)}
                     >
                       {saving ? "Saving draft" : "Save draft"}
                     </Button>
                     <Button
-                      onClick={() => void publishCurrentContent()}
+                      onClick={() => setPublishReviewOpen(true)}
+                      className={styles.editorPublishButton}
                       tone="accent"
                       size="sm"
                       disabled={collectionEditorActions.publishDisabled}
@@ -3265,7 +3349,7 @@ export function SiteAdminWebConsole({
                 )}
             </Card>
           ) : (
-            renderDocumentIndex()
+            showCollectionIndex ? renderCollectionIndex() : renderDocumentIndex()
           )}
           {inspectorOpen ? (
             <button
@@ -3753,7 +3837,7 @@ export function SiteAdminWebConsole({
             <div className={styles.panelActions}>
               {liveSync.state !== "live" || releaseIsRunning ? (
                 <Button
-                  onClick={() => void runSmartRelease()}
+                  onClick={() => setPublishReviewOpen(true)}
                   tone="accent"
                   disabled={publishBlocked}
                 >
@@ -4116,6 +4200,26 @@ export function SiteAdminWebConsole({
           </div>
         </div>
       ) : null}
+
+      {groupEdit ? <SiteAdminCollectionGroupDialog group={groupEdit} onClose={() => setGroupEdit(null)} onApply={applyGroupChange} /> : null}
+
+      {publishReviewOpen ? <SiteAdminActionDialog title="Review publication" onClose={() => setPublishReviewOpen(false)}>
+        <p className={styles.cardText}>Target: <strong>{contentPublishActionForBrowser() === "publish-content-production" ? "Production" : contentPublishActionForBrowser() === "publish-content-staging" ? "Staging" : "Local preview"}</strong></p>
+        <p className={styles.cardText}>This publishes all saved site content, not just the open entry. Saved changes from other sessions are included.</p>
+        <h3 className={styles.reviewHeading}>Changes in this session</h3>
+        <ul className={styles.publishReviewList}>
+          {Object.entries(pendingDocuments).map(([key, item]) => <li key={key}><strong>{item.title}</strong><span>{selectedDirty && key === `${selected?.kind}:${selected?.id}` ? "Save before publishing" : "Draft saved"}</span></li>)}
+          {selectedDirty && selected && !pendingDocuments[`${selected.kind}:${selected.id}`] ? <li><strong>{selected.title}</strong><span>Save before publishing</span></li> : null}
+        </ul>
+        {Object.keys(pendingDocuments).length === 0 && !selectedDirty ? <p className={styles.cardText}>No changes tracked in this session. The saved site snapshot will be published.</p> : null}
+        <div className={styles.conflictActions}>
+          <Button variant="subtle" onClick={() => setPublishReviewOpen(false)}>Cancel</Button>
+          <Button tone="accent" disabled={collectionEditorActions.publishDisabled} onClick={() => {
+            setPublishReviewOpen(false);
+            void publishCurrentContent();
+          }}>Confirm publish</Button>
+        </div>
+      </SiteAdminActionDialog> : null}
 
       {conflict ? (
         <SiteAdminConflictDialog
