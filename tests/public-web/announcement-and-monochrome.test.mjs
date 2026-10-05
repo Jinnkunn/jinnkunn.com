@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 
 import { getActiveMonochromeAppearance } from "../../lib/appearance.ts";
 import {
+  DEFAULT_ANNOUNCEMENTS_DOCUMENT,
   getActiveAnnouncement,
   normalizeAnnouncementsDocument,
   splitAnnouncementColumns,
@@ -44,28 +45,34 @@ test("announcement content supports flexible prose and explicit two-column separ
   assert.deepEqual(splitAnnouncementColumns("English\n\n中文"), ["English\n\n中文"]);
 });
 
-test("the current announcement is content, not appearance configuration", async () => {
+test("announcements remain editable content, independent of appearance configuration", async () => {
   const [rawAnnouncements, rawConfig] = await Promise.all([
-    fs.readFile("content/filesystem/announcements.json", "utf8"),
+    fs.readFile("content/filesystem/announcements.json", "utf8").catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+      return JSON.stringify(DEFAULT_ANNOUNCEMENTS_DOCUMENT);
+    }),
     fs.readFile("content/filesystem/site-config.json", "utf8"),
   ]);
   const announcements = normalizeAnnouncementsDocument(JSON.parse(rawAnnouncements));
   const config = JSON.parse(rawConfig);
-  const current = announcements.items[0];
-
-  assert.equal(current.status, "published");
-  assert.match(current.bodyMdx, /Shigatse · Gyirong/);
-  assert.match(current.bodyMdx, /日喀则 · 吉隆/);
-  assert.match(current.bodyMdx, /Latest Updates/);
-  assert.match(current.bodyMdx, /最新消息/);
+  for (const announcement of announcements.items) {
+    assert.equal(typeof announcement.bodyMdx, "string");
+    assert.ok(["draft", "published", "archived"].includes(announcement.status));
+  }
   assert.equal(config.appearance?.announcement, undefined);
 
   // Release snapshots may temporarily contain the previous D1 config shape.
   // Runtime migration reads only its display state; announcement prose always
   // comes from announcements.json and the next settings save removes it.
   const monochrome = config.appearance?.monochrome ?? config.memorial;
-  assert.equal(monochrome.enabled, true);
-  assert.equal(monochrome.scope, "all-public");
+  assert.equal(typeof monochrome.enabled, "boolean");
+  assert.ok(["home", "all-public"].includes(monochrome.scope));
+});
+
+test("an explicitly empty announcement document does not revive the legacy notice", () => {
+  const document = normalizeAnnouncementsDocument({ version: 1, items: [] });
+  assert.deepEqual(document.items, []);
+  assert.equal(getActiveAnnouncement(document), null);
 });
 
 test("monochrome appearance has its own independent schedule", () => {
