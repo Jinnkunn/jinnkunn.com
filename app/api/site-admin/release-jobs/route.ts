@@ -16,6 +16,7 @@ import {
 } from "@/lib/server/release-jobs-service";
 import { wakeReleaseRunnerForJob } from "@/lib/server/release-runner-wake";
 import type { ParseResult } from "@/lib/site-admin/request-types";
+import { loadSavedSnapshot } from "@/lib/server/publication-review-service";
 
 export const runtime = "nodejs";
 
@@ -64,6 +65,15 @@ export async function POST(req: NextRequest) {
     async (ctx) => {
       const parsed = await readSiteAdminJsonCommand(req, parseCreateJob);
       if (!parsed.ok) return parsed.res;
+      const reviewed = parsed.value.request.reviewSnapshotSha;
+      if (reviewed !== undefined) {
+        if (!/^publish-content-(production|staging)$/.test(String(parsed.value.action)) || !/^[a-f0-9]{64}$/.test(String(reviewed))) {
+          return apiError("Invalid publication review.", { status: 400, code: "INVALID_PUBLICATION_REVIEW" });
+        }
+        const target = new URL(req.url).hostname.startsWith("staging.") ? "staging" : "production";
+        if (parsed.value.action !== `publish-content-${target}`) return apiError("Review belongs to a different environment.", { status: 400, code: "PUBLICATION_TARGET_MISMATCH" });
+        if ((await loadSavedSnapshot()).sha !== reviewed) return apiError("Saved content changed after review. Refresh the review before publishing.", { status: 409, code: "PUBLICATION_SNAPSHOT_CHANGED" });
+      }
       const out = await createReleaseJob({
         action: parsed.value.action,
         actor: ctx.login,

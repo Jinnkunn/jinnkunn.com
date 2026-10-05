@@ -48,7 +48,7 @@ export const COMMANDS = {
   },
   "publish-now-production-from-staging": {
     args: ["run", "publish:now:prod:from-staging"],
-    label: "Publish Now to live",
+    label: "Copy Now draft to production",
   },
 };
 
@@ -476,7 +476,7 @@ export function syncRepo({
   };
 }
 
-export function runCommand({ action, repo, dryRun, onLine, abortStatus, spawnImpl = spawn }) {
+export function runCommand({ action, repo, dryRun, onLine, abortStatus, reviewSnapshotSha, spawnImpl = spawn }) {
   const command = COMMANDS[action];
   if (!command) throw new Error(`Unsupported release action: ${action}`);
   if (dryRun) {
@@ -490,7 +490,7 @@ export function runCommand({ action, repo, dryRun, onLine, abortStatus, spawnImp
     let finished = false;
     const proc = spawnImpl("npm", command.args, {
       cwd: repo,
-      env: process.env,
+      env: { ...process.env, CONTENT_PUBLICATION_EXPECT_SNAPSHOT: /^[a-f0-9]{64}$/.test(reviewSnapshotSha || "") ? reviewSnapshotSha : "" },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -581,6 +581,7 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
     }
     const result = await runCommand({
       action,
+      reviewSnapshotSha: job.request?.reviewSnapshotSha,
       repo: executionRepo,
       dryRun,
       abortStatus: () => jobAbortStatus(baseUrl, token, agentId, id),

@@ -42,8 +42,8 @@ export function createSelectionGate(): SelectionGate {
 export type ContentSaveEffects = {
   /** PATCH the draft. Always true; the save is the point of the call. */
   persist: true;
-  /** Queue a content publish job (reaches the live site). */
-  publish: boolean;
+  /** Saving never queues publication; review confirmation is a separate path. */
+  publish: false;
   /** Re-read the pages/posts/components lists. */
   reconcileLists: boolean;
   /** Show a success notice. */
@@ -56,12 +56,12 @@ export type ContentSaveEffects = {
  * and a silent save that also woke the release runner had no way to say so.
  */
 export function contentSaveEffects(
-  options: { quiet?: boolean; publish?: boolean } = {},
+  options: { quiet?: boolean } = {},
 ): ContentSaveEffects {
   const quiet = options.quiet === true;
   return {
     persist: true,
-    publish: !quiet && options.publish === true,
+    publish: false,
     reconcileLists: !quiet,
     announce: !quiet,
   };

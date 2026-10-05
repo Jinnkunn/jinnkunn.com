@@ -79,7 +79,7 @@ export function buildSearchOverlayHtml(): string {
               <span class="notion-search__pill-label">Blog</span><span class="notion-search__pill-count" aria-hidden="true"></span>
             </button>
             <button id="notion-search-filter-databases" class="notion-search__pill" type="button" role="tab" aria-selected="false" data-type="databases">
-              <span class="notion-search__pill-label">Databases</span><span class="notion-search__pill-count" aria-hidden="true"></span>
+              <span class="notion-search__pill-label">Collections</span><span class="notion-search__pill-count" aria-hidden="true"></span>
             </button>
           </div>
           <button id="notion-search-scope" class="notion-search__pill notion-search__pill--scope" type="button" aria-pressed="false" title="Search only in the current section">This section</button>
@@ -101,6 +101,7 @@ export function buildSearchEmptyHtml(opts?: {
     `<div class="notion-search__empty-state">` +
     `<div class="notion-search__empty-title">${escapeHtml(title)}</div>` +
     renderEmptyActions(actions) +
+    (title === "Type to search" || title === "No results" ? `<nav class="notion-search__quick-links" aria-label="Explore pages"><a href="/bio">BIO</a><a href="/publications">Publications</a><a href="/blog">Blog</a><a href="/connect">Contact</a></nav>` : "") +
     `</div>`
   );
 }
@@ -109,4 +110,3 @@ export function buildSearchLoaderHtml(): string {
   return `<div class="notion-search__result-loader">Searching...</div>`;
 }
 import { escapeHtml } from "@/lib/shared/text-utils";
-

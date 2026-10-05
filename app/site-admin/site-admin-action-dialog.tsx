@@ -4,11 +4,12 @@ import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import styles from "./site-admin-dashboard.module.css";
 
-export function SiteAdminActionDialog({ title, children, onClose, busy = false }: {
+export function SiteAdminActionDialog({ title, children, onClose, busy = false, wide = false }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   busy?: boolean;
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -36,7 +37,7 @@ export function SiteAdminActionDialog({ title, children, onClose, busy = false }
     }
   };
   return (
-    <dialog ref={ref} className={styles.actionDialog} aria-label={title}
+    <dialog ref={ref} className={styles.actionDialog} data-wide={wide} aria-label={title}
       onKeyDown={handleKeyDown}
       onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }}>
       <header className={styles.panelHeader}>

@@ -12,6 +12,8 @@ import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 import { d1DatabaseIdForEnv } from "../_lib/wrangler-d1.mjs";
 import { verifyOverlayContent } from "../_lib/overlay-serving-verification.mjs";
+import { readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
+import { assertPublicationSnapshot, PUBLICATION_BASELINE_PATH } from "../../lib/shared/publication-snapshot.mjs";
 import {
   acquireReleaseLock,
   formatHeldLock,
@@ -22,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
 const WRANGLER_TOML = path.join(ROOT, "wrangler.toml");
 const ENVIRONMENTS = new Set(["staging", "production"]);
-const RUNTIME_CONTENT_INPUT_REL_PATHS = new Set(["content/now.json"]);
+const RUNTIME_CONTENT_INPUT_REL_PATHS = new Set(["content/generated/publication-baseline.json"]);
 const RELEASE_HISTORY_PATH = path.join(
   ROOT,
   ".cache",
@@ -962,6 +964,7 @@ function buildStatusOverlayRow({
 
 async function prepareOverlayDiff({
   contentInputSha,
+  publicationBaseline,
   env,
   files,
   git,
@@ -980,7 +983,7 @@ async function prepareOverlayDiff({
       current.contentType !== row.content_type;
   });
   const deleted = [...existing.keys()]
-    .filter((assetPath) => assetPath !== "/__static/content-overlay-status.json")
+    .filter((assetPath) => assetPath !== "/__static/content-overlay-status.json" && assetPath !== PUBLICATION_BASELINE_PATH)
     .filter((assetPath) => !shellPaths.has(assetPath));
   const statusRow = buildStatusOverlayRow({
     contentInputSha,
@@ -999,7 +1002,10 @@ async function prepareOverlayDiff({
   const statusChanged = !statusCurrent ||
     statusCurrent.contentSha !== statusRow.content_sha ||
     statusCurrent.contentType !== statusRow.content_type;
-  const changedRows = statusChanged ? [...shellChanged, statusRow] : shellChanged;
+  const baselineBody = JSON.stringify(publicationBaseline);
+  const baselineRow = { ...statusRow, asset_path: PUBLICATION_BASELINE_PATH, body: baselineBody, content_sha: sha1(baselineBody) };
+  const changedRows = statusChanged ? [...shellChanged, statusRow] : [...shellChanged];
+  if (existing.get(PUBLICATION_BASELINE_PATH)?.contentSha !== baselineRow.content_sha) changedRows.push(baselineRow);
   return {
     expectedRows: shellRows,
     changedAssetPaths: new Set(changedRows.map((row) => row.asset_path)),
@@ -1608,6 +1614,8 @@ async function main() {
     );
   }
 
+  const publicationBaseline = readPublicationSnapshot(releaseRoot);
+  assertPublicationSnapshot(publicationBaseline, process.env.CONTENT_PUBLICATION_EXPECT_SNAPSHOT);
   const contentInputSha = hashContentInput(releaseRoot);
   const liveBuildId = args.skipBuild
     ? ""
@@ -1667,6 +1675,7 @@ async function main() {
   const snapshotSha = overlaySnapshot(files);
   const diff = await prepareOverlayDiff({
     contentInputSha,
+    publicationBaseline,
     env: args.env,
     files,
     git: buildSource,

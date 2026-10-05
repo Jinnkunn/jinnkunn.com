@@ -121,7 +121,7 @@ export function runSearchQuery(deps: SharedDeps, q: string): void {
         const best = candidates.find(([, n]) => n > 0) || null;
         if (best) {
           const [t, n] = best;
-          const label = t === "pages" ? "Show Pages" : t === "blog" ? "Show Blog" : "Show Databases";
+          const label = t === "pages" ? "Show Pages" : t === "blog" ? "Show Blog" : "Show Collections";
           actions.push({
             id: "notion-search-empty-switch-type",
             label,

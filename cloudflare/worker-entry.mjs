@@ -254,6 +254,7 @@ async function tryServeNextStaticAsset(request, env) {
 
 const worker = {
   async fetch(request, env, ctx) {
+    if (new URL(request.url).pathname.startsWith("/__admin/")) return new Response("Not found", { status: 404 });
     const method = String(request.method || "GET").toUpperCase();
     const url = new URL(request.url);
     // Reject direct hits on the internal shell key space before anything else.

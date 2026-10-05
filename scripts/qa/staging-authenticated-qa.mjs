@@ -6,7 +6,7 @@ import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const DEFAULT_ROUTES = [
-  { path: "/", contains: "Hi there!" },
+  { path: "/", contains: "Jinkun Chen" },
   { path: "/news", contains: "News" },
   { path: "/publications", contains: "Publications" },
   { path: "/works", contains: "Works" },

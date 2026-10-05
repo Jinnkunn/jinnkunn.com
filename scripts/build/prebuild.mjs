@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import matter from "gray-matter";
+import { readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
 
 import { DEFAULT_SITE_CONFIG } from "../../lib/shared/default-site-config.mjs";
 import { canonicalizeRoutePath, normalizeRoutePath } from "../../lib/shared/route-utils.mjs";
@@ -594,12 +595,18 @@ async function dumpFromD1() {
 }
 
 export async function main() {
+  // Regenerate after any sync below, including the SKIP_SYNC build path.
+  const writeBaseline = () => writeIfChanged(
+    path.join(process.cwd(), "content/generated/publication-baseline.json"),
+    readPublicationSnapshot(process.cwd()),
+  );
   const skipSync = process.env.SKIP_SYNC === "1" || process.env.SKIP_SYNC === "true";
   if (skipSync) {
     // The content indexes are derived from files already in the tree, so they
     // must still be refreshed even when the remote sync is skipped.
     ensureGeneratedStubs();
     writeContentIndexes();
+    writeBaseline();
     console.log("[prebuild] SKIP_SYNC enabled; skipping content sync");
     return;
   }
@@ -621,6 +628,7 @@ export async function main() {
     // which is a superset of the MDX tree; leave its search index alone.
     writeContentIndexes({ writeSearchIndex: false });
     writeComponentSourceManifest();
+    writeBaseline();
     return;
   }
 
@@ -630,12 +638,14 @@ export async function main() {
     ensureGeneratedStubs();
     writeContentIndexes();
     writeComponentSourceManifest();
+    writeBaseline();
     return;
   }
 
   ensureGeneratedStubs();
   writeContentIndexes();
   writeComponentSourceManifest();
+  writeBaseline();
   console.log("[prebuild] CONTENT_SYNC_MODE=stubs; ensured generated stubs.");
 }
 

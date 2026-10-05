@@ -106,7 +106,8 @@ test("content publish path uses D1 static-shell overlays with asset guards", asy
   assert.match(script, /hashContentInput/);
   assert.match(script, /contentInputSha/);
   assert.match(script, /RUNTIME_CONTENT_INPUT_REL_PATHS/);
-  assert.match(script, /content\/now\.json/);
+  assert.match(script, /content\/generated\/publication-baseline\.json/);
+  assert.match(script, /assertPublicationSnapshot/);
   assert.match(script, /workerCodeSha/);
   assert.match(script, /skipping build and upload/);
   assert.match(script, /copyStagingOverlayToProduction/);

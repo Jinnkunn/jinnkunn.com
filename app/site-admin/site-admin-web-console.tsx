@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { StatusNotice } from "@/components/ui/status-notice";
+import type { PublicationReview } from "@/lib/shared/publication-snapshot";
 import type {
   SiteAdminHomeData,
   SiteAdminNowData,
@@ -79,6 +80,7 @@ import { createCollectionActions } from "./site-admin-collection-actions";
 import { SiteAdminActionDialog } from "./site-admin-action-dialog";
 import { SiteAdminCollectionGroupDialog, type CollectionGroupEdit, type CollectionGroupChange } from "./site-admin-collection-group-dialog";
 import { useSiteAdminDraftPersistence } from "./use-site-admin-draft-persistence";
+import { useSiteAdminWorkspaceLocation } from "./use-site-admin-workspace-location";
 import { useSiteAdminReleaseMonitor, type ReleaseJobsPayload } from "./use-site-admin-release-monitor";
 import { clearLocalDraft, readLocalDraft, type LocalDraftSnapshot as StoredLocalDraftSnapshot } from "./site-admin-draft-storage";
 import {
@@ -98,6 +100,7 @@ import {
   type SiteAdminAsset,
 } from "./site-admin-media-library";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
+import { SiteAdminPagePreview } from "./site-admin-page-preview";
 import { SiteAdminAnnouncementsPanel } from "./site-admin-announcements-panel";
 import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
@@ -766,7 +769,11 @@ export function SiteAdminWebConsole({
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingPublishCount, setPendingPublishCount] = useState(0);
   const [publishReviewOpen, setPublishReviewOpen] = useState(false);
-  const [pendingDocuments, setPendingDocuments] = useState<Record<string, { title: string; revision: number }>>({});
+  const [collectionPreviewOpen, setCollectionPreviewOpen] = useState(false);
+  const [publicationReview, setPublicationReview] = useState<PublicationReview | null>(null);
+  const [publicationReviewError, setPublicationReviewError] = useState("");
+  const [publicationReviewLoading, setPublicationReviewLoading] = useState(false);
+  const publicationReviewRequestRef = useRef(0);
   const savedContentRevisionRef = useRef(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [announcementDirty, setAnnouncementDirty] = useState(false);
@@ -787,7 +794,7 @@ export function SiteAdminWebConsole({
   const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number; expanded: string[] }>());
   const documentViewsRef = useRef(new Map<string, { search: string; scroll: number }>());
   const saveSelectedContentRef = useRef<
-    (options?: { quiet?: boolean; publish?: boolean }) => Promise<void>
+    (options?: { quiet?: boolean }) => Promise<void>
   >(async () => {});
   const saveHomeRef = useRef<() => Promise<void>>(async () => {});
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
@@ -814,11 +821,15 @@ export function SiteAdminWebConsole({
       if (outcome.state === "succeeded") {
         const remaining = Math.max(0, savedContentRevisionRef.current - coveredRevision);
         setPendingPublishCount(remaining);
-        setPendingDocuments((current) => Object.fromEntries(Object.entries(current).filter(([, item]) => item.revision > coveredRevision)));
         setError("");
-        setNotice(remaining
-          ? "Published successfully. Newer drafts still need publishing."
-          : "Published successfully. The public site is current.");
+        setNotice("Published successfully. Checking for newer saved drafts…");
+        void refreshPublicationReview().then((review) => {
+          setNotice(review
+            ? review.changes.length
+              ? "Published successfully. Newer drafts still need publishing."
+              : "Published successfully. The public site is current."
+            : "Published successfully. The remaining draft comparison is unavailable; refresh publication review.");
+        });
       } else {
         setNotice("");
         setError(`${outcome.state === "canceled" ? "Publish canceled" : "Publish failed"}: ${outcome.message}`);
@@ -826,13 +837,9 @@ export function SiteAdminWebConsole({
     },
   });
 
-  function recordSavedContent(document?: { key: string; title: string }) {
+  function recordSavedContent() {
     savedContentRevisionRef.current += 1;
     setPendingPublishCount((current) => current + 1);
-    if (document) {
-      const revision = savedContentRevisionRef.current;
-      setPendingDocuments((current) => ({ ...current, [document.key]: { title: document.title, revision } }));
-    }
   }
 
   useEffect(() => {
@@ -1098,7 +1105,6 @@ export function SiteAdminWebConsole({
   const releaseIsQueued = activeReleaseJob?.status === "queued";
   const releaseRunnerOffline =
     releaseIsQueued && releaseProgress?.runnerState === "offline";
-  const releaseUnavailable = releaseActionKind === "refresh" || !release?.recommendedAction;
   // Autosave deliberately stops at the draft, so the console has to count the
   // saves itself rather than wait for the release summary to notice them.
   const liveSync = liveSyncStatus({
@@ -1108,9 +1114,7 @@ export function SiteAdminWebConsole({
   });
   const publishBlocked =
     releaseSaving ||
-    releaseIsRunning ||
-    (liveSync.state !== "pending" &&
-      (releaseActionKind === "noop" || releaseUnavailable));
+    releaseIsRunning;
   const documentStatus = editorialStatus({
     saving,
     blocked: componentSaveBlocked,
@@ -1394,11 +1398,11 @@ export function SiteAdminWebConsole({
     return next;
   }
 
-  async function selectContent(nextKind: EditableKind, id: string): Promise<boolean> {
+  async function selectContent(nextKind: EditableKind, id: string, discardConfirmed = false): Promise<boolean> {
     if (
       selected &&
       (selected.kind !== nextKind || selected.id !== id) &&
-      !confirmDiscardChanges()
+      !discardConfirmed && !confirmDiscardChanges()
     ) {
       return false;
     }
@@ -1436,7 +1440,7 @@ export function SiteAdminWebConsole({
     }
   }
 
-  async function saveSelectedContent(options: { quiet?: boolean; publish?: boolean } = {}) {
+  async function saveSelectedContent(options: { quiet?: boolean } = {}) {
     if (!selected) return;
     if (componentSaveBlocked) {
       setWarning(
@@ -1499,7 +1503,7 @@ export function SiteAdminWebConsole({
       }
       setContentSavedAt(new Date().toISOString());
       if (!newerLocalEdits) setLocalDraftSnapshot(null);
-      recordSavedContent({ key: `${selectedAtStart.kind}:${selectedAtStart.id}`, title: next.title });
+      recordSavedContent();
       saved = true;
       if (effects.announce) setNotice(`${next.title} saved.`);
     } catch (err) {
@@ -1547,18 +1551,9 @@ export function SiteAdminWebConsole({
     if (!saved) return;
     // Everything below is bookkeeping on top of a save that already succeeded,
     // so it runs outside the mutation's try: a list hiccup used to be reported
-    // as a failed save and cancelled the publish that was meant to follow it.
+    // as a failed save even though the draft was persisted successfully.
     if (effects.reconcileLists && !(await refreshLists())) {
       setWarning("Saved. The content lists could not be refreshed — use Refresh to reload them.");
-    }
-    if (!effects.publish) return;
-    if (selectionGateRef.current.isStale(token)) return;
-    const publishNotice = await queueSavedContentPublish(
-      `${selectedAtStart.kind}:${selectedAtStart.id}:save`,
-    );
-    await refreshSummaryOnly();
-    if (effects.announce) {
-      setNotice(`${selectedAtStart.title} saved.${publishNotice}`);
     }
   }
 
@@ -1591,7 +1586,7 @@ export function SiteAdminWebConsole({
       setWarning("");
       setContentSavedAt(new Date().toISOString());
       await refreshLists();
-      recordSavedContent({ key: `${selected.kind}:${selected.id}`, title: selected.title });
+      recordSavedContent();
       await refreshSummaryOnly();
       setNotice("Your edits were saved as the latest Draft.");
     } catch (err) {
@@ -1626,11 +1621,9 @@ export function SiteAdminWebConsole({
       setContentSavedAt("");
       setLocalDraftSnapshot(null);
       await refreshLists();
-      const publishNotice = await queueSavedContentPublish(
-        `${selected.kind}:${selected.id}:delete`,
-      );
+      recordSavedContent();
       await refreshSummaryOnly();
-      setNotice(`${selected.title} deleted.${publishNotice}`);
+      setNotice(`${selected.title} deleted from drafts. Review publication to update the public site.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1670,11 +1663,9 @@ export function SiteAdminWebConsole({
       );
       await refreshLists();
       await selectContent(selected.kind, moved.toSlug || toSlug);
-      const publishNotice = await queueSavedContentPublish(
-        `${selected.kind}:${selected.id}:rename`,
-      );
+      recordSavedContent();
       await refreshSummaryOnly();
-      setNotice(`${selected.title} renamed.${publishNotice}`);
+      setNotice(`${selected.title} renamed in drafts. Review publication to update the public site.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1742,9 +1733,7 @@ export function SiteAdminWebConsole({
       const listsRefreshed = await refreshLists();
       await selectContent(createKind, slug);
       setContentSavedAt(new Date().toISOString());
-      const publishNotice = await queueSavedContentPublish(
-        `${createKind}:${slug}:create`,
-      );
+      recordSavedContent();
       await refreshSummaryOnly();
       setCreateSlug("");
       setCreateTitle(createKind === "posts" ? "Untitled Post" : "Untitled Page");
@@ -1752,7 +1741,7 @@ export function SiteAdminWebConsole({
       setCreateDate(todayInHalifax());
       setCreateBody(createKind === "posts" ? "Write the post here." : "Write the page here.");
       setCreateVisible(false);
-      setNotice(`${slug} created.${publishNotice}`);
+      setNotice(`${slug} created as a draft. Review publication when ready.`);
       // refreshLists() reports instead of throwing, so say so rather than
       // leaving the sidebar quietly missing the new document.
       if (!listsRefreshed) {
@@ -1809,47 +1798,7 @@ export function SiteAdminWebConsole({
     void refreshReleaseJobs();
   }, [area, refreshReleaseJobs]);
 
-  async function runSmartRelease() {
-    const coveredRevision = savedContentRevisionRef.current;
-    setReleaseSaving(true);
-    setError("");
-    setWarning("");
-    setNotice("");
-    try {
-      const payload = await writeJson<{
-        job?: SiteAdminReleaseJobLike;
-        wake?: ReleaseWakePayload;
-      }>(
-        "/api/site-admin/release-jobs/smart",
-        "POST",
-        {
-          request: {
-            source: "site-admin-web-console",
-            area,
-          },
-        },
-      );
-      if (!payload.job?.id) {
-        throw new Error("The release API did not return a job to track.");
-      }
-      const jobId = ` (${payload.job.id})`;
-      const wakeNotice =
-        payload.wake?.configured && !payload.wake.ok
-          ? ` Runner wake failed: ${payload.wake.error || `HTTP ${payload.wake.status}`}.`
-          : payload.wake?.ok
-            ? " Runner wake sent."
-            : "";
-      setNotice(`Publish job created${jobId}.${wakeNotice}`);
-      watchRelease(payload.job.id, coveredRevision);
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setReleaseSaving(false);
-    }
-  }
-
-  async function queueSavedContentPublish(reason: string): Promise<string> {
+  async function queueSavedContentPublish(reason: string, reviewSnapshotSha: string): Promise<string> {
     const action = contentPublishActionForBrowser();
     if (!action) return "";
     const coveredRevision = savedContentRevisionRef.current;
@@ -1866,6 +1815,7 @@ export function SiteAdminWebConsole({
             source: "site-admin-web-console",
             reason,
             area,
+            reviewSnapshotSha,
           },
         },
       );
@@ -1885,27 +1835,22 @@ export function SiteAdminWebConsole({
         ? ` Publishing the saved content to the public site.${jobId}`
         : ` Publishing the saved content to staging.${jobId}`;
     } catch (err) {
-      setWarning(
-        `Content was saved, but publishing could not be queued: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      return "";
+      throw new Error(`Publishing could not be queued: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   async function publishSavedContent() {
-    if (pendingPublishCount <= 0) {
-      await runSmartRelease();
-      return;
-    }
+    if (!publicationReview || !publicationReview.changes.length || hasUnsavedChanges) return;
     setReleaseSaving(true);
     setError("");
     setWarning("");
     setNotice("");
     try {
-      const publishNotice = await queueSavedContentPublish("content:publish-saved");
-      if (publishNotice) setNotice(`Publish queued.${publishNotice}`);
+      const publishNotice = await queueSavedContentPublish("content:publish-saved", publicationReview.snapshotSha);
+      if (publishNotice) { setNotice(`Publish queued.${publishNotice}`); setPublishReviewOpen(false); }
+    } catch (error) {
+      await refreshPublicationReview();
+      setPublicationReviewError(error instanceof Error ? error.message : String(error));
     } finally {
       setReleaseSaving(false);
     }
@@ -1931,9 +1876,9 @@ export function SiteAdminWebConsole({
       setHomeTitle(next.data.title || "");
       setHomeBody(next.data.bodyMdx || "");
       setHomeBaseline(`${next.data.title || ""}\n${next.data.bodyMdx || ""}`);
-      const publishNotice = await queueSavedContentPublish("home:save");
+      recordSavedContent();
       await refreshSummaryOnly();
-      setNotice(`Home saved.${publishNotice}`);
+      setNotice("Home draft saved. Review publication to update the public site.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1965,9 +1910,9 @@ export function SiteAdminWebConsole({
       setNowBaseline(
         `${next.data.current.text || ""}\n${next.data.current.context || ""}\n${next.data.current.location || ""}\n${nextDate}`,
       );
-      const publishNotice = await queueSavedContentPublish("now:create");
+      recordSavedContent();
       await refreshSummaryOnly();
-      setNotice(`Now saved.${publishNotice}`);
+      setNotice("Now draft saved. Review publication to update the public site.");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1997,8 +1942,8 @@ export function SiteAdminWebConsole({
       });
       setNow(next);
       setEditingHistoryId("");
-      const publishNotice = await queueSavedContentPublish("now:update-history");
-      setNotice(`Now history updated.${publishNotice}`);
+      recordSavedContent();
+      setNotice("Now history draft updated.");
       void refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2022,8 +1967,8 @@ export function SiteAdminWebConsole({
         expectedFileSha: now.sourceVersion.fileSha,
       });
       setNow(next);
-      const publishNotice = await queueSavedContentPublish("now:delete-history");
-      setNotice(`Now history deleted.${publishNotice}`);
+      recordSavedContent();
+      setNotice("Now history deleted from drafts.");
       void refreshAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2141,6 +2086,59 @@ export function SiteAdminWebConsole({
     });
   }
 
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(`site-admin:views:${actor}`) || "{}");
+      if (Array.isArray(saved.collections)) collectionViewsRef.current = new Map(saved.collections);
+      if (Array.isArray(saved.documents)) documentViewsRef.current = new Map(saved.documents);
+    } catch { /* Corrupt or unavailable preferences do not block editing. */ }
+  }, [actor]);
+
+  const workspaceRestored = useSiteAdminWorkspaceLocation({
+    actor, ready: hasLoadedOnce,
+    location: { area, view: showCollectionIndex ? "collections" : documentKind, ...(selected ? { kind: selected.kind, id: selected.id } : {}) },
+    onRestore: async (next) => {
+      if (next.area === area && next.kind === selected?.kind && next.id === selected?.id && next.view === (showCollectionIndex ? "collections" : documentKind)) {
+        if (!selected) {
+          const view = documentViewsRef.current.get(next.view);
+          setContentSearch(view?.search || "");
+          restoreBrowseScroll(view?.scroll || 0);
+        }
+        return true;
+      }
+      if (!confirmDiscardChanges()) return false;
+      rememberCollectionView();
+      if (next.area === "content" && next.kind && next.id) return selectContent(next.kind as EditableKind, next.id, true);
+      discardEditorDrafts();
+      selectionGateRef.current.open();
+      setArea(next.area as Area);
+      setShowCollectionIndex(next.view === "collections");
+      setDocumentKind(next.view === "pages" ? "pages" : "posts");
+      const view = documentViewsRef.current.get(next.view);
+      setContentSearch(view?.search || "");
+      restoreBrowseScroll(view?.scroll || 0);
+      return true;
+    },
+  });
+
+  useEffect(() => {
+    if (!workspaceRestored) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const persist = () => {
+      if (selectedComponentName) collectionViewsRef.current.set(selectedComponentName, { search: componentSearch, grouping: componentGrouping, expanded: componentExpandedIds, scroll: window.scrollY });
+      if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
+      try { sessionStorage.setItem(`site-admin:views:${actor}`, JSON.stringify({ collections: [...collectionViewsRef.current], documents: [...documentViewsRef.current] })); } catch { /* Optional preference. */ }
+    };
+    const schedulePersist = () => {
+      if (timer !== undefined) return;
+      timer = setTimeout(() => { timer = undefined; persist(); }, 150);
+    };
+    persist();
+    window.addEventListener("pagehide", persist);
+    window.addEventListener("scroll", schedulePersist, { passive: true });
+    return () => { clearTimeout(timer); window.removeEventListener("pagehide", persist); window.removeEventListener("scroll", schedulePersist); };
+  }, [workspaceRestored, actor, selected, selectedComponentName, componentSearch, componentGrouping, componentExpandedIds, showCollectionIndex, documentKind, contentSearch]);
+
   function addCourseToTerm(term: string) {
     addTeachingEntry(term, teachingDefaultsRef.current.get(term));
   }
@@ -2161,9 +2159,30 @@ export function SiteAdminWebConsole({
   }
 
   async function publishCurrentContent() {
-    if (selectedDirty) await saveSelectedContent({ publish: true });
-    else await publishSavedContent();
+    await publishSavedContent();
   }
+
+  const refreshPublicationReview = useCallback(async () => {
+    const requestId = ++publicationReviewRequestRef.current;
+    setPublicationReviewLoading(true);
+    setPublicationReviewError("");
+    setPublicationReview(null);
+    try {
+      const review = await readJson<PublicationReview>("/api/site-admin/publication-review");
+      if (requestId !== publicationReviewRequestRef.current) return null;
+      setPublicationReview(review);
+      setPendingPublishCount(review.changes.length);
+      return review;
+    } catch (error) {
+      if (requestId === publicationReviewRequestRef.current) setPublicationReviewError(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      if (requestId === publicationReviewRequestRef.current) setPublicationReviewLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (hasLoadedOnce) void refreshPublicationReview(); }, [hasLoadedOnce, refreshPublicationReview]);
+  useEffect(() => { if (publishReviewOpen) void refreshPublicationReview(); }, [publishReviewOpen, refreshPublicationReview]);
 
   const collectionEditorActions = {
     canUndo: Boolean(collectionHistory?.past.length),
@@ -3043,7 +3062,7 @@ export function SiteAdminWebConsole({
             <Button onClick={() => void refreshAll()} variant="subtle" size="sm" disabled={loading}>
               {loading ? "Refreshing" : "Refresh"}
             </Button>
-            <Button href="/" variant="ghost" size="sm">
+            <Button href="/" external variant="ghost" size="sm">
               Public site
             </Button>
           </div>
@@ -3128,6 +3147,9 @@ export function SiteAdminWebConsole({
                           ? "Back to collections"
                           : `Back to ${selected.kind}`}
                     </Button>
+                    {collectionDraft ? (
+                      <Button onClick={() => setCollectionPreviewOpen(true)} variant="subtle" size="sm">Page preview</Button>
+                    ) : null}
                     <Button
                       id="site-admin-inspector-trigger"
                       onClick={() => setInspectorOpen((current) => !current)}
@@ -3138,7 +3160,7 @@ export function SiteAdminWebConsole({
                       Inspector
                     </Button>
                     {selected.href ? (
-                      <Button href={selected.href} variant="ghost" size="sm">
+                      <Button href={selected.href} external variant="ghost" size="sm">
                         Open
                       </Button>
                     ) : null}
@@ -3285,6 +3307,8 @@ export function SiteAdminWebConsole({
                             <div className={styles.editorBodyShell}>
                               <SiteAdminMarkdownEditor
                                 label={`${selected.title} body`}
+                                persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
+                                pagePreview={{ title: contentForm.title }}
                                 value={contentForm.body}
                                 onChange={(body) =>
                                   setContentForm((current) => ({
@@ -3306,6 +3330,8 @@ export function SiteAdminWebConsole({
                       <div className={styles.editorBodyShell}>
                         <SiteAdminMarkdownEditor
                           label={`${selected.title} body`}
+                          persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
+                          pagePreview={{ title: contentForm.title }}
                           value={contentForm.body}
                           onChange={(body) =>
                             setContentForm((current) => ({
@@ -3335,6 +3361,8 @@ export function SiteAdminWebConsole({
                       <div className={styles.editorBodyShell}>
                         <SiteAdminMarkdownEditor
                           label={`${selected.title} MDX source`}
+                          persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
+                          pagePreview={{ title: selected.title }}
                           value={sourceDraft}
                           onChange={setSourceDraft}
                           minHeight={560}
@@ -3976,7 +4004,7 @@ export function SiteAdminWebConsole({
               tone="accent"
               disabled={!home || saving || !homeDirty}
             >
-              {saving ? "Saving" : "Save"}
+              {saving ? "Saving draft" : "Save draft"}
             </Button>
           </div>
           <label className={styles.fieldLabel}>
@@ -3991,6 +4019,8 @@ export function SiteAdminWebConsole({
             Body MDX
             <SiteAdminMarkdownEditor
               label="Home body MDX"
+              persistenceKey={`${actor}:home`}
+              pagePreview={{ title: homeTitle, home: true }}
               value={homeBody}
               onChange={setHomeBody}
               minHeight={620}
@@ -4015,7 +4045,8 @@ export function SiteAdminWebConsole({
                   currentVersion={home.sourceVersion.fileSha}
                   onRestored={async () => {
                     await refreshAll();
-                    setNotice("Earlier Home version restored.");
+                    recordSavedContent();
+                    setNotice("Earlier Home draft restored. Review publication when ready.");
                   }}
                 />
               </div>
@@ -4033,11 +4064,8 @@ export function SiteAdminWebConsole({
             onSaved={(action) => {
               recordSavedContent();
               void (async () => {
-                const publishNotice = await queueSavedContentPublish(
-                  `announcement:${action}`,
-                );
                 await refreshSummaryOnly();
-                setNotice(`Announcement ${action === "delete" ? "deleted" : "saved"}.${publishNotice}`);
+                setNotice(`Announcement draft ${action === "delete" ? "deleted" : "saved"}. Review publication when ready.`);
               })();
             }}
           />
@@ -4055,7 +4083,7 @@ export function SiteAdminWebConsole({
                 <h2 className={styles.panelTitle}>Current status</h2>
               </div>
               <Button onClick={() => void saveNow()} tone="accent" disabled={!now || saving || !nowDirty}>
-                {saving ? "Saving" : "Save"}
+                {saving ? "Saving draft" : "Save draft"}
               </Button>
             </div>
             <label className={styles.fieldLabel}>
@@ -4109,7 +4137,8 @@ export function SiteAdminWebConsole({
                     currentVersion={now.sourceVersion.fileSha}
                     onRestored={async () => {
                       await refreshAll();
-                      setNotice("Earlier Now version restored.");
+                      recordSavedContent();
+                      setNotice("Earlier Now draft restored. Review publication when ready.");
                     }}
                   />
                 </div>
@@ -4203,19 +4232,31 @@ export function SiteAdminWebConsole({
 
       {groupEdit ? <SiteAdminCollectionGroupDialog group={groupEdit} onClose={() => setGroupEdit(null)} onApply={applyGroupChange} /> : null}
 
-      {publishReviewOpen ? <SiteAdminActionDialog title="Review publication" onClose={() => setPublishReviewOpen(false)}>
+      {collectionPreviewOpen && selected?.kind === "components" ? <SiteAdminPagePreview title={selected.title} source={selectedSourceDraft} onClose={() => setCollectionPreviewOpen(false)} /> : null}
+
+      {publishReviewOpen ? <SiteAdminActionDialog title="Review publication" onClose={() => setPublishReviewOpen(false)} wide busy={releaseSaving}>
         <p className={styles.cardText}>Target: <strong>{contentPublishActionForBrowser() === "publish-content-production" ? "Production" : contentPublishActionForBrowser() === "publish-content-staging" ? "Staging" : "Local preview"}</strong></p>
         <p className={styles.cardText}>This publishes all saved site content, not just the open entry. Saved changes from other sessions are included.</p>
-        <h3 className={styles.reviewHeading}>Changes in this session</h3>
+        <h3 className={styles.reviewHeading}>Saved changes across the site</h3>
+        {hasUnsavedChanges ? <p role="alert">Save your open draft before confirming publication.</p> : null}
+        {publicationReviewLoading ? <p role="status">Comparing saved content with the published snapshot…</p> : null}
+        {publicationReviewError ? <p role="alert">{publicationReviewError}</p> : null}
         <ul className={styles.publishReviewList}>
-          {Object.entries(pendingDocuments).map(([key, item]) => <li key={key}><strong>{item.title}</strong><span>{selectedDirty && key === `${selected?.kind}:${selected?.id}` ? "Save before publishing" : "Draft saved"}</span></li>)}
-          {selectedDirty && selected && !pendingDocuments[`${selected.kind}:${selected.id}`] ? <li><strong>{selected.title}</strong><span>Save before publishing</span></li> : null}
+          {publicationReview?.changes.map((item) => <li key={item.path}>
+            <details><summary><strong>{item.title}</strong> · {item.kind}</summary>
+              <p>{item.oldPath ? `${item.oldPath} → ` : ""}{item.path}</p>
+              <div className={styles.publicationDiff}>
+                <div><h4>Published</h4><pre>{item.before || "Not present"}</pre></div>
+                <div><h4>Saved draft</h4><pre>{item.after || "Removed"}</pre></div>
+              </div>
+            </details>
+          </li>)}
         </ul>
-        {Object.keys(pendingDocuments).length === 0 && !selectedDirty ? <p className={styles.cardText}>No changes tracked in this session. The saved site snapshot will be published.</p> : null}
+        {publicationReview?.changes.length === 0 ? <p className={styles.cardText}>All saved content matches the published snapshot.</p> : null}
         <div className={styles.conflictActions}>
           <Button variant="subtle" onClick={() => setPublishReviewOpen(false)}>Cancel</Button>
-          <Button tone="accent" disabled={collectionEditorActions.publishDisabled} onClick={() => {
-            setPublishReviewOpen(false);
+          <Button variant="subtle" disabled={publicationReviewLoading} onClick={() => void refreshPublicationReview()}>Refresh review</Button>
+          <Button tone="accent" disabled={hasUnsavedChanges || saving || releaseSaving || releaseIsRunning || publicationReviewLoading || Boolean(publicationReviewError) || !publicationReview?.changes.length || !contentPublishActionForBrowser()} onClick={() => {
             void publishCurrentContent();
           }}>Confirm publish</Button>
         </div>

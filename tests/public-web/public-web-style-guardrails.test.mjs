@@ -596,7 +596,7 @@ test("public-web-style-guardrails: Now page is content-managed and discoverable"
   assertIncludes(nowApi, "deleteSiteAdminNowHistory", "Now API should support history deletes");
   assertIncludes(nowFeed, "NowFeedClient", "Now page should keep a static shell with client hydration");
   assertIncludes(nowFeedClient, 'fetch("/api/public/now"', "Now page should refresh runtime data without rebuild");
-  assertIncludes(publicNowApi, "loadSiteAdminNowData", "Public Now API should read the current source-store data");
+  assertIncludes(publicNowApi, 'loadPublishedSource("now.json")', "Public Now API must read published content, not unreviewed drafts");
   assertIncludes(publicNowApi, "stale-while-revalidate", "Public Now API should stay lightweight and cache briefly");
 });
 

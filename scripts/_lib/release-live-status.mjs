@@ -10,7 +10,7 @@ import { d1DatabaseIdForEnv } from "./wrangler-d1.mjs";
 
 export const DEFAULT_RELEASE_ROUTES = ["/", "/news", "/blog", "/calendar"];
 export const PRODUCTION_HISTORY_PATH = "docs/runbooks/production-version-history.md";
-const RUNTIME_CONTENT_INPUT_REL_PATHS = new Set(["content/now.json"]);
+const RUNTIME_CONTENT_INPUT_REL_PATHS = new Set(["content/generated/publication-baseline.json"]);
 
 function run(command, args, options = {}) {
   const capture = Boolean(options.capture);
@@ -651,9 +651,9 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
   if (status.now?.productionAction === "copy-staging-now") {
     return {
       kind: "publish-now-production-from-staging",
-      label: "Publish Now to Live",
+      label: "Copy Now draft to Production",
       script: "publish:now:prod:from-staging",
-      reason: "The Now status is newer on staging.",
+      reason: "The Now draft is newer on staging. Review publication in production after copying.",
     };
   }
   if (status.routeParity && !status.routeParity.ok) {

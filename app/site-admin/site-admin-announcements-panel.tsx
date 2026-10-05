@@ -270,7 +270,7 @@ export function SiteAdminAnnouncementsPanel({
             <div className={styles.actions}>
               <Button onClick={() => void remove()} variant="ghost" size="sm" disabled={saving}>Delete</Button>
               <Button onClick={() => void save()} tone="accent" size="sm" disabled={saving || !dirty}>
-                {saving ? "Saving" : "Save"}
+                {saving ? "Saving draft" : "Save draft"}
               </Button>
             </div>
           </header>
@@ -281,10 +281,10 @@ export function SiteAdminAnnouncementsPanel({
               <input value={draft.title} onChange={(event) => update("title", event.target.value)} />
             </label>
             <label>
-              Status
+              Visibility on publish
               <select value={draft.status} onChange={(event) => update("status", event.target.value as SiteAnnouncement["status"])}>
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
+                <option value="draft">Hidden</option>
+                <option value="published">Visible</option>
                 <option value="archived">Archived</option>
               </select>
             </label>

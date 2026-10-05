@@ -2,8 +2,9 @@ import "server-only";
 
 import type { ReactElement } from "react";
 
-import { classifyLabel, type LabelKind } from "@/components/publications/labels";
+import { classifyLabel, venueSummaryText, type LabelKind } from "@/components/publications/labels";
 import { PublicationHighlightBadge } from "@/components/publications/publication-highlight-badge";
+import { PublicationResourceLinks } from "@/components/publications/publication-resource-links";
 
 interface PubAuthor {
   name: string;
@@ -69,19 +70,6 @@ function PublicationTag({ label }: { label: string }) {
   );
 }
 
-function fallbackVenues(data: PubData): PubVenue[] {
-  const venues = data.venues ?? [];
-  const usedUrls = new Set(venues.map((v) => v.url).filter(Boolean) as string[]);
-  const out = [...venues];
-  if (data.doiUrl && !usedUrls.has(data.doiUrl)) {
-    out.push({ type: "DOI", text: data.doiUrl, url: data.doiUrl });
-  }
-  if (data.arxivUrl && !usedUrls.has(data.arxivUrl)) {
-    out.push({ type: "arXiv.org", text: data.arxivUrl, url: data.arxivUrl });
-  }
-  return out;
-}
-
 /** Server component for one publication on the publications page.
  * Lives as `<PublicationsEntry data='{...JSON...}' />` in
  * `content/pages/publications.mdx`. Renders identical markup to one
@@ -90,10 +78,11 @@ function fallbackVenues(data: PubData): PubVenue[] {
 export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElement {
   const entry = parseData(data);
   const authors = entry.authorsRich ?? [];
-  const venues = fallbackVenues(entry);
+  const venues = entry.venues ?? [];
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
-  const hasMetadata = labels.length > 0 || highlights.length > 0;
+  const primaryVenue = venues[0] ? venueSummaryText({ type: venues[0].type || "", text: venues[0].text || "" }) : "";
+  const hasMetadata = labels.length > 0 || highlights.length > 0 || Boolean(primaryVenue);
   const title = entry.title ?? "";
 
   return (
@@ -124,13 +113,15 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
                     ))}
                   </span>
                 )}
+                {primaryVenue ? <span className="highlighted-color color-gray">{primaryVenue}</span> : null}
               </span>
             </>
           )}
+          <PublicationResourceLinks entry={entry} />
         </span>
       </div>
       <div className="notion-toggle__content" hidden aria-hidden="true">
-        {(authors.length > 0 || venues.length > 0) && (
+        {(authors.length > 0 || venues.length > 1) && (
           <blockquote className="notion-quote">
             <span className="notion-semantic-string">
               {authors.length > 0 && (
@@ -158,13 +149,13 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
                   ))}
                 </>
               )}
-              {authors.length > 0 && venues.length > 0 && (
+              {authors.length > 0 && venues.length > 1 && (
                 <>
                   <br />
                   <br />
                 </>
               )}
-              {venues.map((venue, index) => (
+              {venues.slice(1).map((venue, index) => (
                 <span key={`${venue.type ?? "src"}-${index}`}>
                   {index > 0 && <br />}
                   <PublicationTag label={venue.type || "source"} />

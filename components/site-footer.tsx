@@ -10,13 +10,14 @@ import { NavItem } from "@/components/ui/nav-item";
 // with that name while still providing the native hover tooltip.
 const SOCIAL_LINK_HINT = "(opens in a new tab)";
 
-export default function SiteFooter() {
+export default function SiteFooter({ staticPreview = false }: { staticPreview?: boolean } = {}) {
+  const FooterImage = staticPreview ? "img" : Image;
   return (
     <footer className="super-footer stack no-links no-footnote">
       <div className="super-footer__content">
         <NavItem href="/" className="notion-link super-footer__logo">
           <div className="super-footer__logo-image">
-            <Image
+            <FooterImage
               alt="Logo"
               src="/assets/logo.png"
               width={180}
@@ -117,7 +118,7 @@ export default function SiteFooter() {
         </div>
 
         <div className="super-footer__mascot" aria-hidden="true">
-          <Image
+          <FooterImage
             alt=""
             src="/brand/jinnkunn/jinnkunn-footer-mascot.svg"
             width={1175}

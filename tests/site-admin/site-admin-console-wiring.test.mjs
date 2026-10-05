@@ -75,17 +75,17 @@ test("autosave stands down outside the document editor", () => {
   assert.match(persistence, /\[kind, id, dirty, snapshot, autosaveEnabled\]/);
 });
 
-test("the publish queue is gated on the save effects, not called unconditionally", () => {
+test("ordinary saves never queue a publication", () => {
   const savePath = CONSOLE.slice(
     CONSOLE.indexOf("async function saveSelectedContent"),
     CONSOLE.indexOf("function reloadConflictVersion"),
   );
   assert.match(savePath, /const effects = contentSaveEffects\(options\)/);
-  assert.match(savePath, /if \(!effects\.publish\) return;/);
-
-  const publishIndex = savePath.indexOf("queueSavedContentPublish");
-  const guardIndex = savePath.indexOf("if (!effects.publish) return;");
-  assert.ok(guardIndex >= 0 && guardIndex < publishIndex);
+  assert.doesNotMatch(savePath, /queueSavedContentPublish/);
+  for (const name of ["saveHome", "saveNow", "saveHistoryEdit", "deleteHistory", "createContent", "moveSelectedContent", "deleteSelectedContent"]) {
+    const body = CONSOLE.slice(CONSOLE.indexOf(`async function ${name}(`));
+    assert.doesNotMatch(body.slice(0, body.indexOf("\n  }")), /queueSavedContentPublish/, name);
+  }
 });
 
 test("list reconciliation happens after the mutation try, so it cannot fail the save", () => {
@@ -133,5 +133,7 @@ test("publication is confirmed and conflicts no longer publish implicitly", () =
   assert.match(conflict, /recordSavedContent/);
   assert.match(CONSOLE, /title="Review publication"/);
   assert.match(CONSOLE, /This publishes all saved site content/);
-  assert.match(CONSOLE, /item\.revision > coveredRevision/);
+  assert.match(CONSOLE, /refreshPublicationReview\(\)\.then/);
+  assert.match(CONSOLE, /setPendingPublishCount\(review\.changes\.length\)/);
+  assert.doesNotMatch(CONSOLE, /setPendingDocuments/);
 });

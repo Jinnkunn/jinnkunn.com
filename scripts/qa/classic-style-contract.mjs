@@ -21,7 +21,7 @@ const CLASSIC_ROUTES = [
   {
     path: "/",
     pageClass: "page__index",
-    titleIncludes: "Hi there!",
+    titleIncludes: JSON.parse(fs.readFileSync(path.join(ROOT, "content/home.json"), "utf8")).title,
     expectedLinks: 8,
     kind: "home",
   },

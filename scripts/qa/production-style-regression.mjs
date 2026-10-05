@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -31,7 +32,7 @@ const ROUTES = [
   {
     path: "/",
     pageClass: "page__index",
-    titleIncludes: "Hi there!",
+    titleIncludes: JSON.parse(fs.readFileSync(path.join(ROOT, "content/home.json"), "utf8")).title,
     kind: "home",
     readableColor: CLASSIC_DEFAULT_TEXT_COLOR,
     grayTextColor: CLASSIC_NOTION_GRAY_TEXT_COLOR,

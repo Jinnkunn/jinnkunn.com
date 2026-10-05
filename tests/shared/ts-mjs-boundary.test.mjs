@@ -8,6 +8,7 @@ const SCAN_DIRS = ["app", "lib", "components"];
 
 const ALLOWED_FACADE_FILES = new Set([
   "lib/notion/request.ts",
+  "lib/shared/publication-snapshot.ts",
 ]);
 
 async function listFilesRecursively(dir) {

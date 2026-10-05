@@ -1,11 +1,13 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- Public pages use static-shell document navigation on Cloudflare Workers Free. */
 import { Suspense } from "react";
 import ThemeToggle from "@/components/design-system/theme-toggle";
+import { ThemeToggleIcons } from "@/components/design-system/theme-toggle-icons";
 import SiteNavEnhancers from "@/components/site-nav-enhancers";
+import { IconButton } from "@/components/ui/icon-button";
 import { NavItem } from "@/components/ui/nav-item";
 import { getSiteConfig } from "@/lib/site-config";
 
-export default function SiteNav() {
+export default function SiteNav({ staticPreview = false }: { staticPreview?: boolean } = {}) {
   const cfg = getSiteConfig();
   const topItems = cfg.nav.top;
   const moreItems = cfg.nav.more;
@@ -24,7 +26,7 @@ export default function SiteNav() {
       }}
     >
       {/* Load nav/search behavior runtime on the client after initial paint. */}
-      <SiteNavEnhancers />
+      {!staticPreview ? <SiteNavEnhancers /> : null}
 
       <div className="super-navbar__content">
         <a href="/" className="notion-link super-navbar__logo">
@@ -78,9 +80,15 @@ export default function SiteNav() {
         </div>
 
         <div className="super-navbar__actions">
-          <Suspense fallback={null}>
-            <ThemeToggle />
-          </Suspense>
+          {staticPreview ? (
+            <IconButton label="Toggle color theme" variant="nav" className="ds-theme-toggle" aria-disabled="true">
+              <ThemeToggleIcons />
+            </IconButton>
+          ) : (
+            <Suspense fallback={null}>
+              <ThemeToggle />
+            </Suspense>
+          )}
           <button
             id="search-trigger"
             type="button"

@@ -49,6 +49,11 @@
   opacity: 0.54;
 }
 
+.blog-index-copy { display: grid; gap: 4px; min-width: 0; }
+.blog-index-description { color: var(--ds-text-muted); font-weight: 400; font-size: 14px; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.page__blog .notion-collection-list__item { padding-block: 12px; align-items: flex-start; }
+.page__blog .notion-property__title__icon-wrapper { margin-top: 2px; }
+
 /* Right rail: date + reading time. 104px only fitted a date; the widest
  * long-form date measures ~124px and "NN min read" ~72px, so the floor now
  * covers both plus the gap and every row's rail lands on the same width. */

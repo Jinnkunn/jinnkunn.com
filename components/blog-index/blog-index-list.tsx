@@ -60,7 +60,10 @@ export function BlogIndexList({ entries }: { entries: BlogPostIndexItem[] }) {
               <div className="notion-property__title__icon-wrapper">
                 <PageIcon />
               </div>
-              {entry.title}
+              <span className="blog-index-copy">
+                <span>{entry.title}</span>
+                {entry.description?.trim() ? <span className="blog-index-description">{entry.description.trim()}</span> : null}
+              </span>
             </div>
             <div className="notion-collection-list__item-content">
               {entry.dateText && (

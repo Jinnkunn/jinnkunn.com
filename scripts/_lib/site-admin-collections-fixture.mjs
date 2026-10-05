@@ -1,5 +1,6 @@
 import { SITE_COMPONENT_DEFINITIONS } from "../../packages/content-core/src/component-registry.ts";
 import { parseCollectionDraft } from "../../app/site-admin/site-admin-collection-draft.ts";
+import { publicationSnapshot, publicationReview } from "../../lib/shared/publication-snapshot.mjs";
 
 const INITIAL_SOURCES = {
   news: '---\ntitle: News\n---\n<NewsEntry entryId="news-one" date="2026-10-01">\nInitial news body.\n</NewsEntry>\n',
@@ -53,6 +54,10 @@ export function createCollectionsFixture() {
     const req = route.request(), url = new URL(req.url()), path = url.pathname;
     const json = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
     if (req.method() === "GET") {
+      if (path === "/api/site-admin/publication-review") return json(publicationReview(
+        publicationSnapshot(Object.fromEntries([...saved].map(([name, body]) => [`components/${name}.mdx`, body]))),
+        publicationSnapshot(Object.fromEntries([...published].map(([name, body]) => [`components/${name}.mdx`, body]))),
+      ));
       if (path === "/api/site-admin/mobile/summary") return json({ summary: summary() });
       if (path === "/api/site-admin/home") return json({ data: { title: "Home", bodyMdx: "Fixture home" }, sourceVersion: { fileSha: "fixture" } });
       if (path === "/api/site-admin/now") return json({ data: { current: { text: "", context: "", location: "", updatedAt: "" }, updates: [] }, sourceVersion: { fileSha: "fixture" } });
@@ -77,6 +82,9 @@ export function createCollectionsFixture() {
       }
     }
     if (req.method() === "POST" && ["/api/site-admin/release-jobs", "/api/site-admin/release-jobs/smart"].includes(path)) {
+      const current = publicationSnapshot(Object.fromEntries([...saved].map(([name, body]) => [`components/${name}.mdx`, body])));
+      const reviewed = req.postDataJSON()?.request?.reviewSnapshotSha;
+      if (reviewed !== undefined && reviewed !== current.sha) return json({ error: "Saved content changed after this review. Review the latest changes before publishing." }, 409);
       releaseSnapshot = new Map(saved);
       const job = { id: `fixture-job-${jobs.length + 1}`, status: "running", action: "publish-content-staging", script: "publish:content:staging", phase: "verify", createdAt: new Date().toISOString(), startedAt: new Date().toISOString() };
       jobs.unshift(job);

@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 
-import { loadSiteAdminNowData } from "@/lib/server/site-admin-now-service";
+import { loadPublishedSource } from "@/lib/server/publication-review-service";
+import { normalizeNowData } from "@jinnkunn/content-core/now";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const { data, sourceVersion } = await loadSiteAdminNowData();
+    const snapshot = await loadPublishedSource("now.json");
+    const data = normalizeNowData(JSON.parse(snapshot.source || "{}"));
+    const sourceVersion = { fileSha: snapshot.snapshotSha };
     return NextResponse.json(
       {
         ok: true,

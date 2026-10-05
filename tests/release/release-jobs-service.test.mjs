@@ -158,6 +158,22 @@ test("release jobs: coalesces queued content publishes but preserves a follow-up
   );
 });
 
+test("release jobs: reviewed snapshots cannot be replaced by coalescing another publish", async () => {
+  const executor = await makeExecutor();
+  const ids = [];
+  for (const request of [{ reviewSnapshotSha: "a".repeat(64) }, { reviewSnapshotSha: "b".repeat(64) }, { source: "legacy" }]) {
+    const created = await createReleaseJob({ action: "publish-content-production", actor: "editor", request, executor });
+    assert.equal(created.ok, true);
+    ids.push(created.data.id);
+  }
+  assert.equal(new Set(ids).size, 3);
+  const listed = await listReleaseJobs({ executor });
+  assert.equal(listed.ok, true);
+  assert.equal(listed.data.jobs.find((job) => job.id === ids[0]).request.reviewSnapshotSha, "a".repeat(64));
+  assert.equal(listed.data.jobs.find((job) => job.id === ids[1]).request.reviewSnapshotSha, "b".repeat(64));
+  executor.close();
+});
+
 test("release jobs: unsupported actions are rejected and capabilities filter claims", async () => {
   const executor = await makeExecutor();
   const rejected = await createReleaseJob({

@@ -180,7 +180,7 @@ async function verifyStaging() {
   await checkAuthenticatedPublicRoute({
     name: "staging authenticated /",
     url: `${origin}/`,
-    contains: "Hi there!",
+    contains: "Jinkun Chen",
   });
   await checkAuthenticatedPublicRoute({
     name: "staging authenticated /blog",
@@ -231,7 +231,7 @@ async function verifyProduction(expectedVersion) {
   await checkPublicRoute({
     name: "production /",
     url: `${origin}/`,
-    contains: "Hi there!",
+    contains: "Jinkun Chen",
   });
   await checkPublicRoute({
     name: "production /blog",

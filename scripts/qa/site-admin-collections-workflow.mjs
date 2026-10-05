@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { once } from "node:events";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 import { createCollectionsFixture } from "../_lib/site-admin-collections-fixture.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 import { ensureNextBuild, findAvailablePort, startNextServer, waitForHttp } from "../_lib/local-next.mjs";
 
-const origin = "https://staging.jinkunchen.com";
+let origin = "";
 const log = (message) => console.log(`[collections-workflow] ${message}`);
 async function eventually(check, label, timeout = 12_000) {
   const deadline = Date.now() + timeout;
@@ -27,8 +28,13 @@ async function main() {
   ensureNextBuild();
   const port = await findAvailablePort();
   const localOrigin = `http://127.0.0.1:${port}`;
+  // Pin the staging hostname to loopback, including sandboxed iframe requests
+  // that Chromium may send outside Playwright's OOPIF route interception.
+  origin = `http://staging.jinkunchen.com:${port}`;
+  process.env.NEXTAUTH_URL = origin;
   const server = startNextServer({ port });
   let browser, qaPage, qaFixture;
+  let previewFailure = false;
   const blockedRequests = [];
   const missingResources = [];
   try {
@@ -36,11 +42,11 @@ async function main() {
     const auth = await createNextAuthSessionCookie();
     assert.equal(auth.ok, true, auth.reason);
     const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-    browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}) });
+    browser = await chromium.launch({ headless: true, args: ["--host-resolver-rules=MAP staging.jinkunchen.com 127.0.0.1", "--no-proxy-server"], ...(existsSync(chrome) ? { executablePath: chrome } : {}) });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-    await context.addCookies(auth.cookie.split("; ").map((part) => {
+    await context.addCookies(auth.cookie.split("; ").filter((part) => !part.startsWith("__Secure-")).map((part) => {
       const index = part.indexOf("=");
-      return { name: part.slice(0, index), value: part.slice(index + 1), url: origin, secure: true };
+      return { name: part.slice(0, index), value: part.slice(index + 1), url: origin, secure: false };
     }));
     const fixture = createCollectionsFixture();
     const qaPosts = [
@@ -53,6 +59,11 @@ async function main() {
     await context.route("**/*", async (route) => {
       const req = route.request(), url = new URL(req.url());
       if (url.origin !== origin) { blockedRequests.push(req.url()); return route.abort("blockedbyclient"); }
+      if (["/api/site-admin/preview/page", "/api/site-admin/preview/mdx"].includes(url.pathname)) {
+        if (previewFailure) return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Fixture preview unavailable" }) });
+        const response = await route.fetch({ url: `${localOrigin}${url.pathname}`, headers: { ...req.headers(), cookie: auth.cookie }, maxRedirects: 0 });
+        return route.fulfill({ response });
+      }
       if (req.method() === "GET" && url.pathname === "/api/site-admin/posts") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ count: qaPosts.length, posts: qaPosts }) });
       if (req.method() === "GET" && url.pathname.startsWith("/api/site-admin/posts/")) {
         const post = qaPosts.find((item) => item.slug === url.pathname.split("/").at(-1));
@@ -113,6 +124,63 @@ async function main() {
     await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).fill("Long title");
     await postRow.click();
     await page.getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
+    log("Workspace: deep links, page-shell preview, reload, Back and Forward");
+    await eventually(() => assert.equal(new URL(page.url()).searchParams.get("id"), qaPosts[0].slug), "document URL persisted");
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+    await page.getByText("Fixture post body.", { exact: true }).waitFor();
+    await page.getByRole("tab", { name: "Source", exact: true }).click();
+    previewFailure = true;
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+    await page.getByText("Fixture preview unavailable", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Fixture post body.", { exact: true }).isVisible(), true, "Failed refresh keeps the last successful preview");
+    previewFailure = false;
+    await page.getByRole("button", { name: "Retry preview", exact: true }).click();
+    await page.getByText("Fixture preview unavailable", { exact: true }).waitFor({ state: "detached" });
+    await page.getByRole("tab", { name: "Source", exact: true }).click();
+    await page.getByRole("button", { name: "Page preview", exact: true }).click();
+    const pagePreview = page.getByRole("dialog", { name: "Page preview", exact: true });
+    await pagePreview.locator("iframe").waitFor();
+    assert.equal(await pagePreview.locator("iframe").getAttribute("sandbox"), "allow-same-origin", "Preview never enables scripts, forms or top navigation");
+    await pagePreview.getByRole("status").filter({ hasText: /^(Draft in|Approximate rendering)/ }).waitFor();
+    await pagePreview.frameLocator("iframe").getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
+    await eventually(async () => assert.equal(await pagePreview.frameLocator("iframe").locator("body").evaluate(() => {
+      const sheets = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
+      return sheets.length > 0 && sheets.every((link) => Boolean(link.sheet));
+    }), true), "Page-preview styles loaded before capture");
+    await pagePreview.frameLocator("iframe").getByText("Fixture post body.", { exact: true }).waitFor();
+    assert.equal(await pagePreview.frameLocator("iframe").getByRole("heading", { name: qaPosts[0].title, exact: true }).evaluate((heading) => getComputedStyle(heading).fontSize), "40px", "Preview uses public-page typography");
+    const desktopFrame = await pagePreview.locator("iframe").boundingBox();
+    assert.ok(desktopFrame.width >= 1000, "Desktop preview uses a desktop-width shell");
+    const paintedPreview = PNG.sync.read(await pagePreview.locator("iframe").screenshot());
+    let darkPixels = 0;
+    for (let i = 0; i < paintedPreview.data.length; i += 4) {
+      if (paintedPreview.data[i] < 140 && paintedPreview.data[i + 1] < 140 && paintedPreview.data[i + 2] < 140) darkPixels += 1;
+    }
+    assert.ok(darkPixels > 500, "Public-shell preview actually paints text, not a blank iframe");
+    await page.screenshot({ path: "/tmp/collections-workflow-page-preview-desktop.png", animations: "disabled" });
+    await pagePreview.getByRole("button", { name: "Mobile", exact: true }).click();
+    const mobileFrame = await pagePreview.locator("iframe").boundingBox();
+    assert.ok(mobileFrame.width <= 391, "Mobile preview uses a phone-width shell");
+    await page.screenshot({ path: "/tmp/collections-workflow-page-preview-mobile.png", animations: "disabled" });
+    await pagePreview.getByRole("button", { name: "Close dialog", exact: true }).click();
+    await page.reload();
+    await page.getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
+    await eventually(async () => assert.equal(await page.getByRole("tab", { name: "Source", exact: true }).getAttribute("aria-selected"), "true"), "editor mode restores after reload");
+    await page.goBack();
+    await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).waitFor();
+    assert.equal(await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).inputValue(), "Long title");
+    await page.goForward();
+    await page.getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
+    log("Workspace: canceling Back keeps the unsaved document and its URL");
+    page.removeAllListeners("dialog");
+    page.on("dialog", (dialog) => void dialog.dismiss());
+    await page.getByLabel("Title", { exact: true }).fill("Unsaved title");
+    await page.goBack();
+    await eventually(() => assert.equal(new URL(page.url()).searchParams.get("id"), qaPosts[0].slug), "canceled Back returns to the document URL");
+    assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Unsaved title");
+    await page.getByLabel("Title", { exact: true }).fill(qaPosts[0].title);
+    page.removeAllListeners("dialog");
+    page.on("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Back to posts", exact: true }).click();
     assert.equal(await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).inputValue(), "Long title");
     await page.screenshot({ path: "/tmp/collections-workflow-posts.png", animations: "disabled" });
@@ -241,7 +309,8 @@ async function main() {
     await page.getByRole("button", { name: "Restore local draft", exact: true }).click();
     log("News recovery restored");
     assert.equal(await page.locator("article[data-invalid]").count(), 2);
-    await page.locator('article[data-invalid="true"] [data-entry-trigger]').click();
+    const recoveredEntry = page.locator('article[data-invalid="true"] [data-entry-trigger]');
+    if (await recoveredEntry.getAttribute("aria-expanded") !== "true") await recoveredEntry.click();
     fixture.failures.set("news", 503);
     await panel().getByLabel("Date", { exact: true }).fill("2026-10-04");
     await body().fill("Recovered news update.");
@@ -266,6 +335,23 @@ async function main() {
     await page.getByRole("button", { name: "Publish updates", exact: true }).click();
     await page.getByRole("dialog", { name: "Review publication" }).getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(fixture.jobs.length, 0, "Canceling publication does not queue a release");
+    log("Publication review: another session's saved changes are included");
+    const remoteOriginal = fixture.saved.get("works");
+    fixture.changeRemotely("works", remoteOriginal.replace("Recent body.", "Other session's work update."));
+    await page.getByRole("button", { name: "Publish updates", exact: true }).click();
+    const siteReview = page.getByRole("dialog", { name: "Review publication" });
+    await siteReview.locator("summary").filter({ hasText: "Works" }).waitFor();
+    await siteReview.locator("summary").filter({ hasText: "Works" }).click();
+    assert.match(await siteReview.innerText(), /Other session's work update/);
+    fixture.changeRemotely("works", remoteOriginal.replace("Recent body.", "Changed after confirmation preview."));
+    await siteReview.getByRole("button", { name: "Confirm publish", exact: true }).click();
+    await siteReview.getByRole("alert").filter({ hasText: "Saved content changed after this review" }).waitFor();
+    assert.equal(fixture.jobs.length, 0, "A stale review cannot queue publication");
+    assert.equal(await siteReview.getByRole("button", { name: "Confirm publish", exact: true }).isDisabled(), true);
+    await siteReview.getByRole("button", { name: "Refresh review", exact: true }).click();
+    await eventually(async () => assert.equal(await siteReview.getByRole("button", { name: "Confirm publish", exact: true }).isDisabled(), false), "refresh makes the latest review confirmable");
+    await siteReview.getByRole("button", { name: "Cancel", exact: true }).click();
+    fixture.changeRemotely("works", remoteOriginal);
     await publish();
     await eventually(() => assert.equal(fixture.jobs.length, 1), "confirmed publication queues publish");
 

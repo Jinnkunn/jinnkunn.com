@@ -50,3 +50,6 @@
 .pub-tag-colon {
   color: var(--color-text-default);
 }
+
+.pub-resource-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-size: 14px; }
+.pub-resource-links a { position: relative; z-index: 1; }

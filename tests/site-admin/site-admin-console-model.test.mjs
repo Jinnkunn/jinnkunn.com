@@ -83,8 +83,8 @@ test("an explicit save persists the draft without publishing", () => {
   }
 });
 
-test("publishing is explicit and quiet autosave cannot opt in", () => {
-  assert.equal(contentSaveEffects({ publish: true }).publish, true);
+test("save options cannot bypass publication review", () => {
+  assert.equal(contentSaveEffects({ publish: true }).publish, false);
   assert.equal(contentSaveEffects({ quiet: true, publish: true }).publish, false);
 });
 

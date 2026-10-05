@@ -18,7 +18,7 @@ export function groupLabelForSearchResult(
     if (section === "Blog") return "Blog";
     return `Blog / ${section}`;
   }
-  if (k === "database") return `Databases / ${section}`;
+  if (k === "database") return `Collections / ${section}`;
   return `Pages / ${section}`;
 }
 
@@ -39,7 +39,7 @@ export function sortGroupLabels(labels: string[]): string[] {
               ? 3
               : x.startsWith("Blog / ")
                 ? 4
-                : x.startsWith("Databases / ")
+                : x.startsWith("Collections / ")
                   ? 5
                   : 6;
     const ra = rank(A);

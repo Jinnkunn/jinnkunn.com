@@ -391,7 +391,7 @@ export async function createReleaseJob(input: {
 
   const command = releaseJobCommand(action);
   const now = Date.now();
-  if (COALESCED_QUEUED_ACTIONS.has(action)) {
+  if (COALESCED_QUEUED_ACTIONS.has(action) && !input.request?.reviewSnapshotSha) {
     const queued = await executor.data.execute({
       sql: `SELECT * FROM release_jobs
              WHERE action = ? AND status = 'queued'
@@ -400,7 +400,7 @@ export async function createReleaseJob(input: {
       args: [action],
     });
     const existing = queued.rows[0];
-    if (existing) {
+    if (existing && !JSON.parse(String(existing.request_json || "{}")).reviewSnapshotSha) {
       await executor.data.execute({
         sql: `UPDATE release_jobs
                  SET actor = ?, request_json = ?, updated_at = ?

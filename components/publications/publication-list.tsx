@@ -6,6 +6,7 @@ import type {
 
 import { classifyLabel, venueSummaryText, type LabelKind } from "./labels";
 import { PublicationHighlightBadge } from "./publication-highlight-badge";
+import { PublicationResourceLinks } from "./publication-resource-links";
 
 function orderYearKey(year: string): number {
   const m = /\d{4}/.exec(year);
@@ -109,23 +110,10 @@ function VenueLine({ venue }: { venue: PublicationVenue }) {
   );
 }
 
-function fallbackVenues(entry: PublicationStructuredEntry): PublicationVenue[] {
-  const venues = entry.venues ?? [];
-  const usedUrls = new Set(venues.map((v) => v.url).filter(Boolean) as string[]);
-  const out = [...venues];
-  if (entry.doiUrl && !usedUrls.has(entry.doiUrl)) {
-    out.push({ type: "DOI", text: entry.doiUrl, url: entry.doiUrl });
-  }
-  if (entry.arxivUrl && !usedUrls.has(entry.arxivUrl)) {
-    out.push({ type: "arXiv.org", text: entry.arxivUrl, url: entry.arxivUrl });
-  }
-  return out;
-}
-
 function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
   const authors =
     entry.authorsRich ?? (entry.authors ?? []).map((name) => ({ name, isSelf: false }));
-  const venues = fallbackVenues(entry);
+  const venues = entry.venues ?? [];
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
   // Collapsed, an entry used to show only a title and a coloured tag — the
@@ -170,20 +158,21 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
               </span>
             </>
           )}
+          <PublicationResourceLinks entry={entry} />
         </span>
       </div>
       <div className="notion-toggle__content" hidden aria-hidden="true">
-        {(authors.length > 0 || venues.length > 0) && (
+        {(authors.length > 0 || venues.length > 1) && (
           <blockquote className="notion-quote">
             <span className="notion-semantic-string">
               <AuthorsLine authors={authors} />
-              {authors.length > 0 && venues.length > 0 && (
+              {authors.length > 0 && venues.length > 1 && (
                 <>
                   <br />
                   <br />
                 </>
               )}
-              {venues.map((venue, index) => (
+              {venues.slice(1).map((venue, index) => (
                 <span key={`${venue.type}-${index}`}>
                   {index > 0 && <br />}
                   <VenueLine venue={venue} />

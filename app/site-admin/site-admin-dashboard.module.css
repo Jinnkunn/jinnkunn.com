@@ -1340,6 +1340,17 @@ button.statusPill:disabled {
   }
 }
 
+.publicationDiff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.previewControls { display: flex; gap: 8px; }
+.previewControls button { padding: 8px 12px; border: 1px solid var(--ds-border-subtle); border-radius: 4px; background: transparent; color: inherit; }
+.previewControls button[aria-pressed="true"] { background: var(--ds-surface-soft-strong); }
+.pagePreviewFrame { display: block; width: 100%; height: min(65vh, 680px); margin: 16px auto 0; border: 1px solid var(--ds-border-subtle); }
+.pagePreviewFrame[data-mobile="true"] { width: min(100%, 390px); }
+.publicationDiff > div { min-width: 0; }
+.publicationDiff pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: 12px; }
+.previewStatus { color: var(--ds-text-secondary); font-size: 12px; margin: 0 0 12px; min-height: 18px; }
+@media (max-width: 640px) { .publicationDiff { grid-template-columns: 1fr; } }
+
 @media (prefers-reduced-motion: reduce) {
   .publishingProgressValue {
     transition: none;
@@ -3338,6 +3349,7 @@ button.statusPill:disabled {
   color: var(--ds-text-primary);
 }
 .actionDialog::backdrop { background: color-mix(in srgb, var(--ds-text-primary) 28%, transparent); }
+.actionDialog[data-wide="true"] { width: min(1120px, calc(100vw - 32px)); }
 .actionDialog .panelHeader { margin-bottom: 16px; }
 .actionDialog .panelTitle { font-size: 20px; letter-spacing: 0; }
 .actionDialog form { display: grid; gap: 16px; }
@@ -3345,6 +3357,7 @@ button.statusPill:disabled {
 .publishReviewList { list-style: none; margin: 0; padding: 0; }
 .publishReviewList li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; }
 .publishReviewList strong { min-width: 0; overflow-wrap: anywhere; }
+.publishReviewList details { width: 100%; min-width: 0; }
 .publishReviewList span { flex-shrink: 0; color: var(--ds-text-secondary); font-size: 11px; }
 .collectionCustomTerm { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ds-text-secondary); }
 

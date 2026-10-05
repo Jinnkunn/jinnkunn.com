@@ -9,6 +9,7 @@ import {
 } from "@/lib/site-admin/mdx-visual-compatibility";
 import { isVisualModeAvailable } from "@/lib/site-admin/mdx-visual-mode";
 import styles from "./site-admin-dashboard.module.css";
+import { SiteAdminPagePreview } from "./site-admin-page-preview";
 
 const SiteAdminSourceEditor = dynamic(
   () =>
@@ -51,6 +52,8 @@ type MarkdownEditorProps = {
   initialMode?: EditorMode;
   visualEditing?: boolean;
   onEditComponent?: (component: string) => void;
+  persistenceKey?: string;
+  pagePreview?: { title: string; home?: boolean };
 };
 
 function editorStats(value: string) {
@@ -85,6 +88,8 @@ export function SiteAdminMarkdownEditor({
   initialMode = "visual",
   visualEditing = true,
   onEditComponent,
+  persistenceKey = label,
+  pagePreview,
 }: MarkdownEditorProps) {
   const editorRootRef = useRef<HTMLDivElement | null>(null);
   const previewRequestIdRef = useRef(0);
@@ -97,6 +102,8 @@ export function SiteAdminMarkdownEditor({
   const [previewError, setPreviewError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewRenderer, setPreviewRenderer] = useState("");
+  const [previewSource, setPreviewSource] = useState<string | null>(null);
+  const [pagePreviewOpen, setPagePreviewOpen] = useState(false);
   const [visualError, setVisualError] = useState("");
   const stats = useMemo(() => editorStats(value), [value]);
   const headings = useMemo(() => editorHeadings(value), [value]);
@@ -119,7 +126,6 @@ export function SiteAdminMarkdownEditor({
     previewRequestIdRef.current = requestId;
     setPreviewLoading(true);
     setPreviewError("");
-    setPreviewRenderer("");
     try {
       const response = await fetch("/api/site-admin/preview/mdx", {
         method: "POST",
@@ -138,10 +144,9 @@ export function SiteAdminMarkdownEditor({
       if (previewRequestIdRef.current !== requestId) return;
       setPreviewHtml(String(payload?.data?.html || payload?.html || ""));
       setPreviewRenderer(String(payload?.data?.renderer || payload?.renderer || ""));
+      setPreviewSource(value);
     } catch (error: unknown) {
       if (previewRequestIdRef.current !== requestId) return;
-      setPreviewHtml("");
-      setPreviewRenderer("");
       setPreviewError(error instanceof Error ? error.message : String(error));
     } finally {
       if (previewRequestIdRef.current === requestId) setPreviewLoading(false);
@@ -161,8 +166,25 @@ export function SiteAdminMarkdownEditor({
   function changeMode(nextMode: EditorMode) {
     if (nextMode === "visual" && !visualAvailable) return;
     setMode(nextMode);
-    if (nextMode === "preview") void renderPreview();
+    try { sessionStorage.setItem(`site-admin:editor-mode:${persistenceKey}`, nextMode); } catch { /* Storage may be unavailable. */ }
   }
+
+  useEffect(() => {
+    previewRequestIdRef.current += 1;
+    lastVisualValueRef.current = null;
+    setPreviewHtml("");
+    setPreviewError("");
+    setPreviewSource(null);
+    setPreviewRenderer("");
+    setPreviewLoading(false);
+    setVisualError("");
+    setPagePreviewOpen(false);
+    setMode(visualEditing ? initialMode : initialMode === "preview" ? "preview" : "source");
+    try {
+      const saved = sessionStorage.getItem(`site-admin:editor-mode:${persistenceKey}`);
+      if (saved === "source" || saved === "preview" || (saved === "visual" && visualEditing)) setMode(saved);
+    } catch { /* Storage may be unavailable. */ }
+  }, [persistenceKey, visualEditing, initialMode]);
 
   function handleVisualChange(next: string) {
     lastVisualValueRef.current = next;
@@ -178,26 +200,27 @@ export function SiteAdminMarkdownEditor({
 
   function renderPreviewPane() {
     return (
-      <div className={styles.markdownPreviewShell} style={{ minHeight }}>
+      <div className={styles.markdownPreviewShell} style={{ minHeight }} aria-busy={previewLoading}>
+        <p className={styles.previewStatus} role="status">{previewLoading ? "Refreshing preview…" : previewError ? "Preview could not be refreshed" : previewSource !== value && previewHtml ? "Preview is out of date" : previewHtml ? "Preview up to date" : ""}</p>
         {previewRenderer === "static-mdx-preview" ? (
           <div className={styles.editorModeNotice} role="note">
             Approximate preview: complex MDX may differ from the published page.
           </div>
         ) : null}
-        {previewLoading ? (
-          <p className={styles.previewEmpty}>Rendering preview…</p>
-        ) : previewError ? (
+        {previewError ? (
           <div className={styles.previewError} role="alert">
             <strong>Preview unavailable</strong>
             <span>{previewError}</span>
+            <button type="button" onClick={() => void renderPreview()}>Retry preview</button>
           </div>
-        ) : previewHtml.trim() ? (
+        ) : null}
+        {previewHtml.trim() ? (
           <div
             className={styles.markdownPreview}
             dangerouslySetInnerHTML={{ __html: previewHtml }}
           />
         ) : (
-          <p className={styles.previewEmpty}>Nothing to preview yet.</p>
+          <p className={styles.previewEmpty}>{previewLoading ? "Rendering preview…" : "Nothing to preview yet."}</p>
         )}
       </div>
     );
@@ -223,6 +246,7 @@ export function SiteAdminMarkdownEditor({
       data-layout={previewLayout}
     >
       <div className={styles.editorModeBar}>
+        {pagePreview ? <button type="button" className={styles.markdownModeButton} onClick={() => setPagePreviewOpen(true)}>Page preview</button> : null}
         <div className={styles.editorModeTabs} role="tablist" aria-label={`${label} view`}>
           {visualEditing ? (
             <button
@@ -289,6 +313,7 @@ export function SiteAdminMarkdownEditor({
           {stats.components > 0 ? <span>{stats.components} components</span> : null}
         </div>
       </div>
+      {pagePreviewOpen && pagePreview ? <SiteAdminPagePreview title={pagePreview.title} home={pagePreview.home} source={value} onClose={() => setPagePreviewOpen(false)} /> : null}
 
       {visualError ? (
         <div className={styles.editorModeNotice} role="status">

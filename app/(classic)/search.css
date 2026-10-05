@@ -541,3 +541,5 @@
     transform: none !important;
   }
 }
+.notion-search__quick-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 20px; }
+.notion-search__quick-links a { color: inherit; text-underline-offset: 3px; }
