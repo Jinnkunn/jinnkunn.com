@@ -12,6 +12,8 @@ import {
   findOrphanContentFiles,
   pruneOrphanContentFiles,
 } from "../../scripts/content/dump-content-from-db.mjs";
+import { readPublicationSnapshot } from "../../scripts/_lib/publication-snapshot-files.mjs";
+import { publicationSnapshot } from "../../lib/shared/publication-snapshot.mjs";
 
 async function makeTargetTree(files) {
   const target = await mkdtemp(path.join(tmpdir(), "dump-prune-"));
@@ -123,4 +125,24 @@ test("dump prune: the publish path asks for it", async () => {
     script.indexOf("function buildStaticShells"),
   );
   assert.match(sync, /"--prune"/);
+});
+
+test("dump prune: full releases also treat D1 as authoritative", async () => {
+  const script = await readFile(
+    path.join(process.cwd(), "scripts/release/release-cloudflare.mjs"),
+    "utf8",
+  );
+  const sync = script.slice(script.indexOf("function dumpD1Content"), script.indexOf("function hashReleaseContent"));
+  assert.match(sync, /"--prune"/);
+});
+
+test("dump prune: retired configuration cannot drift a reviewed publication snapshot", async () => {
+  const sources = { "home.json": "{}", "pages/kept.mdx": "kept" };
+  const root = await makeTargetTree({
+    "content/home.json": sources["home.json"],
+    "content/pages/kept.mdx": sources["pages/kept.mdx"],
+    "content/filesystem/announcements.json": "retired announcement",
+  });
+  await pruneOrphanContentFiles({ target: path.join(root, "content"), seenInDb: new Set(Object.keys(sources)) });
+  assert.equal(readPublicationSnapshot(root).sha, publicationSnapshot(sources).sha);
 });

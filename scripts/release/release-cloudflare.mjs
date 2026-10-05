@@ -356,6 +356,7 @@ function dumpD1Content({ targetRoot, env, label }) {
       "--remote",
       `--env=${env}`,
       "--quiet",
+      "--prune",
       `--target=${target}`,
     ],
     { label: label || `dump ${env} D1 to release snapshot content/`, cwd: ROOT },
