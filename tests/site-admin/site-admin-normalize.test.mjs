@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { normalizeHomeData } from "../../lib/site-admin/home-normalize.ts";
 import {
   createNowData,
+  saveCurrentNowData,
   deleteNowHistoryData,
   SiteAdminNowHistoryNotFoundError,
   updateNowHistoryData,
@@ -21,6 +22,16 @@ const emptyHome = {
   schemaVersion: 4,
   title: "Hi there!",
 };
+
+test("Now autosave edits one current history row without adding intermediate keystrokes", () => {
+  let data = createNowData({ data: { current: { text: "", updatedAt: "" }, updates: [] }, text: "Initial", context: { hasValue: false }, location: { hasValue: false }, now: new Date("2026-10-24T12:00:00Z") });
+  const id = data.updates[0].id;
+  for (let index = 1; index <= 12; index++) data = saveCurrentNowData({ data, text: `Edit ${index}`, context: { hasValue: false }, location: { hasValue: false }, now: new Date(`2026-10-24T12:00:${String(index).padStart(2, "0")}Z`) });
+  assert.equal(data.updates.length, 1);
+  assert.equal(data.updates[0].id, id);
+  assert.equal(data.current.text, "Edit 12");
+  assert.equal(data.updates[0].text, "Edit 12");
+});
 
 test("normalizeHomeData: returns empty template for non-object input", () => {
   assert.deepEqual(normalizeHomeData(null), emptyHome);

@@ -3355,7 +3355,19 @@ button.statusPill:disabled {
 .actionDialog form { display: grid; gap: 16px; }
 .reviewHeading { margin: 20px 0 8px; font-size: 13px; }
 .publishReviewList { list-style: none; margin: 0; padding: 0; }
-.publishReviewList li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; }
+.publishReviewList > li { display: grid; gap: 10px; padding: 16px 0; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; min-width: 0; }
+.publicationFields { display: grid; gap: 12px; margin: 0; }
+.publicationFields dt { font-weight: 600; margin-bottom: 5px; }
+.publicationFields dd { margin: 0; }
+.publicationFields p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+.publicationEntries { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.publicationEntries > li { padding: 8px 0; border-top: 1px solid var(--ds-border-subtle); }
+.publicationEntries summary, .publicationSource summary { cursor: pointer; padding: 4px 0; }
+.publicationEntries .publicationFields { margin-top: 12px; }
+.publicationSource { color: var(--ds-text-secondary); }
+.draftStatus { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; min-width: 0; }
+.draftStatus p { margin: 0; overflow-wrap: anywhere; }
+.draftStatus small { display: block; margin-top: 3px; color: var(--ds-text-secondary); }
 .publishReviewList strong { min-width: 0; overflow-wrap: anywhere; }
 .publishReviewList details { width: 100%; min-width: 0; }
 .publishReviewList span { flex-shrink: 0; color: var(--ds-text-secondary); font-size: 11px; }

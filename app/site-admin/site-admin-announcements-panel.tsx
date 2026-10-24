@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import {
   type SiteAnnouncement,
 } from "@/lib/shared/announcements";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
+import { useSiteAdminSingletonDraft } from "./use-site-admin-singleton-draft";
+import { SiteAdminDraftStatus } from "./site-admin-draft-status";
+import { SiteAdminConflictDialog } from "./site-admin-conflict-dialog";
 import styles from "./site-admin-announcements-panel.module.css";
 
 type AnnouncementsPayload = {
@@ -67,16 +70,26 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || `${response.status} ${response.statusText}`);
+    throw Object.assign(new Error(payload?.error || `${response.status} ${response.statusText}`), { status: response.status });
   }
   return (payload?.data ?? payload) as T;
 }
 
 export function SiteAdminAnnouncementsPanel({
+  actor,
+  pending,
+  live,
+  onReview,
   onDirtyChange,
+  onSavingChange,
   onSaved,
 }: {
+  actor: string;
+  pending: boolean;
+  live: boolean;
+  onReview: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
   onSaved?: (action: "save" | "delete") => void;
 }) {
   const [payload, setPayload] = useState<AnnouncementsPayload | null>(null);
@@ -87,8 +100,21 @@ export function SiteAdminAnnouncementsPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [conflict, setConflict] = useState<AnnouncementsPayload | null>(null);
   const dirty = Boolean(draft && fingerprint(draft) !== baseline);
   const routesText = useMemo(() => (draft?.routes || []).join("\n"), [draft?.routes]);
+  const draftRef = useRef(draft); draftRef.current = draft;
+  const persistence = useSiteAdminSingletonDraft({
+    kind: `${actor}:announcements`, id: "active", ready: Boolean(payload) && !loading,
+    dirty, source: fingerprint(draft), form: draft, baseVersion: payload?.sourceVersion.fileSha || "",
+    enabled: !loading && !saving && Boolean(draft) && !conflict,
+    onSave: () => save(),
+    onRestore: (restored) => {
+      if (!restored) return;
+      setDraft(restored); setSelectedId(restored.id);
+      setBaseline(fingerprint(payload?.data.items.find((item) => item.id === restored.id) || null));
+    },
+  });
 
   async function load(preferredId?: string) {
     setLoading(true);
@@ -116,13 +142,17 @@ export function SiteAdminAnnouncementsPanel({
     onDirtyChange?.(dirty);
     return () => onDirtyChange?.(false);
   }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    onSavingChange?.(saving);
+    return () => onSavingChange?.(false);
+  }, [saving, onSavingChange]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
       if (!dirty || saving) return;
       event.preventDefault();
-      void save();
+      void persistence.save();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -134,8 +164,10 @@ export function SiteAdminAnnouncementsPanel({
   }
 
   function select(id: string) {
+    if (saving) return;
     if (id === selectedId) return;
     if (dirty && !window.confirm("Discard unsaved announcement edits?")) return;
+    persistence.dismiss(); persistence.resume();
     const selected = payload?.data.items.find((item) => item.id === id) || null;
     setSelectedId(selected?.id || "");
     setDraft(selected ? structuredClone(selected) : null);
@@ -145,7 +177,9 @@ export function SiteAdminAnnouncementsPanel({
   }
 
   function createAnnouncement() {
+    if (saving) return;
     if (dirty && !window.confirm("Discard unsaved announcement edits?")) return;
+    persistence.dismiss(); persistence.resume();
     const next = freshAnnouncement();
     setSelectedId(next.id);
     setDraft(next);
@@ -154,10 +188,11 @@ export function SiteAdminAnnouncementsPanel({
     setNotice("");
   }
 
-  async function save() {
-    if (!draft || !payload || saving) return;
-    const normalized = normalizeAnnouncement(draft, draft.id);
-    if (!normalized) return;
+  async function save(expectedVersion?: string): Promise<boolean> {
+    if (!draft || !payload || saving) return false;
+    const captured = draft;
+    const normalized = normalizeAnnouncement(captured, captured.id);
+    if (!normalized) return false;
     setSaving(true);
     setError("");
     setNotice("");
@@ -167,22 +202,27 @@ export function SiteAdminAnnouncementsPanel({
         body: JSON.stringify({
           action: "upsert",
           announcement: normalized,
-          expectedFileSha: payload.sourceVersion.fileSha,
+          expectedFileSha: expectedVersion ?? payload.sourceVersion.fileSha,
         }),
       });
       const saved = next.data.items.find((item) => item.id === normalized.id) || normalized;
       setPayload(next);
       setSelectedId(saved.id);
-      setDraft(structuredClone(saved));
-      setBaseline(fingerprint(saved));
+      setBaseline(fingerprint(captured));
       setNotice(
         saved.status === "published"
           ? "Announcement saved. Publish the content update when ready."
           : "Draft announcement saved.",
       );
       onSaved?.("save");
+      return true;
     } catch (nextError: unknown) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
+      if ((nextError as { status?: number })?.status === 409) {
+        const remote = await requestJson<AnnouncementsPayload>("/api/site-admin/announcements").catch(() => null);
+        if (remote) setConflict(remote);
+      }
+      return false;
     } finally {
       setSaving(false);
     }
@@ -208,6 +248,7 @@ export function SiteAdminAnnouncementsPanel({
       setDraft(selected ? structuredClone(selected) : null);
       setBaseline(fingerprint(selected));
       setNotice("Announcement deleted.");
+      persistence.dismiss(); persistence.resume();
       onSaved?.("delete");
     } catch (nextError: unknown) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
@@ -222,6 +263,7 @@ export function SiteAdminAnnouncementsPanel({
     <div className={styles.workspace}>
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
       {notice ? <StatusNotice tone="success">{notice}</StatusNotice> : null}
+      {!draft && persistence.recovery ? <SiteAdminDraftStatus {...persistence} dirty={false} saving={saving} pending={pending} live={live} onRetry={() => void persistence.save()} onRestore={persistence.restore} onDismiss={persistence.dismiss} /> : null}
       <Card className={styles.panel}>
         <header className={styles.header}>
           <div>
@@ -229,7 +271,7 @@ export function SiteAdminAnnouncementsPanel({
             <h2>Notices and banners</h2>
             <p>Publish flexible MDX above the public site without changing its color treatment.</p>
           </div>
-          <Button onClick={createAnnouncement} variant="subtle" size="sm">
+          <Button onClick={createAnnouncement} variant="subtle" size="sm" disabled={saving}>
             New
           </Button>
         </header>
@@ -241,6 +283,7 @@ export function SiteAdminAnnouncementsPanel({
                 type="button"
                 key={item.id}
                 data-active={item.id === selectedId}
+                disabled={saving}
                 onClick={() => select(item.id)}
               >
                 <span>
@@ -269,12 +312,13 @@ export function SiteAdminAnnouncementsPanel({
             </div>
             <div className={styles.actions}>
               <Button onClick={() => void remove()} variant="ghost" size="sm" disabled={saving}>Delete</Button>
-              <Button onClick={() => void save()} tone="accent" size="sm" disabled={saving || !dirty}>
+              <Button onClick={() => void persistence.save()} tone="accent" size="sm" disabled={saving || !dirty}>
                 {saving ? "Saving draft" : "Save draft"}
               </Button>
             </div>
           </header>
 
+          <SiteAdminDraftStatus {...persistence} dirty={dirty} saving={saving} pending={pending} live={live} onRetry={() => void persistence.save()} onRestore={persistence.restore} onDismiss={persistence.dismiss} onReview={onReview} />
           <div className={styles.fieldGrid}>
             <label>
               Title
@@ -370,6 +414,12 @@ export function SiteAdminAnnouncementsPanel({
           </section>
         </Card>
       ) : null}
+      {conflict ? <SiteAdminConflictDialog busy={saving} conflict={{
+        title: draft?.title || "Announcement", localSource: JSON.stringify(draftRef.current, null, 2),
+        remoteSource: JSON.stringify(conflict.data.items.find((item) => item.id === selectedId) || null, null, 2),
+      }} onClose={() => setConflict(null)}
+        onReload={() => { void load(selectedId).then(() => { setConflict(null); persistence.dismiss(); persistence.resume(); }); }}
+        onKeepMine={() => { void save(conflict.sourceVersion.fileSha).then((saved) => { if (saved) { setConflict(null); persistence.resume(); } }); }} /> : null}
     </div>
   );
 }

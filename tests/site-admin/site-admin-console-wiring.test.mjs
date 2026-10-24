@@ -70,9 +70,11 @@ test("opening a document claims the selection before its detail request", () => 
 test("autosave stands down outside the document editor", () => {
   const persistence = readFileSync(new URL("../../app/site-admin/use-site-admin-draft-persistence.ts", import.meta.url), "utf8");
   assert.match(CONSOLE, /autosaveEnabled: area === "content" && contentMode !== "create"/);
-  assert.match(persistence, /if \(!id \|\| !dirty \|\| !autosaveEnabled\) return;/);
-  assert.match(persistence, /onSave\(\), 1600\)/);
-  assert.match(persistence, /\[kind, id, dirty, snapshot, autosaveEnabled\]/);
+  assert.match(persistence, /!id \|\| !dirty \|\| !autosaveEnabled/);
+  assert.match(persistence, /failedSource.current === fingerprint/);
+  assert.match(persistence, /callbacks.current.onSave\(\)/);
+  assert.match(persistence, /}, 1600\)/);
+  assert.match(persistence, /\[kind, id, dirty, snapshot, autosaveEnabled, fingerprint, retry\]/);
 });
 
 test("ordinary saves never queue a publication", () => {

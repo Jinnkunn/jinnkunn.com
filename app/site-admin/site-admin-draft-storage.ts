@@ -6,9 +6,14 @@ export type LocalDraftSnapshot<Form = unknown> = {
   form?: Form;
   collection?: CollectionDraft;
   savedAt: string;
+  baseVersion?: string;
 };
 type DraftStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function requiresRecoveryReview(snapshot: { baseVersion?: string }, currentVersion: string): boolean {
+  return snapshot.baseVersion === undefined || snapshot.baseVersion !== currentVersion;
+}
 
 export function localDraftKey(kind: string, id: string) {
   return `site-admin-content-draft:${kind}:${id}`;

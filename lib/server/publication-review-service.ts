@@ -4,6 +4,7 @@ import compiledBaseline from "@/content/generated/publication-baseline.json";
 import { getContentStore } from "./content-store-resolver";
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor";
 import { PUBLICATION_BASELINE_PATH, isPublicationSource, publicationReview, publicationSnapshot } from "../shared/publication-snapshot";
+import { describePublicationChange } from "../shared/publication-review-details";
 
 function database() {
   if (process.env.SITE_ADMIN_STORAGE !== "db") return null;
@@ -57,7 +58,12 @@ export async function loadSavedSnapshot() {
 export async function loadPublicationReview() {
   const current = await loadSavedSnapshot();
   const baseline = await loadPublishedSnapshot();
-  return publicationReview(current, baseline);
+  const review = publicationReview(current, baseline);
+  return { ...review, changes: review.changes.map((change) => ({
+    ...change,
+    title: ({ "home.json": "Home", "now.json": "Now", "page-tree.json": "Page order", "filesystem/announcements.json": "Announcements", "filesystem/site-config.json": "Site settings", "filesystem/protected-routes.json": "Page access" } as Record<string, string>)[change.path] || change.title,
+    details: describePublicationChange(change, current, baseline),
+  })) };
 }
 
 export async function loadPublishedSource(relPath: string) {

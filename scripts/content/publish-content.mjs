@@ -13,7 +13,7 @@ import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs"
 import { d1DatabaseIdForEnv } from "../_lib/wrangler-d1.mjs";
 import { verifyOverlayContent } from "../_lib/overlay-serving-verification.mjs";
 import { readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
-import { assertPublicationSnapshot, PUBLICATION_BASELINE_PATH } from "../../lib/shared/publication-snapshot.mjs";
+import { assertPublicationSnapshot, PUBLICATION_BASELINE_PATH, publicationSearchSnapshot } from "../../lib/shared/publication-snapshot.mjs";
 import {
   acquireReleaseLock,
   formatHeldLock,
@@ -783,9 +783,24 @@ async function assertReferencedAssetsExistForRows({ env, rows }) {
 
 async function verifyOverlayServing(env, rows) {
   logPhase(`verifying ${env} public page content fingerprints`);
-  return verifyOverlayContent({
+  const result = await verifyOverlayContent({
     origin: normalizeOrigin(env), rows, cookie: await stagingCookieIfNeeded(env),
   });
+  const baseline = rows.find((row) => row.asset_path === PUBLICATION_BASELINE_PATH);
+  if (baseline) {
+    const snapshot = JSON.parse(baseline.body);
+    if (snapshot.search) {
+      const response = await fetch(`${normalizeOrigin(env)}/api/search?q=publication-version-check`, {
+        headers: { cookie: await stagingCookieIfNeeded(env), "cache-control": "no-cache" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      const actual = response.headers.get("x-publication-snapshot");
+      await response.arrayBuffer();
+      if (!response.ok || actual !== snapshot.sha) throw new Error(`Published search version mismatch (${response.status}, ${actual || "missing version"}).`);
+      result.searchSnapshotSha = actual;
+    }
+  }
+  return result;
 }
 
 function overlaySnapshot(files) {
@@ -922,6 +937,7 @@ function buildShellOverlayRows({ files, git, updatedAt }) {
 
 function buildStatusOverlayRow({
   contentInputSha,
+  publicationSnapshotSha,
   deletedShellCount,
   env,
   git,
@@ -942,6 +958,8 @@ function buildStatusOverlayRow({
       workerCodeSha,
       targetBuildId,
       contentInputSha,
+      publicationSnapshotSha,
+      searchVersion: 1,
       snapshotSha,
       fileCount: shellFileCount,
       changedFiles: shellChangedCount,
@@ -987,6 +1005,7 @@ async function prepareOverlayDiff({
     .filter((assetPath) => !shellPaths.has(assetPath));
   const statusRow = buildStatusOverlayRow({
     contentInputSha,
+    publicationSnapshotSha: publicationBaseline.sha,
     deletedShellCount: deleted.length,
     env,
     git,
@@ -1008,6 +1027,7 @@ async function prepareOverlayDiff({
   if (existing.get(PUBLICATION_BASELINE_PATH)?.contentSha !== baselineRow.content_sha) changedRows.push(baselineRow);
   return {
     expectedRows: shellRows,
+    verificationRows: [...shellRows, baselineRow],
     changedAssetPaths: new Set(changedRows.map((row) => row.asset_path)),
     changedRows,
     deleted,
@@ -1624,6 +1644,8 @@ async function main() {
   if (
     currentStatus?.ok === true &&
     currentStatus.contentInputSha === contentInputSha &&
+    currentStatus.publicationSnapshotSha === publicationBaseline.sha &&
+    currentStatus.searchVersion === 1 &&
     currentStatus.workerCodeSha === targetWorker.workerCodeSha &&
     currentStatus.targetBuildId === liveBuildId
   ) {
@@ -1675,7 +1697,14 @@ async function main() {
   const snapshotSha = overlaySnapshot(files);
   const diff = await prepareOverlayDiff({
     contentInputSha,
-    publicationBaseline,
+    publicationBaseline: {
+      ...publicationBaseline,
+      search: publicationSearchSnapshot(
+        publicationBaseline,
+        JSON.parse(fs.readFileSync(path.join(releaseRoot, "content/generated/search-index.json"), "utf8")),
+        JSON.parse(fs.readFileSync(path.join(releaseRoot, "content/generated/routes-manifest.json"), "utf8")),
+      ),
+    },
     env: args.env,
     files,
     git: buildSource,
@@ -1695,7 +1724,7 @@ async function main() {
     serving =
       args.dryRun || args.skipVerify
         ? null
-        : await verifyOverlayServing(args.env, diff.expectedRows);
+        : await verifyOverlayServing(args.env, diff.verificationRows);
     assets =
       args.dryRun || args.skipVerify
         ? assets

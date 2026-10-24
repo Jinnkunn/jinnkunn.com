@@ -27,7 +27,7 @@ const RATE_LIMIT = { namespace: "site-admin-now" };
 
 type NowUpdateCommand =
   | {
-      action: "create";
+      action: "create" | "save-current";
       text: string;
       context: { hasValue: boolean; value?: string };
       location: { hasValue: boolean; value?: string };
@@ -115,7 +115,7 @@ function parseNowUpdateCommand(raw: Record<string, unknown>):
     };
   }
 
-  if (action !== "create") {
+  if (action !== "create" && action !== "save-current") {
     return { ok: false, error: `Unsupported Now action: ${action}`, status: 400 };
   }
 
@@ -197,6 +197,7 @@ export async function POST(req: NextRequest) {
                   location: command.location,
                   date: command.date,
                   expectedFileSha: command.expectedFileSha,
+                  replaceCurrent: command.action === "save-current",
                 });
         await writeSiteAdminAuditLog({
           actor: ctx.login,

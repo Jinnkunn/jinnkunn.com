@@ -30,6 +30,7 @@
     "smoke:site-admin": "node scripts/qa/site-admin-smoke.mjs",
     "smoke:site-admin:editor": "node scripts/qa/site-admin-editor-interaction.mjs",
     "smoke:site-admin:collections": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/qa/site-admin-collections-workflow.mjs",
+    "smoke:site-admin:drafts": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/qa/site-admin-priority-workflow.mjs",
     "smoke:site-admin:write:staging": "node scripts/qa/site-admin-write-smoke.mjs --env=staging --conflict=1",
     "smoke:site-admin:write:prod": "node scripts/qa/site-admin-write-smoke.mjs --env=production --conflict=0",
     "smoke:site-admin:content": "node scripts/qa/site-admin-content-smoke.mjs",

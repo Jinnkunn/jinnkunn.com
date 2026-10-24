@@ -33,8 +33,6 @@ export async function compilePostMdx(source: string): Promise<{
           behavior: "wrap",
           properties: {
             className: "notion-heading__anchor-link",
-            ariaHidden: "true",
-            tabIndex: -1,
           },
         },
       ],

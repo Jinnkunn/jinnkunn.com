@@ -1,11 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readLocalDraft, writeLocalDraft, clearLocalDraft, localDraftKey } from "../../app/site-admin/site-admin-draft-storage.ts";
+import { readLocalDraft, writeLocalDraft, clearLocalDraft, localDraftKey, requiresRecoveryReview } from "../../app/site-admin/site-admin-draft-storage.ts";
 
 function storage() {
   const values = new Map();
   return { values, getItem: (key) => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) };
 }
+test("recovery always requires review when its base version is older or unknown", () => {
+  assert.equal(requiresRecoveryReview({ baseVersion: "old" }, "new"), true);
+  assert.equal(requiresRecoveryReview({}, "new"), true);
+  assert.equal(requiresRecoveryReview({ baseVersion: "same" }, "same"), false);
+  assert.equal(requiresRecoveryReview({ baseVersion: "" }, ""), false);
+});
+test("recovery copies are scoped to the signed-in author", () => {
+  const store = storage();
+  writeLocalDraft("first@example.test:home", "home", { source: "private draft", savedAt: new Date().toISOString(), baseVersion: "v1" }, store);
+  assert.equal(readLocalDraft("second@example.test:home", "home", store), null);
+  assert.equal(readLocalDraft("first@example.test:home", "home", store).source, "private draft");
+});
 test("local recovery preserves raw structured fields through reload", () => {
   const store = storage();
   const snapshot = { source: "serialized", collection: { name: "works", value: { items: [{ role: "Instructor ", periodRange: { end: "2026-02", start: "" } }] } }, savedAt: new Date().toISOString() };

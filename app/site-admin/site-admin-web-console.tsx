@@ -80,9 +80,11 @@ import { createCollectionActions } from "./site-admin-collection-actions";
 import { SiteAdminActionDialog } from "./site-admin-action-dialog";
 import { SiteAdminCollectionGroupDialog, type CollectionGroupEdit, type CollectionGroupChange } from "./site-admin-collection-group-dialog";
 import { useSiteAdminDraftPersistence } from "./use-site-admin-draft-persistence";
+import { useSiteAdminSingletonDraft } from "./use-site-admin-singleton-draft";
+import { SiteAdminDraftStatus } from "./site-admin-draft-status";
 import { useSiteAdminWorkspaceLocation } from "./use-site-admin-workspace-location";
 import { useSiteAdminReleaseMonitor, type ReleaseJobsPayload } from "./use-site-admin-release-monitor";
-import { clearLocalDraft, readLocalDraft, type LocalDraftSnapshot as StoredLocalDraftSnapshot } from "./site-admin-draft-storage";
+import { clearLocalDraft, readLocalDraft, requiresRecoveryReview, type LocalDraftSnapshot as StoredLocalDraftSnapshot } from "./site-admin-draft-storage";
 import {
   collectionHistory as createCollectionHistory,
   collectionPlainText,
@@ -101,6 +103,7 @@ import {
 } from "./site-admin-media-library";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import { SiteAdminPagePreview } from "./site-admin-page-preview";
+import { SiteAdminPublicationChanges } from "./site-admin-publication-changes";
 import { SiteAdminAnnouncementsPanel } from "./site-admin-announcements-panel";
 import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
@@ -739,6 +742,7 @@ export function SiteAdminWebConsole({
   const [contentFormBaseline, setContentFormBaseline] = useState("");
   const [slugDraft, setSlugDraft] = useState("");
   const [localAutosaveAt, setLocalAutosaveAt] = useState("");
+  const [recoveredDocumentNeedsReview, setRecoveredDocumentNeedsReview] = useState(false);
   const [contentSavedAt, setContentSavedAt] = useState("");
   const [localDraftSnapshot, setLocalDraftSnapshot] =
     useState<LocalDraftSnapshot | null>(null);
@@ -777,6 +781,8 @@ export function SiteAdminWebConsole({
   const savedContentRevisionRef = useRef(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [announcementDirty, setAnnouncementDirty] = useState(false);
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const [singletonConflict, setSingletonConflict] = useState<(SiteAdminConflict & { kind: "home" | "now"; version: string }) | null>(null);
   const [releaseJobs, setReleaseJobs] = useState<SiteAdminReleaseJobLike[] | null>(
     null,
   );
@@ -794,7 +800,7 @@ export function SiteAdminWebConsole({
   const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number; expanded: string[] }>());
   const documentViewsRef = useRef(new Map<string, { search: string; scroll: number }>());
   const saveSelectedContentRef = useRef<
-    (options?: { quiet?: boolean }) => Promise<void>
+    (options?: { quiet?: boolean }) => Promise<boolean | void>
   >(async () => {});
   const saveHomeRef = useRef<() => Promise<void>>(async () => {});
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
@@ -840,6 +846,12 @@ export function SiteAdminWebConsole({
   function recordSavedContent() {
     savedContentRevisionRef.current += 1;
     setPendingPublishCount((current) => current + 1);
+    void refreshPublicationReview();
+  }
+
+  function publicationState(path: string) {
+    const changed = publicationReview?.changes.some((item) => item.path === path || item.oldPath === path);
+    return { pending: publicationReview ? Boolean(changed) : liveSync.state === "pending", live: publicationReview ? !changed : liveSync.state === "live" };
   }
 
   useEffect(() => {
@@ -1085,8 +1097,6 @@ export function SiteAdminWebConsole({
   );
   selectedSourceDraftRef.current = selectedSourceDraft;
   saveSelectedContentRef.current = saveSelectedContent;
-  saveHomeRef.current = saveHome;
-  saveNowRef.current = saveNow;
   const homeDirty = Boolean(home && `${homeTitle}\n${homeBody}` !== homeBaseline);
   const nowComparable = `${nowText}\n${nowContext}\n${nowLocation}\n${nowDate}`;
   const nowDirty = Boolean(now && nowComparable !== nowBaseline);
@@ -1135,6 +1145,8 @@ export function SiteAdminWebConsole({
     ? `${selectedComponentIssues.length} validation ${
         selectedComponentIssues.length === 1 ? "issue" : "issues"
       } · recovery copy kept locally`
+    : recoveredDocumentNeedsReview
+    ? "Recovered edits are based on another version. Review them before saving the draft."
     : selectedDirty
     ? localAutosaveAt
       ? `Recovery copy saved ${formatWhen(localAutosaveAt)}`
@@ -1264,14 +1276,34 @@ export function SiteAdminWebConsole({
     source: selectedSourceDraft,
     form: selectedIsStructured ? contentForm : undefined,
     collection: collectionDraft || undefined,
-  }), [selectedSourceDraft, selectedIsStructured, contentForm, collectionDraft]);
+    baseVersion: selected?.version || "",
+  }), [selectedSourceDraft, selectedIsStructured, contentForm, collectionDraft, selected?.version]);
   useSiteAdminDraftPersistence({
-    kind: selected?.kind || "", id: selected?.id || "", dirty: selectedDirty, snapshot: recoverySnapshot,
-    autosaveEnabled: area === "content" && contentMode !== "create" && !saving && !conflict && !componentSaveBlocked,
-    onSave: () => void saveSelectedContentRef.current({ quiet: true }),
+    kind: `${actor}:${selected?.kind || ""}`, id: selected?.id || "", dirty: selectedDirty, snapshot: recoverySnapshot,
+    autosaveEnabled: area === "content" && contentMode !== "create" && !saving && !conflict && !componentSaveBlocked && !recoveredDocumentNeedsReview,
+    onSave: () => saveSelectedContentRef.current({ quiet: true }),
     onRecoverySaved: (at) => { setLocalAutosaveAt(at); setLocalDraftSnapshot(null); },
     onRecoveryFailure: () => setWarning("This browser could not keep a recovery copy. Save the draft before leaving."),
   });
+
+  const homeForm = useMemo(() => ({ title: homeTitle, bodyMdx: homeBody }), [homeTitle, homeBody]);
+  const nowForm = useMemo(() => ({ text: nowText, context: nowContext, location: nowLocation, date: nowDate }), [nowText, nowContext, nowLocation, nowDate]);
+  const homeFormRef = useRef(homeForm); homeFormRef.current = homeForm;
+  const nowFormRef = useRef(nowForm); nowFormRef.current = nowForm;
+  const homePersistence = useSiteAdminSingletonDraft({
+    kind: `${actor}:home`, id: "home", ready: Boolean(home), dirty: homeDirty,
+    source: JSON.stringify(homeForm), form: homeForm, baseVersion: home?.sourceVersion.fileSha || "",
+    enabled: area === "home" && !loading && !saving && !singletonConflict,
+    onSave: () => saveHome(), onRestore: (form) => { setHomeTitle(form.title); setHomeBody(form.bodyMdx); },
+  });
+  const nowPersistence = useSiteAdminSingletonDraft({
+    kind: `${actor}:now`, id: "now", ready: Boolean(now), dirty: nowDirty,
+    source: JSON.stringify(nowForm), form: nowForm, baseVersion: now?.sourceVersion.fileSha || "",
+    enabled: area === "now" && !loading && !saving && !singletonConflict && Boolean(nowText.trim()),
+    onSave: () => saveNow(), onRestore: (form) => { setNowText(form.text); setNowContext(form.context); setNowLocation(form.location); setNowDate(form.date); },
+  });
+  saveHomeRef.current = async () => { await homePersistence.save(); };
+  saveNowRef.current = async () => { await nowPersistence.save(); };
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -1305,6 +1337,10 @@ export function SiteAdminWebConsole({
   }
 
   function confirmDiscardChanges(): boolean {
+    if (((area === "home" || area === "now") && saving) || announcementSaving) {
+      setWarning("A draft save is in progress. Please wait before switching pages.");
+      return false;
+    }
     if (!hasUnsavedChanges) return true;
     return window.confirm("You have unsaved edits. Discard them and continue?");
   }
@@ -1315,6 +1351,10 @@ export function SiteAdminWebConsole({
    * after the author said to throw them away.
    */
   function discardEditorDrafts() {
+    if (selected && selectedDirty) clearLocalDraft(`${actor}:${selected.kind}`, selected.id);
+    if (homeDirty) { homePersistence.dismiss(); homePersistence.resume(); }
+    if (nowDirty) { nowPersistence.dismiss(); nowPersistence.resume(); }
+    if (announcementDirty) clearLocalDraft(`${actor}:announcements`, "active");
     setSelected(null);
     setContentMode("browse");
     setSourceDraft("");
@@ -1324,6 +1364,7 @@ export function SiteAdminWebConsole({
     setContentFormBaseline("");
     setSlugDraft("");
     setLocalAutosaveAt("");
+    setRecoveredDocumentNeedsReview(false);
     setLocalDraftSnapshot(null);
     setComponentReturnTarget(null);
     setHomeTitle(home?.data.title || "");
@@ -1340,6 +1381,7 @@ export function SiteAdminWebConsole({
       return;
     }
     if (!confirmDiscardChanges()) return;
+    if (announcementDirty) clearLocalDraft(`${actor}:announcements`, "active");
     // A dirty settings draft is discarded by unmounting its panel; wiping the
     // document editor for it would throw away a selection that was never dirty.
     if (selectedDirty || homeDirty || nowDirty) discardEditorDrafts();
@@ -1384,7 +1426,8 @@ export function SiteAdminWebConsole({
     setComponentDropId("");
     setLocalAutosaveAt("");
     setContentSavedAt("");
-    const localDraft = readLocalDraft<EditableContentForm>(nextKind, id);
+    const localDraft = readLocalDraft<EditableContentForm>(`${actor}:${nextKind}`, id);
+    setRecoveredDocumentNeedsReview(false);
     setLocalDraftSnapshot(
       localDraft && (localDraft.source !== baseline ||
         (localDraft.collection && JSON.stringify(localDraft.collection) !== JSON.stringify(draft)))
@@ -1441,14 +1484,14 @@ export function SiteAdminWebConsole({
   }
 
   async function saveSelectedContent(options: { quiet?: boolean } = {}) {
-    if (!selected) return;
+    if (!selected || saving) return false;
     if (componentSaveBlocked) {
       setWarning(
         `Fix ${selectedComponentIssues.length} validation ${
           selectedComponentIssues.length === 1 ? "issue" : "issues"
         } before saving.`,
       );
-      return;
+      return false;
     }
     const sourceAtStart = selectedSourceDraft;
     const collectionAtStart = collectionDraft;
@@ -1487,7 +1530,7 @@ export function SiteAdminWebConsole({
       );
       if (!newerLocalEdits) {
         setSourceDraft(next.source);
-        setContentForm(form);
+        if (!options.quiet) setContentForm(form);
       }
       setContentFormBaseline(
         newerLocalEdits
@@ -1498,10 +1541,11 @@ export function SiteAdminWebConsole({
       );
       if (collectionAtStart) setCollectionBaseline(JSON.stringify(collectionAtStart));
       if (!newerLocalEdits) {
-        clearLocalDraft(selectedAtStart.kind, selectedAtStart.id);
+        clearLocalDraft(`${actor}:${selectedAtStart.kind}`, selectedAtStart.id);
         setLocalAutosaveAt("");
       }
       setContentSavedAt(new Date().toISOString());
+      setRecoveredDocumentNeedsReview(false);
       if (!newerLocalEdits) setLocalDraftSnapshot(null);
       recordSavedContent();
       saved = true;
@@ -1548,19 +1592,20 @@ export function SiteAdminWebConsole({
       setSaving(false);
     }
 
-    if (!saved) return;
+    if (!saved) return false;
     // Everything below is bookkeeping on top of a save that already succeeded,
     // so it runs outside the mutation's try: a list hiccup used to be reported
     // as a failed save even though the draft was persisted successfully.
     if (effects.reconcileLists && !(await refreshLists())) {
       setWarning("Saved. The content lists could not be refreshed — use Refresh to reload them.");
     }
+    return true;
   }
 
   function reloadConflictVersion() {
     if (!conflict || !selected) return;
     applySelectedDetail(selected.kind, selected.id, conflict.remotePayload);
-    clearLocalDraft(selected.kind, selected.id);
+    clearLocalDraft(`${actor}:${selected.kind}`, selected.id);
     setConflict(null);
     setWarning("");
     setNotice("Latest saved version loaded.");
@@ -1581,7 +1626,7 @@ export function SiteAdminWebConsole({
         endpointFor(selected.kind, selected.id),
       );
       applySelectedDetail(selected.kind, selected.id, detail, token);
-      clearLocalDraft(selected.kind, selected.id);
+      clearLocalDraft(`${actor}:${selected.kind}`, selected.id);
       setConflict(null);
       setWarning("");
       setContentSavedAt(new Date().toISOString());
@@ -1616,7 +1661,7 @@ export function SiteAdminWebConsole({
       setContentForm(EMPTY_CONTENT_FORM);
       setContentFormBaseline("");
       setSlugDraft("");
-      clearLocalDraft(selected.kind, selected.id);
+      clearLocalDraft(`${actor}:${selected.kind}`, selected.id);
       setLocalAutosaveAt("");
       setContentSavedAt("");
       setLocalDraftSnapshot(null);
@@ -1676,6 +1721,9 @@ export function SiteAdminWebConsole({
 
   function restoreLocalDraft() {
     if (!selected || !localDraftSnapshot) return;
+    const needsReview = requiresRecoveryReview(localDraftSnapshot, selected.version);
+    if (needsReview && !window.confirm("A newer server draft exists. Restore the local copy for review? Autosave will stay paused until you save explicitly.")) return;
+    setRecoveredDocumentNeedsReview(needsReview);
     if (selected.kind === "posts" || selected.kind === "pages") {
       if (!localDraftSnapshot.form) {
         setError("This local autosave cannot be restored into the structured editor.");
@@ -1856,65 +1904,65 @@ export function SiteAdminWebConsole({
     }
   }
 
-  async function saveHome() {
-    if (!home) return;
+  async function saveHome(expectedVersion?: string): Promise<boolean> {
+    if (!home || saving) return false;
+    const captured = homeFormRef.current;
     setSaving(true);
     setError("");
     setWarning("");
     setNotice("");
     try {
-      await writeJson<HomePostPayload>("/api/site-admin/home", "POST", {
+      const result = await writeJson<HomePostPayload>("/api/site-admin/home", "POST", {
         data: {
           ...home.data,
-          title: homeTitle,
-          bodyMdx: homeBody,
+          ...captured,
         },
-        expectedFileSha: home.sourceVersion.fileSha,
+        expectedFileSha: expectedVersion ?? home.sourceVersion.fileSha,
       });
-      const next = await readJson<HomePayload>("/api/site-admin/home");
-      setHome(next);
-      setHomeTitle(next.data.title || "");
-      setHomeBody(next.data.bodyMdx || "");
-      setHomeBaseline(`${next.data.title || ""}\n${next.data.bodyMdx || ""}`);
+      setHome({ data: { ...home.data, ...captured }, sourceVersion: result.sourceVersion });
+      setHomeBaseline(`${captured.title}\n${captured.bodyMdx}`);
       recordSavedContent();
-      await refreshSummaryOnly();
+      void refreshSummaryOnly();
       setNotice("Home draft saved. Review publication to update the public site.");
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      if (err instanceof SiteAdminRequestError && err.status === 409) {
+        const remote = await readJson<HomePayload>("/api/site-admin/home").catch(() => null);
+        if (remote) setSingletonConflict({ kind: "home", title: "Home", localSource: JSON.stringify(homeFormRef.current, null, 2), remoteSource: JSON.stringify(remote.data, null, 2), version: remote.sourceVersion.fileSha });
+      }
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
-  async function saveNow() {
-    if (!now) return;
+  async function saveNow(expectedVersion?: string): Promise<boolean> {
+    if (!now || saving) return false;
+    const captured = nowFormRef.current;
     setSaving(true);
     setError("");
     setWarning("");
     setNotice("");
     try {
       const next = await writeJson<NowPayload>("/api/site-admin/now", "POST", {
-        action: "create",
-        text: nowText,
-        context: nowContext,
-        location: nowLocation,
-        date: nowDate,
-        expectedFileSha: now.sourceVersion.fileSha,
+        action: "save-current",
+        ...captured,
+        expectedFileSha: expectedVersion ?? now.sourceVersion.fileSha,
       });
       setNow(next);
-      setNowText(next.data.current.text || "");
-      setNowContext(next.data.current.context || "");
-      setNowLocation(next.data.current.location || "");
-      const nextDate = dateInputFromIso(next.data.current.updatedAt);
-      setNowDate(nextDate);
-      setNowBaseline(
-        `${next.data.current.text || ""}\n${next.data.current.context || ""}\n${next.data.current.location || ""}\n${nextDate}`,
-      );
+      setNowBaseline(`${captured.text}\n${captured.context}\n${captured.location}\n${captured.date}`);
       recordSavedContent();
-      await refreshSummaryOnly();
+      void refreshSummaryOnly();
       setNotice("Now draft saved. Review publication to update the public site.");
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      if (err instanceof SiteAdminRequestError && err.status === 409) {
+        const remote = await readJson<NowPayload>("/api/site-admin/now").catch(() => null);
+        if (remote) setSingletonConflict({ kind: "now", title: "Now", localSource: JSON.stringify(nowFormRef.current, null, 2), remoteSource: JSON.stringify(remote.data.current, null, 2), version: remote.sourceVersion.fileSha });
+      }
+      return false;
     } finally {
       setSaving(false);
     }
@@ -3059,7 +3107,7 @@ export function SiteAdminWebConsole({
             <h1 className={styles.title}>{areaTitle}</h1>
           </div>
           <div className={styles.heroActions}>
-            <Button onClick={() => void refreshAll()} variant="subtle" size="sm" disabled={loading}>
+            <Button onClick={() => { if (confirmDiscardChanges()) { if (hasUnsavedChanges) discardEditorDrafts(); void refreshAll(); } }} variant="subtle" size="sm" disabled={loading || saving}>
               {loading ? "Refreshing" : "Refresh"}
             </Button>
             <Button href="/" external variant="ghost" size="sm">
@@ -3621,7 +3669,7 @@ export function SiteAdminWebConsole({
                       setBlockingMutation(true);
                       const token = selectionGateRef.current.current();
                       try {
-                        clearLocalDraft(selected.kind, selected.id);
+                        clearLocalDraft(`${actor}:${selected.kind}`, selected.id);
                         const detail = await readJson<EditableDetailPayload>(
                           endpointFor(selected.kind, selected.id),
                         );
@@ -4000,13 +4048,14 @@ export function SiteAdminWebConsole({
               <h2 className={styles.panelTitle}>Landing page MDX</h2>
             </div>
             <Button
-              onClick={() => void saveHome()}
+              onClick={() => void homePersistence.save()}
               tone="accent"
               disabled={!home || saving || !homeDirty}
             >
               {saving ? "Saving draft" : "Save draft"}
             </Button>
           </div>
+          <SiteAdminDraftStatus {...homePersistence} {...publicationState("home.json")} dirty={homeDirty} saving={saving} onRetry={() => void homePersistence.save()} onRestore={homePersistence.restore} onDismiss={homePersistence.dismiss} onReview={() => setPublishReviewOpen(true)} />
           <label className={styles.fieldLabel}>
             Title
             <input
@@ -4060,7 +4109,11 @@ export function SiteAdminWebConsole({
         <section className={`${styles.workspaceGrid} ${styles.contentWorkspaceSimple}`}>
           {renderContentLibrary()}
           <SiteAdminAnnouncementsPanel
+            actor={actor}
+            {...publicationState("filesystem/announcements.json")}
+            onReview={() => setPublishReviewOpen(true)}
             onDirtyChange={setAnnouncementDirty}
+            onSavingChange={setAnnouncementSaving}
             onSaved={(action) => {
               recordSavedContent();
               void (async () => {
@@ -4082,10 +4135,11 @@ export function SiteAdminWebConsole({
                 <p className={styles.cardLabel}>Now</p>
                 <h2 className={styles.panelTitle}>Current status</h2>
               </div>
-              <Button onClick={() => void saveNow()} tone="accent" disabled={!now || saving || !nowDirty}>
+              <Button onClick={() => void nowPersistence.save()} tone="accent" disabled={!now || saving || !nowDirty}>
                 {saving ? "Saving draft" : "Save draft"}
               </Button>
             </div>
+            <SiteAdminDraftStatus {...nowPersistence} {...publicationState("now.json")} dirty={nowDirty} saving={saving} onRetry={() => void nowPersistence.save()} onRestore={nowPersistence.restore} onDismiss={nowPersistence.dismiss} onReview={() => setPublishReviewOpen(true)} />
             <label className={styles.fieldLabel}>
               Status
               <textarea
@@ -4241,17 +4295,7 @@ export function SiteAdminWebConsole({
         {hasUnsavedChanges ? <p role="alert">Save your open draft before confirming publication.</p> : null}
         {publicationReviewLoading ? <p role="status">Comparing saved content with the published snapshot…</p> : null}
         {publicationReviewError ? <p role="alert">{publicationReviewError}</p> : null}
-        <ul className={styles.publishReviewList}>
-          {publicationReview?.changes.map((item) => <li key={item.path}>
-            <details><summary><strong>{item.title}</strong> · {item.kind}</summary>
-              <p>{item.oldPath ? `${item.oldPath} → ` : ""}{item.path}</p>
-              <div className={styles.publicationDiff}>
-                <div><h4>Published</h4><pre>{item.before || "Not present"}</pre></div>
-                <div><h4>Saved draft</h4><pre>{item.after || "Removed"}</pre></div>
-              </div>
-            </details>
-          </li>)}
-        </ul>
+        <SiteAdminPublicationChanges changes={publicationReview?.changes || []} />
         {publicationReview?.changes.length === 0 ? <p className={styles.cardText}>All saved content matches the published snapshot.</p> : null}
         <div className={styles.conflictActions}>
           <Button variant="subtle" onClick={() => setPublishReviewOpen(false)}>Cancel</Button>
@@ -4271,6 +4315,30 @@ export function SiteAdminWebConsole({
           onClose={() => setConflict(null)}
         />
       ) : null}
+      {singletonConflict ? <SiteAdminConflictDialog conflict={singletonConflict} busy={saving}
+        onClose={() => setSingletonConflict(null)}
+        onReload={() => {
+          const copy = singletonConflict;
+          void (async () => {
+            if (copy.kind === "home") {
+              const remote = await readJson<HomePayload>("/api/site-admin/home");
+              setHome(remote); setHomeTitle(remote.data.title || ""); setHomeBody(remote.data.bodyMdx || "");
+              setHomeBaseline(`${remote.data.title || ""}\n${remote.data.bodyMdx || ""}`); homePersistence.dismiss(); homePersistence.resume();
+            } else {
+              const remote = await readJson<NowPayload>("/api/site-admin/now");
+              const date = dateInputFromIso(remote.data.current.updatedAt);
+              setNow(remote); setNowText(remote.data.current.text || ""); setNowContext(remote.data.current.context || ""); setNowLocation(remote.data.current.location || ""); setNowDate(date);
+              setNowBaseline(`${remote.data.current.text || ""}\n${remote.data.current.context || ""}\n${remote.data.current.location || ""}\n${date}`); nowPersistence.dismiss(); nowPersistence.resume();
+            }
+            setSingletonConflict(null); setError("");
+          })().catch((error) => setError(error instanceof Error ? error.message : String(error)));
+        }}
+        onKeepMine={() => {
+          const copy = singletonConflict;
+          void (copy.kind === "home" ? saveHome(copy.version) : saveNow(copy.version)).then((saved) => {
+            if (saved) { setSingletonConflict(null); (copy.kind === "home" ? homePersistence : nowPersistence).resume(); }
+          });
+        }} /> : null}
     </main>
   );
 }

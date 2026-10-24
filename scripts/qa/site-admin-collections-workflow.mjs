@@ -301,7 +301,10 @@ async function main() {
     await body().fill("");
     assert.equal(await saveButton().isDisabled(), true);
     await eventually(async () => {
-      const snapshot = await page.evaluate(() => JSON.parse(localStorage.getItem("site-admin-content-draft:components:news") || "null"));
+      const snapshot = await page.evaluate(() => {
+        const key = Object.keys(localStorage).find((value) => value.startsWith("site-admin-content-draft:") && value.endsWith(":components:news"));
+        return key ? JSON.parse(localStorage.getItem(key)) : null;
+      });
       assert.equal(snapshot?.collection.value.items.length, 2);
     }, "incomplete draft recovery written");
     await page.reload();
@@ -340,8 +343,9 @@ async function main() {
     fixture.changeRemotely("works", remoteOriginal.replace("Recent body.", "Other session's work update."));
     await page.getByRole("button", { name: "Publish updates", exact: true }).click();
     const siteReview = page.getByRole("dialog", { name: "Review publication" });
-    await siteReview.locator("summary").filter({ hasText: "Works" }).waitFor();
-    await siteReview.locator("summary").filter({ hasText: "Works" }).click();
+    const worksReviewHeading = siteReview.getByRole("heading", { name: /^Works · changed$/ });
+    await worksReviewHeading.waitFor();
+    await worksReviewHeading.locator("..").locator("summary").filter({ hasText: /^Updated:/ }).first().click();
     assert.match(await siteReview.innerText(), /Other session's work update/);
     fixture.changeRemotely("works", remoteOriginal.replace("Recent body.", "Changed after confirmation preview."));
     await siteReview.getByRole("button", { name: "Confirm publish", exact: true }).click();

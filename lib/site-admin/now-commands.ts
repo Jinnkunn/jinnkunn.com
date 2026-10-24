@@ -230,6 +230,17 @@ export function createNowData(input: {
   });
 }
 
+export function saveCurrentNowData(input: Parameters<typeof createNowData>[0]): SiteAdminNowData {
+  const current = normalizeNowData(input.data);
+  const next = createNowData(input);
+  const existing = current.updates.find((item) => item.text === current.current.text && item.at === current.current.updatedAt);
+  const updated = next.updates.find((item) => item.text === next.current.text && item.at === next.current.updatedAt);
+  // Autosaving edits updates one current entry rather than appending keystrokes.
+  return normalizeNowData({ ...next, updates: sortUpdates(updated
+    ? [{ ...updated, id: existing?.id || updated.id }, ...current.updates.filter((item) => item.id !== existing?.id)]
+    : current.updates) });
+}
+
 export function updateNowHistoryData(input: {
   data: SiteAdminNowData;
   id: string;

@@ -13,6 +13,10 @@ Code and content have separate release paths:
 3. In the web console, open **Review publication**. It compares all saved site content with the published source snapshot, including edits from other sessions. Confirm only after checking additions, edits, moves, and deletions.
 4. The review SHA is checked both before queueing and after the runner dumps D1. A changed snapshot must be reviewed again; newer drafts saved during the build remain pending.
 
+The browser console autosaves Home, Now, announcements, posts, pages, and collections to drafts. A recovery copy is kept on the current device and is scoped to the signed-in author. Failed saves pause until a retry or network reconnection. Restoring a copy based on an older server version requires explicit review and a manual save; it never silently replaces the server draft. Now current-status edits update one history row rather than recording every autosave as a new update.
+
+Publication review shows collection additions/removals, field changes, and affected routes. Full JSON/MDX remains available under **Advanced source comparison**. Review still covers all saved content, not a selected subset.
+
 For an explicitly authorized CLI publication to staging:
 
 ```bash
@@ -38,6 +42,7 @@ This path should not create git commits and should not dirty the repository. It 
 Public routes such as `/`, `/blog`, `/publications`, `/news`, `/works`, `/teaching`, `/bio`, and `/pages/*` use prerendered HTML. They do not read unreviewed drafts on each visit. This keeps the public path within the Workers Free CPU budget.
 
 - `/api/public/now` reads only the published `now.json` source, not the saved draft.
+- `/api/search` reads the search index attached to the same private publication-baseline row. Its `x-publication-snapshot` header is checked after content publication. Hidden/protected/removed routes cannot return via an old route manifest. An overlay with a missing or mismatched search snapshot fails explicitly rather than silently serving stale results; use the guarded code release and republish content when upgrading an older overlay.
 - The legacy `publish:now:prod:from-staging` command copies only the saved Now draft; follow it with a production publication review. It no longer changes the public feed merely by copying D1.
 - Publishing stores a private `/__admin/publication-baseline.json` row in `static_shell_overlays`; the Worker returns 404 for `/__admin/*`. This row is never exported into public assets or included in public-route verification.
 - Overlay backups and rollbacks include that row, so the review baseline follows the restored content.

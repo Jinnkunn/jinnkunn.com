@@ -1,6 +1,7 @@
 import { SITE_COMPONENT_DEFINITIONS } from "../../packages/content-core/src/component-registry.ts";
 import { parseCollectionDraft } from "../../app/site-admin/site-admin-collection-draft.ts";
 import { publicationSnapshot, publicationReview } from "../../lib/shared/publication-snapshot.mjs";
+import { describePublicationChange } from "../../lib/shared/publication-review-details.ts";
 
 const INITIAL_SOURCES = {
   news: '---\ntitle: News\n---\n<NewsEntry entryId="news-one" date="2026-10-01">\nInitial news body.\n</NewsEntry>\n',
@@ -54,10 +55,12 @@ export function createCollectionsFixture() {
     const req = route.request(), url = new URL(req.url()), path = url.pathname;
     const json = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
     if (req.method() === "GET") {
-      if (path === "/api/site-admin/publication-review") return json(publicationReview(
-        publicationSnapshot(Object.fromEntries([...saved].map(([name, body]) => [`components/${name}.mdx`, body]))),
-        publicationSnapshot(Object.fromEntries([...published].map(([name, body]) => [`components/${name}.mdx`, body]))),
-      ));
+      if (path === "/api/site-admin/publication-review") {
+        const current = publicationSnapshot(Object.fromEntries([...saved].map(([name, body]) => [`components/${name}.mdx`, body])));
+        const baseline = publicationSnapshot(Object.fromEntries([...published].map(([name, body]) => [`components/${name}.mdx`, body])));
+        const review = publicationReview(current, baseline);
+        return json({ ...review, changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
+      }
       if (path === "/api/site-admin/mobile/summary") return json({ summary: summary() });
       if (path === "/api/site-admin/home") return json({ data: { title: "Home", bodyMdx: "Fixture home" }, sourceVersion: { fileSha: "fixture" } });
       if (path === "/api/site-admin/now") return json({ data: { current: { text: "", context: "", location: "", updatedAt: "" }, updates: [] }, sourceVersion: { fileSha: "fixture" } });

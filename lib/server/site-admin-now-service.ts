@@ -7,6 +7,7 @@ import {
 } from "@jinnkunn/content-core/now";
 import {
   createNowData,
+  saveCurrentNowData,
   deleteNowHistoryData,
   updateNowHistoryData,
 } from "@/lib/site-admin/now-commands";
@@ -65,12 +66,13 @@ export async function appendSiteAdminNowUpdate(input: {
   expectedFileSha?: string;
   date?: string;
   now?: Date;
+  replaceCurrent?: boolean;
 }): Promise<{
   data: SiteAdminNowData;
   sourceVersion: { fileSha: string };
 }> {
   const current = await loadSiteAdminNowData();
-  const nextData = createNowData({
+  const nextData = (input.replaceCurrent ? saveCurrentNowData : createNowData)({
     data: current.data,
     text: input.text,
     context: input.context,
