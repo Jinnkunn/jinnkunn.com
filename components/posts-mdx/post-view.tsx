@@ -6,6 +6,7 @@ import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import type { BlogPostIndexItem } from "@/lib/blog";
 import type { PostEntry } from "@jinnkunn/content-core/posts";
 import { compilePostMdx } from "@/lib/posts/compile";
+import { shouldShowPostOutline } from "@/lib/posts/outline";
 import { postMdxComponents } from "./components";
 
 export async function PostView({
@@ -21,7 +22,7 @@ export async function PostView({
   /** Older post in the index. */
   next?: BlogPostIndexItem | null;
 }) {
-  const { Content } = await compilePostMdx(source);
+  const { Content, headings } = await compilePostMdx(source);
 
   return (
     <ClassicPageShell
@@ -68,6 +69,16 @@ export async function PostView({
           </div>
         )}
       </div>
+      {shouldShowPostOutline(entry.wordCount, headings) ? <details className="mdx-post__outline">
+        <summary><span>On this page</span><span data-toc-current>Overview</span></summary>
+        <nav aria-label="Article contents">
+          <ul className="notion-table-of-contents">
+            {headings.map((heading) => <li key={heading.id} className="notion-table-of-contents__item" data-toc-target={heading.id} data-level={heading.level}>
+              <a href={`#${encodeURIComponent(heading.id)}`} className="notion-link"><span className="notion-semantic-string">{heading.title}</span></a>
+            </li>)}
+          </ul>
+        </nav>
+      </details> : null}
       <div className="mdx-post__body">
         <Content components={postMdxComponents} />
       </div>

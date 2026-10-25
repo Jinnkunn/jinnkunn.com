@@ -17,6 +17,14 @@ The browser console autosaves Home, Now, announcements, posts, pages, and collec
 
 Publication review shows collection additions/removals, field changes, and affected routes. Full JSON/MDX remains available under **Advanced source comparison**. Review still covers all saved content, not a selected subset.
 
+Content lists use the review's inventory for pending-publication and validation states. Recently modified means the last 30 days of storage write timestamps, never a post's publication date. Filtering Pages preserves contextual ancestors and their human titles. Pins are device-local preferences scoped to the signed-in author; they do not modify content or publish anything.
+
+Invalid documents remain visible in the inventory even if their normal metadata cannot be parsed. Their authenticated `?raw=1` read keeps the original source and version available for repair. Source-only repairs keep local recovery but require explicit Save; normal version checks still apply. Collection list problems and field errors use the same framework-free validation models.
+
+Page preview uses the current editor source and a published site-context snapshot. It includes the matching announcement and monochrome setting, plus explicit desktop/mobile and light/dark controls. An announcement preview substitutes the unsaved announcement without changing its saved status. Preview is script-free; unsupported MDX is labeled approximate, failed refreshes keep the previous preview, and closing restores editor scroll/focus. No preview queues publication.
+
+Blog posts with at least 600 words and three H2/H3 headings expose an inline collapsible outline. Targets come from the compiled heading IDs, not a second Markdown slugger. The existing anchor behavior handles keyboard focus and reduced motion; the active section follows scrolling, including the last section near the page bottom.
+
 For an explicitly authorized CLI publication to staging:
 
 ```bash

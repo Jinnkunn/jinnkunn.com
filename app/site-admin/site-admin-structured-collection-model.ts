@@ -194,7 +194,7 @@ export function parseNewsComponentDraft(source: string): NewsComponentDraft {
     items.push({
       id: normalizeComponentEntryId(attrs.entryId, "news", entryIndex),
       type: "entry",
-      date: /^\d{4}-\d{2}-\d{2}$/.test(attrs.date || "") ? attrs.date : todayInHalifax(),
+      date: attrs.date || "",
       body: (match[2] ?? "").trim(),
     });
     entryIndex += 1;

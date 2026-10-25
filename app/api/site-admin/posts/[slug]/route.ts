@@ -17,6 +17,7 @@ import {
 } from "@/lib/posts/store";
 import { parsePostFile } from "@jinnkunn/content-core/posts";
 import { isValidSlug } from "@/lib/posts/slug";
+import { getContentStore } from "@/lib/server/content-store-resolver";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 
 export const runtime = "nodejs";
@@ -84,6 +85,10 @@ export async function GET(
     async () => {
       const resolved = await resolveSlug(ctx.params);
       if (!resolved.ok) return resolved.res;
+      if (new URL(req.url).searchParams.get("raw") === "1") {
+        const file = await getContentStore().readFile(`posts/${resolved.slug}.mdx`);
+        return file ? apiPayloadOk({ slug: resolved.slug, title: resolved.slug, source: file.content, version: file.sha, raw: true }) : apiError("post not found", { status: 404, code: "NOT_FOUND" });
+      }
       const detail = await readPost(resolved.slug);
       if (!detail)
         return apiError("post not found", { status: 404, code: "NOT_FOUND" });

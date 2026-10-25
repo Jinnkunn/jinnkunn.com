@@ -8,6 +8,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { StatusNotice } from "@/components/ui/status-notice";
 import {
   normalizeAnnouncement,
+  announcementProblems,
   type AnnouncementsDocument,
   type SiteAnnouncement,
 } from "@/lib/shared/announcements";
@@ -15,6 +16,7 @@ import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import { useSiteAdminSingletonDraft } from "./use-site-admin-singleton-draft";
 import { SiteAdminDraftStatus } from "./site-admin-draft-status";
 import { SiteAdminConflictDialog } from "./site-admin-conflict-dialog";
+import { SiteAdminPagePreview } from "./site-admin-page-preview";
 import styles from "./site-admin-announcements-panel.module.css";
 
 type AnnouncementsPayload = {
@@ -101,13 +103,16 @@ export function SiteAdminAnnouncementsPanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [conflict, setConflict] = useState<AnnouncementsPayload | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [bodyFocusRequest, setBodyFocusRequest] = useState(0);
+  const issues = draft ? announcementProblems(draft) : [];
   const dirty = Boolean(draft && fingerprint(draft) !== baseline);
   const routesText = useMemo(() => (draft?.routes || []).join("\n"), [draft?.routes]);
   const draftRef = useRef(draft); draftRef.current = draft;
   const persistence = useSiteAdminSingletonDraft({
     kind: `${actor}:announcements`, id: "active", ready: Boolean(payload) && !loading,
     dirty, source: fingerprint(draft), form: draft, baseVersion: payload?.sourceVersion.fileSha || "",
-    enabled: !loading && !saving && Boolean(draft) && !conflict,
+    enabled: !loading && !saving && Boolean(draft) && !conflict && issues.length === 0,
     onSave: () => save(),
     onRestore: (restored) => {
       if (!restored) return;
@@ -152,7 +157,7 @@ export function SiteAdminAnnouncementsPanel({
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
       if (!dirty || saving) return;
       event.preventDefault();
-      void persistence.save();
+      if (issues.length) focusIssue(issues[0].field); else void persistence.save();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -190,6 +195,7 @@ export function SiteAdminAnnouncementsPanel({
 
   async function save(expectedVersion?: string): Promise<boolean> {
     if (!draft || !payload || saving) return false;
+    if (issues.length) { setError("Review the highlighted announcement fields before saving."); focusIssue(issues[0].field); return false; }
     const captured = draft;
     const normalized = normalizeAnnouncement(captured, captured.id);
     if (!normalized) return false;
@@ -259,6 +265,13 @@ export function SiteAdminAnnouncementsPanel({
 
   if (loading) return <LoadingState label="Loading announcements…" />;
 
+  function focusIssue(field: string) {
+    if (field === "bodyMdx") setBodyFocusRequest((value) => value + 1);
+    const element = document.querySelector<HTMLElement>(`[data-announcement-field="${field}"]`);
+    element?.scrollIntoView({ block: "center" });
+    if (element?.matches("input,textarea")) element.focus({ preventScroll: true });
+  }
+
   return (
     <div className={styles.workspace}>
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
@@ -311,18 +324,20 @@ export function SiteAdminAnnouncementsPanel({
               <p>{dirty ? "Unsaved changes" : `Saved ${draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : ""}`}</p>
             </div>
             <div className={styles.actions}>
+              <Button variant="subtle" size="sm" onClick={() => setPreviewOpen(true)}>Page preview</Button>
               <Button onClick={() => void remove()} variant="ghost" size="sm" disabled={saving}>Delete</Button>
-              <Button onClick={() => void persistence.save()} tone="accent" size="sm" disabled={saving || !dirty}>
+              <Button onClick={() => { if (issues.length) focusIssue(issues[0].field); else void persistence.save(); }} tone="accent" size="sm" disabled={saving || !dirty}>
                 {saving ? "Saving draft" : "Save draft"}
               </Button>
             </div>
           </header>
 
           <SiteAdminDraftStatus {...persistence} dirty={dirty} saving={saving} pending={pending} live={live} onRetry={() => void persistence.save()} onRestore={persistence.restore} onDismiss={persistence.dismiss} onReview={onReview} />
+          {issues.length ? <ul aria-label="Announcement fields needing attention" className={styles.issues}>{issues.map((issue) => <li key={issue.field}><button type="button" onClick={() => focusIssue(issue.field)}>{issue.message}</button></li>)}</ul> : null}
           <div className={styles.fieldGrid}>
             <label>
               Title
-              <input value={draft.title} onChange={(event) => update("title", event.target.value)} />
+              <input data-announcement-field="title" aria-invalid={issues.some((issue) => issue.field === "title")} value={draft.title} onChange={(event) => update("title", event.target.value)} />
             </label>
             <label>
               Visibility on publish
@@ -361,11 +376,11 @@ export function SiteAdminAnnouncementsPanel({
             </label>
             <label>
               Starts
-              <input type="date" value={draft.startsAt} onChange={(event) => update("startsAt", event.target.value)} />
+              <input type="date" data-announcement-field="startsAt" aria-invalid={issues.some((issue) => issue.field === "startsAt")} value={draft.startsAt} onChange={(event) => update("startsAt", event.target.value)} />
             </label>
             <label>
               Ends (optional)
-              <input type="date" value={draft.endsAt} onChange={(event) => update("endsAt", event.target.value)} />
+              <input type="date" data-announcement-field="endsAt" aria-invalid={issues.some((issue) => issue.field === "endsAt")} value={draft.endsAt} onChange={(event) => update("endsAt", event.target.value)} />
             </label>
           </div>
 
@@ -373,6 +388,8 @@ export function SiteAdminAnnouncementsPanel({
             <label className={styles.field}>
               Paths
               <textarea
+                data-announcement-field="routes"
+                aria-invalid={issues.some((issue) => issue.field === "routes")}
                 value={routesText}
                 onChange={(event) => update("routes", routesFromText(event.target.value))}
                 placeholder={"/news\n/blog"}
@@ -396,7 +413,7 @@ export function SiteAdminAnnouncementsPanel({
             />
           </section>
 
-          <section className={styles.editorSection}>
+          <section className={styles.editorSection} data-announcement-field="bodyMdx">
             <div>
               <h3>Expanded content</h3>
               <p>
@@ -405,6 +422,7 @@ export function SiteAdminAnnouncementsPanel({
             </div>
             <SiteAdminMarkdownEditor
               label="Announcement content"
+              focusRequest={bodyFocusRequest}
               value={draft.bodyMdx}
               onChange={(next) => update("bodyMdx", next)}
               minHeight={620}
@@ -414,6 +432,7 @@ export function SiteAdminAnnouncementsPanel({
           </section>
         </Card>
       ) : null}
+      {previewOpen && draft ? <SiteAdminPagePreview title={draft.title} source="" announcement={draft} home={draft.scope !== "paths" || draft.routes[0] === "/"} routePath={draft.scope === "paths" ? draft.routes[0] || "/" : "/"} onClose={() => setPreviewOpen(false)} /> : null}
       {conflict ? <SiteAdminConflictDialog busy={saving} conflict={{
         title: draft?.title || "Announcement", localSource: JSON.stringify(draftRef.current, null, 2),
         remoteSource: JSON.stringify(conflict.data.items.find((item) => item.id === selectedId) || null, null, 2),

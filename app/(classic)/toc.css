@@ -6,6 +6,27 @@
  */
 
 /* TOC scroll-spy highlight (subtle, v1-consistent). */
+.mdx-post__outline {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 20px 0 28px;
+  border-block: 1px solid var(--ds-border-subtle);
+  background: var(--ds-surface-page);
+  overflow-anchor: none;
+}
+.mdx-post__outline summary { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 14px; line-height: 20px; }
+.mdx-post__outline summary > span:first-of-type { flex-shrink: 0; white-space: nowrap; }
+.mdx-post__outline summary::before { content: "+"; width: 12px; flex-shrink: 0; }
+.mdx-post__outline[open] summary::before { content: "−"; }
+.mdx-post__outline [data-toc-current] { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-text-secondary); }
+.mdx-post__outline nav { position: absolute; inset-inline: 0; top: 100%; max-height: min(50vh, 360px); overflow-y: auto; padding-block: 8px 12px; border-bottom: 1px solid var(--ds-border-subtle); background: var(--ds-surface-page); }
+.mdx-post__outline .notion-table-of-contents { margin: 0; padding: 0; list-style: none; }
+.mdx-post__outline .notion-table-of-contents__item { padding: 4px 0; font-size: 14px; }
+.mdx-post__outline .notion-table-of-contents__item[data-level="3"] { padding-left: 18px; }
+.mdx-post__outline .notion-table-of-contents__item a { display: inline-block; padding-block: 3px; }
+.page__blog-post .mdx-post__body :is(h2, h3) { scroll-margin-top: 74px; }
+
 .notion-table-of-contents .notion-table-of-contents__item[data-active="true"] {
   position: relative;
 }

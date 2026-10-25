@@ -3,28 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
-import type { SiteAnnouncement } from "@/lib/shared/announcements";
-
-function routeMatches(pathname: string, routes: string[]): boolean {
-  return routes.some((route) => {
-    const normalized = route === "/" ? "/" : route.replace(/\/+$/, "");
-    return normalized === "/"
-      ? pathname === "/"
-      : pathname === normalized || pathname.startsWith(`${normalized}/`);
-  });
-}
-
-function visibleOnRoute(announcement: SiteAnnouncement, pathname: string): boolean {
-  if (announcement.scope === "home") return pathname === "/";
-  if (announcement.scope === "paths") return routeMatches(pathname, announcement.routes);
-  return true;
-}
-
-function initialExpanded(announcement: SiteAnnouncement, isHome: boolean): boolean {
-  if (announcement.initialState === "expanded") return true;
-  if (announcement.initialState === "compact") return false;
-  return isHome;
-}
+import { announcementInitiallyExpanded, announcementVisibleOnRoute, type SiteAnnouncement } from "@/lib/shared/announcements";
 
 export function SiteAnnouncementFrame({
   announcement,
@@ -48,9 +27,9 @@ export function SiteAnnouncementFrame({
   const expanded =
     userPreference?.key === preferenceKey
       ? userPreference.expanded
-      : initialExpanded(announcement, isHome);
+      : announcementInitiallyExpanded(announcement, isHome);
 
-  if (!visibleOnRoute(announcement, pathname)) return null;
+  if (!announcementVisibleOnRoute(announcement, pathname)) return null;
 
   const canToggle = announcement.collapsible;
 

@@ -40,9 +40,11 @@ export function initTocScrollSpy(root: ParentNode) {
     if (targets.length === 0) continue;
 
     let activeId: string | null = null;
+    const currentLabel = toc.closest(".mdx-post__outline")?.querySelector<HTMLElement>("[data-toc-current]");
     const setActive = (id: string | null) => {
       if (activeId === id) return;
       activeId = id;
+      if (currentLabel) currentLabel.textContent = entries.find((entry) => entry.id === id)?.a?.textContent?.trim() || "Overview";
       for (const e of entries) {
         const on = Boolean(id && e.id === id);
         e.li.setAttribute("data-active", on ? "true" : "false");
@@ -62,14 +64,16 @@ export function initTocScrollSpy(root: ParentNode) {
 
   const computeActive = () => {
     raf = 0;
-    const offset = getNavbarHeight() + 26; // matches scroll-padding-top (+ a small cushion)
+    // A heading in the leading reading area is current, even if font loading or
+    // browser scroll anchoring leaves it slightly below the exact jump offset.
+    const offset = Math.max(getNavbarHeight() + 26, Math.min(160, window.innerHeight * 0.2));
     const y = window.scrollY + offset;
 
     for (const s of states) {
       let best: { id: string; top: number } | null = null;
       for (const id of s.targets) {
         const el = document.getElementById(id);
-        if (!el) continue;
+        if (!el || el.getClientRects().length === 0) continue;
         const top = el.getBoundingClientRect().top + window.scrollY;
         if (top <= y + 1) {
           if (!best || top > best.top) best = { id, top };
@@ -77,7 +81,10 @@ export function initTocScrollSpy(root: ParentNode) {
       }
 
       // If we haven't reached the first heading yet, keep TOC neutral.
-      if (!best) s.setActive(null);
+      if (Math.ceil(window.scrollY + window.innerHeight) >= document.documentElement.scrollHeight - 2) {
+        const last = s.targets.filter((id) => document.getElementById(id)?.getClientRects().length).at(-1);
+        s.setActive(last || best?.id || null);
+      } else if (!best) s.setActive(null);
       else s.setActive(best.id);
     }
   };
@@ -99,6 +106,7 @@ export function initTocScrollSpy(root: ParentNode) {
     if (raf) window.cancelAnimationFrame(raf);
     window.removeEventListener("scroll", requestCompute);
     window.removeEventListener("resize", requestCompute);
+    window.removeEventListener("load", requestCompute);
   };
 }
 

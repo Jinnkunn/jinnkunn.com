@@ -1341,7 +1341,10 @@ button.statusPill:disabled {
 }
 
 .publicationDiff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.previewControls { display: flex; gap: 8px; }
+.previewControls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.previewControls > div { display: flex; gap: 4px; }
+.previewControls label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.previewControls select { max-width: 160px; padding: 6px; border: 1px solid var(--ds-border-subtle); border-radius: 4px; background: var(--ds-surface-page); color: inherit; }
 .previewControls button { padding: 8px 12px; border: 1px solid var(--ds-border-subtle); border-radius: 4px; background: transparent; color: inherit; }
 .previewControls button[aria-pressed="true"] { background: var(--ds-surface-soft-strong); }
 .pagePreviewFrame { display: block; width: 100%; height: min(65vh, 680px); margin: 16px auto 0; border: 1px solid var(--ds-border-subtle); }
@@ -2708,6 +2711,17 @@ button.statusPill:disabled {
   min-height: 0;
 }
 
+.contentTaskToolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 14px 0; }
+.contentTaskToolbar .fieldLabel { width: min(270px, 100%); margin: 0; }
+.contentTaskToolbar > span { color: var(--ds-text-secondary); font-size: 12px; }
+.contentTaskRow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.contentTaskRow > .contentIndexRow { flex: 1; }
+.validationSummary { padding: 12px 0; color: var(--ds-text-primary); border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; }
+.validationSummary ul { margin: 6px 0 0; padding-left: 18px; }
+.validationSummary button { border: 0; background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.contentTaskBadges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.contentTaskBadges [data-problem="true"] { color: var(--ds-text-primary); border-bottom: 1px dotted currentColor; }
+
 .contentIndexHeader {
   display: flex;
   align-items: flex-end;
@@ -2864,7 +2878,7 @@ button.statusPill:disabled {
 .pageTreeRow {
   display: grid;
   min-width: 0;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 6px;
   min-height: 52px;
@@ -3905,7 +3919,7 @@ button.statusPill:disabled {
   }
 
   .pageTreeRow {
-    grid-template-columns: 28px minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr) 32px;
     gap: 4px;
   }
 
@@ -3914,6 +3928,8 @@ button.statusPill:disabled {
     justify-content: flex-start;
     padding: 0 6px 10px;
   }
+  .pageTreeRow > :global(.ds-icon-button) { grid-column: 3; grid-row: 1 / 3; }
+  .contentTaskBadges { justify-content: flex-start; }
 
   .drawerScrim {
     padding: 12px;

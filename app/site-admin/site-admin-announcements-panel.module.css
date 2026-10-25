@@ -218,3 +218,5 @@
     justify-content: flex-start;
   }
 }
+.issues { margin: 0; padding: 12px 0 12px 20px; color: var(--ds-text-primary); font-size: 13px; }
+.issues button { color: inherit; border: 0; background: transparent; font: inherit; text-decoration: underline; text-underline-offset: 3px; text-align: left; cursor: pointer; }

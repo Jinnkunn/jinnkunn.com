@@ -2,6 +2,7 @@ import { SITE_COMPONENT_DEFINITIONS } from "../../packages/content-core/src/comp
 import { parseCollectionDraft } from "../../app/site-admin/site-admin-collection-draft.ts";
 import { publicationSnapshot, publicationReview } from "../../lib/shared/publication-snapshot.mjs";
 import { describePublicationChange } from "../../lib/shared/publication-review-details.ts";
+import { contentInventory } from "../../lib/shared/content-inventory.ts";
 
 const INITIAL_SOURCES = {
   news: '---\ntitle: News\n---\n<NewsEntry entryId="news-one" date="2026-10-01">\nInitial news body.\n</NewsEntry>\n',
@@ -59,7 +60,7 @@ export function createCollectionsFixture() {
         const current = publicationSnapshot(Object.fromEntries([...saved].map(([name, body]) => [`components/${name}.mdx`, body])));
         const baseline = publicationSnapshot(Object.fromEntries([...published].map(([name, body]) => [`components/${name}.mdx`, body])));
         const review = publicationReview(current, baseline);
-        return json({ ...review, changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
+        return json({ ...review, inventory: contentInventory(current.sources, Object.fromEntries(Object.keys(current.sources).map((path) => [path, Date.now()]))), changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
       }
       if (path === "/api/site-admin/mobile/summary") return json({ summary: summary() });
       if (path === "/api/site-admin/home") return json({ data: { title: "Home", bodyMdx: "Fixture home" }, sourceVersion: { fileSha: "fixture" } });

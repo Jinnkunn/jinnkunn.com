@@ -24,6 +24,35 @@ export type AnnouncementsDocument = {
   items: SiteAnnouncement[];
 };
 
+export function announcementVisibleOnRoute(announcement: SiteAnnouncement, pathname: string): boolean {
+  if (announcement.scope === "home") return pathname === "/";
+  if (announcement.scope === "paths") return announcement.routes.some((route) => {
+    const normalized = route === "/" ? "/" : route.replace(/\/+$/, "");
+    return normalized === "/" ? pathname === "/" : pathname === normalized || pathname.startsWith(`${normalized}/`);
+  });
+  return true;
+}
+
+export function announcementInitiallyExpanded(announcement: SiteAnnouncement, isHome: boolean): boolean {
+  if (announcement.initialState === "expanded") return true;
+  if (announcement.initialState === "compact") return false;
+  return isHome;
+}
+
+export function announcementProblems(announcement: SiteAnnouncement): { field: string; message: string }[] {
+  const issues: { field: string; message: string }[] = [];
+  if (!announcement.title.trim()) issues.push({ field: "title", message: "Add an announcement title." });
+  if (announcement.status === "published" && !announcement.bodyMdx.trim()) issues.push({ field: "bodyMdx", message: "Add expanded content before making the announcement visible." });
+  if (announcement.scope === "paths" && (!announcement.routes.length || announcement.routes.some((route) => !/^\/(?!\/)[^?#\s]*$/.test(route)))) issues.push({ field: "routes", message: "Choose valid site paths for this announcement." });
+  for (const field of ["startsAt", "endsAt"] as const) {
+    const date = announcement[field];
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(date);
+    if (date && (dateOnly ? !Number.isFinite(Date.parse(`${date}T00:00:00Z`)) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date : !/^\d{4}-\d{2}-\d{2}T/.test(date) || !Number.isFinite(Date.parse(date)))) issues.push({ field, message: "Choose a valid date." });
+  }
+  if (announcement.startsAt && announcement.endsAt && announcement.endsAt < announcement.startsAt) issues.push({ field: "endsAt", message: "End date must not be before the start date." });
+  return issues;
+}
+
 const CURRENT_ANNOUNCEMENT: SiteAnnouncement = {
   id: "shigatse-gyirong-2026",
   title: "Shigatse · Gyirong remembrance",

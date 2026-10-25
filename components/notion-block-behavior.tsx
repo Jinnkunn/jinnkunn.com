@@ -131,6 +131,8 @@ export default function NotionBlockBehavior() {
             openToggleAncestors(el);
             if (isToc) {
               e.preventDefault();
+              const outline = hashLink.closest<HTMLDetailsElement>("details.mdx-post__outline");
+              if (outline) outline.open = false;
               // Keep URL in sync without forcing the browser to jump instantly.
               try {
                 history.pushState(null, "", `#${encodeURIComponent(id)}`);

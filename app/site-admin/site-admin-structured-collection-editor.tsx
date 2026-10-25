@@ -620,6 +620,10 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
       className={styles.componentEntryGrid}
       data-structured-entry-form={item.id}
       onKeyDown={handleKeyDown}
+      onFocusCapture={(event) => {
+        const field = (event.target as HTMLElement).closest<HTMLElement>("[data-component-field]")?.dataset.componentField;
+        if (field) setTouched((current) => current.has(field) ? current : new Set([...current, field]));
+      }}
     >
       {Array.from(new Set(fields.map((field) => field.section || ""))).sort((a, b) =>
         ["", "Publication", "Authors", "Venue", "Links"].indexOf(a) - ["", "Publication", "Authors", "Venue", "Links"].indexOf(b)
@@ -648,7 +652,7 @@ export function StructuredCollectionEntryForm<T extends { id: string }>({
           <CollectionTermField value={value} onChange={(next) => onChange(field.write(item, next))} disabled={disabled} />
           <StructuredCollectionFieldIssue issue={issue} />
         </div>;
-        if (field.control === "list" && field.readList && field.writeList) return <div key={field.key} onBlur={common.onBlur}>
+        if (field.control === "list" && field.readList && field.writeList) return <div key={field.key} data-component-field={field.key} onBlur={common.onBlur}>
           <CollectionListField label={field.label} values={field.readList(item)} onChange={(values) => onChange(field.writeList!(item, values))} disabled={disabled} placeholder={field.placeholder} />
           <StructuredCollectionFieldIssue issue={issue} />
         </div>;

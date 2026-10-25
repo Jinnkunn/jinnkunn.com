@@ -33,7 +33,7 @@ test("a save that outlives its document cannot write the response back", () => {
   const tokenIndex = SAVE_PATH.indexOf("const token = selectionGateRef.current.current();");
   const patchIndex = SAVE_PATH.indexOf('"PATCH"');
   const staleIndex = SAVE_PATH.indexOf("if (selectionGateRef.current.isStale(token)) return;");
-  const applyIndex = SAVE_PATH.indexOf("setSelected(next);");
+  const applyIndex = SAVE_PATH.indexOf("setSelected(");
   assert.ok(tokenIndex >= 0 && tokenIndex < patchIndex, "the token must be claimed before the PATCH");
   assert.ok(
     staleIndex > patchIndex && staleIndex < applyIndex,
@@ -43,6 +43,7 @@ test("a save that outlives its document cannot write the response back", () => {
   // The live `selected` may already point at another document by then.
   assert.doesNotMatch(SAVE_PATH, /endpointFor\(selected\.kind, selected\.id\)/);
   assert.match(SAVE_PATH, /endpointFor\(selectedAtStart\.kind, selectedAtStart\.id\)/);
+  assert.match(SAVE_PATH, /setSelected\(selectedAtStart\.raw && newerLocalEdits \? \{ \.\.\.next, raw: true \} : next\)/);
 });
 
 test("opening a document claims the selection before its detail request", () => {
@@ -70,6 +71,7 @@ test("opening a document claims the selection before its detail request", () => 
 test("autosave stands down outside the document editor", () => {
   const persistence = readFileSync(new URL("../../app/site-admin/use-site-admin-draft-persistence.ts", import.meta.url), "utf8");
   assert.match(CONSOLE, /autosaveEnabled: area === "content" && contentMode !== "create"/);
+  assert.match(CONSOLE, /!selected\?\.raw && !saving/);
   assert.match(persistence, /!id \|\| !dirty \|\| !autosaveEnabled/);
   assert.match(persistence, /failedSource.current === fingerprint/);
   assert.match(persistence, /callbacks.current.onSave\(\)/);

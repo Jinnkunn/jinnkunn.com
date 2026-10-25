@@ -6,6 +6,7 @@ import type { DragEvent } from "react";
 
 import { SiteAdminStatusPanel } from "@/components/site-admin/status/panel";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { StatusNotice } from "@/components/ui/status-notice";
@@ -32,6 +33,7 @@ import {
 } from "./site-admin-console-model";
 import {
   buildPageTree,
+  filterPageTree,
   pageBreadcrumb,
   pagePathLabel,
   type PageTreeNode,
@@ -104,6 +106,9 @@ import {
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import { SiteAdminPagePreview } from "./site-admin-page-preview";
 import { SiteAdminPublicationChanges } from "./site-admin-publication-changes";
+import { CONTENT_TASK_FILTERS, contentMatchesTask, type ContentTaskFilter } from "./site-admin-content-tasks";
+import { useSiteAdminContentPins } from "./use-site-admin-content-pins";
+import { documentFieldProblems } from "@/lib/shared/document-fields";
 import { SiteAdminAnnouncementsPanel } from "./site-admin-announcements-panel";
 import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
@@ -213,9 +218,14 @@ type EditableSummary = {
   meta: string;
   draft?: boolean;
   version?: string;
+  pending?: boolean;
+  issueCount?: number;
+  modifiedAt?: string | null;
+  pinned?: boolean;
 };
 
 type EditableDetail = {
+  raw?: boolean;
   kind: EditableKind;
   id: string;
   title: string;
@@ -226,6 +236,7 @@ type EditableDetail = {
 };
 
 type EditableDetailPayload = {
+  raw?: boolean;
   slug?: string;
   name?: string;
   href?: string;
@@ -629,6 +640,7 @@ function toEditableDetail(
   return {
     kind,
     id,
+    raw: payload.raw,
     title,
     href,
     meta,
@@ -723,6 +735,8 @@ export function SiteAdminWebConsole({
   const [showCollectionIndex, setShowCollectionIndex] = useState(false);
   const [contentMode, setContentMode] = useState<ContentMode>("browse");
   const [contentSearch, setContentSearch] = useState("");
+  const [contentTask, setContentTask] = useState<ContentTaskFilter>("all");
+  const contentPins = useSiteAdminContentPins(actor);
   const [componentSearch, setComponentSearch] = useState("");
   const [componentGrouping, setComponentGrouping] =
     useState<ComponentGrouping>("auto");
@@ -774,6 +788,7 @@ export function SiteAdminWebConsole({
   const [pendingPublishCount, setPendingPublishCount] = useState(0);
   const [publishReviewOpen, setPublishReviewOpen] = useState(false);
   const [collectionPreviewOpen, setCollectionPreviewOpen] = useState(false);
+  const [documentFocusRequest, setDocumentFocusRequest] = useState(0);
   const [publicationReview, setPublicationReview] = useState<PublicationReview | null>(null);
   const [publicationReviewError, setPublicationReviewError] = useState("");
   const [publicationReviewLoading, setPublicationReviewLoading] = useState(false);
@@ -798,7 +813,7 @@ export function SiteAdminWebConsole({
   const chromeRef = useRef<HTMLElement>(null);
   const collectionDraftRef = useRef<CollectionDraft | null>(null);
   const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number; expanded: string[] }>());
-  const documentViewsRef = useRef(new Map<string, { search: string; scroll: number }>());
+  const documentViewsRef = useRef(new Map<string, { search: string; scroll: number; task?: ContentTaskFilter }>());
   const saveSelectedContentRef = useRef<
     (options?: { quiet?: boolean }) => Promise<boolean | void>
   >(async () => {});
@@ -927,14 +942,32 @@ export function SiteAdminWebConsole({
     return () => window.cancelAnimationFrame(frame);
   }, [selectedContentKey]);
 
-  const pageItems = useMemo(
+  const rawPageItems = useMemo(
     () => contentItems({ kind: "pages", pages, posts, components }),
     [components, pages, posts],
   );
-  const postItems = useMemo(
+  const rawPostItems = useMemo(
     () => contentItems({ kind: "posts", pages, posts, components }),
     [components, pages, posts],
   );
+  const taskMetadata = useMemo(() => {
+    const inventory = new Map(publicationReview?.inventory?.map((item) => [item.path, item]));
+    const paths = new Set(publicationReview?.changes.flatMap((item) => [item.path, item.oldPath]));
+    const routes = new Set(publicationReview?.changes.flatMap((item) => item.details?.routes || []));
+    return (kind: EditableKind, item: EditableSummary): EditableSummary => {
+      const status = inventory.get(`${kind}/${item.id}.mdx`);
+      return { ...item, pending: publicationReview ? paths.has(`${kind}/${item.id}.mdx`) || routes.has(item.href) : undefined,
+        issueCount: status?.issues.length || 0, modifiedAt: status?.modifiedAt, pinned: contentPins.pins.includes(`${kind}:${item.id}`) };
+    };
+  }, [publicationReview, contentPins.pins]);
+  const pageItems = useMemo(() => {
+    const missing = publicationReview?.inventory?.filter((item) => item.path.startsWith("pages/") && !rawPageItems.some((page) => item.path === `pages/${page.id}.mdx`)) || [];
+    return [...rawPageItems, ...missing.map((item) => ({ id: item.path.slice(6, -4), title: item.path.slice(6, -4), href: `/pages/${item.path.slice(6, -4)}`, meta: "Source needs review", draft: item.hidden }))].map((item) => taskMetadata("pages", item));
+  }, [rawPageItems, taskMetadata, publicationReview]);
+  const postItems = useMemo(() => {
+    const missing = publicationReview?.inventory?.filter((item) => item.path.startsWith("posts/") && !rawPostItems.some((post) => item.path === `posts/${post.id}.mdx`)) || [];
+    return [...rawPostItems, ...missing.map((item) => ({ id: item.path.slice(6, -4), title: item.path.slice(6, -4), href: `/blog/${item.path.slice(6, -4)}`, meta: "Source needs review", draft: item.hidden }))].map((item) => taskMetadata("posts", item));
+  }, [rawPostItems, taskMetadata, publicationReview]);
   const currentItems = useMemo(
     () => (documentKind === "pages" ? pageItems : postItems),
     [documentKind, pageItems, postItems],
@@ -962,8 +995,8 @@ export function SiteAdminWebConsole({
     );
   }, [contentSearch, pageItems, postItems]);
   const pageTree = useMemo(
-    () => buildPageTree(pageItems, pageTreeOrder),
-    [pageItems, pageTreeOrder],
+    () => filterPageTree(buildPageTree(pageItems, pageTreeOrder), (item) => contentMatchesTask({ ...item, issueCount: item.issueCount || 0 }, contentTask)),
+    [pageItems, pageTreeOrder, contentTask],
   );
   const collapsedPageSlugSet = useMemo(
     () => new Set(collapsedPageSlugs),
@@ -1081,7 +1114,8 @@ export function SiteAdminWebConsole({
         : area === "settings"
           ? "Settings"
           : "Content";
-  const selectedIsStructured = selected?.kind === "posts" || selected?.kind === "pages";
+  const selectedIsStructured = !selected?.raw && (selected?.kind === "posts" || selected?.kind === "pages");
+  const documentIssues = selectedIsStructured && selected && selected.kind !== "components" ? documentFieldProblems(contentForm, selected.kind) : [];
   const selectedSourceDraft = selected
     ? selectedIsStructured
       ? sourceForEditedContent(selected.kind, contentForm)
@@ -1127,7 +1161,7 @@ export function SiteAdminWebConsole({
     releaseIsRunning;
   const documentStatus = editorialStatus({
     saving,
-    blocked: componentSaveBlocked,
+    blocked: componentSaveBlocked || documentIssues.length > 0,
     dirty: selectedDirty,
     runnerOffline: releaseRunnerOffline,
     liveSync,
@@ -1280,7 +1314,7 @@ export function SiteAdminWebConsole({
   }), [selectedSourceDraft, selectedIsStructured, contentForm, collectionDraft, selected?.version]);
   useSiteAdminDraftPersistence({
     kind: `${actor}:${selected?.kind || ""}`, id: selected?.id || "", dirty: selectedDirty, snapshot: recoverySnapshot,
-    autosaveEnabled: area === "content" && contentMode !== "create" && !saving && !conflict && !componentSaveBlocked && !recoveredDocumentNeedsReview,
+    autosaveEnabled: area === "content" && contentMode !== "create" && !selected?.raw && !saving && !conflict && !componentSaveBlocked && documentIssues.length === 0 && !recoveredDocumentNeedsReview,
     onSave: () => saveSelectedContentRef.current({ quiet: true }),
     onRecoverySaved: (at) => { setLocalAutosaveAt(at); setLocalDraftSnapshot(null); },
     onRecoveryFailure: () => setWarning("This browser could not keep a recovery copy. Save the draft before leaving."),
@@ -1405,8 +1439,9 @@ export function SiteAdminWebConsole({
     }
     setContentMode("edit");
     setSelected(next);
+    setDocumentFocusRequest(0);
     setSourceDraft(next.source);
-    const draft = nextKind === "components" && isSiteComponentName(id)
+    const draft = nextKind === "components" && !detail.raw && isSiteComponentName(id)
       ? parseCollectionDraft(id, next.source) : null;
     setCollectionHistory(draft ? createCollectionHistory(draft) : null);
     setCollectionBaseline(draft ? JSON.stringify(draft) : "");
@@ -1442,13 +1477,14 @@ export function SiteAdminWebConsole({
   }
 
   async function selectContent(nextKind: EditableKind, id: string, discardConfirmed = false): Promise<boolean> {
+    if (!discardConfirmed && area === "content" && selected?.kind === nextKind && selected.id === id) return true;
     if (
-      selected &&
-      (selected.kind !== nextKind || selected.id !== id) &&
+      (area !== "content" || (selected && (selected.kind !== nextKind || selected.id !== id))) &&
       !discardConfirmed && !confirmDiscardChanges()
     ) {
       return false;
     }
+    if (area !== "content" && hasUnsavedChanges) discardEditorDrafts();
     rememberCollectionView();
     // A double-click used to fire two detail GETs whose responses could land
     // out of order. Only the repeat click is dropped: opening a *different*
@@ -1463,10 +1499,17 @@ export function SiteAdminWebConsole({
     setWarning("");
     setNotice("");
     try {
-      const detail = await readJson<EditableDetailPayload>(
-        endpointFor(nextKind, id),
-      );
+      let detail: EditableDetailPayload;
+      const normalList = nextKind === "posts" ? posts?.posts : nextKind === "pages" ? pages?.pages : undefined;
+      const sourceNeedsRepair = nextKind !== "components" && normalList && !normalList.some((item) => item.slug === id) && publicationReview?.inventory?.some((item) => item.path === `${nextKind}/${id}.mdx` && item.issues.length);
+      try { detail = await readJson<EditableDetailPayload>(`${endpointFor(nextKind, id)}${sourceNeedsRepair ? "?raw=1" : ""}`); }
+      catch (error) {
+        const knownProblem = publicationReview?.inventory?.find((item) => item.path === `${nextKind}/${id}.mdx`)?.issues.length;
+        if (nextKind === "components" || !knownProblem) throw error;
+        detail = await readJson<EditableDetailPayload>(`${endpointFor(nextKind, id)}?raw=1`);
+      }
       if (selectionGateRef.current.isStale(token)) return false;
+      if (nextKind === "components" && publicationReview?.inventory?.find((item) => item.path === `components/${id}.mdx`)?.issues.some((issue) => issue.field === "source")) detail.raw = true;
       applySelectedDetail(nextKind, id, detail, token);
       return true;
     } catch (err) {
@@ -1485,6 +1528,10 @@ export function SiteAdminWebConsole({
 
   async function saveSelectedContent(options: { quiet?: boolean } = {}) {
     if (!selected || saving) return false;
+    if (documentIssues.length) {
+      if (!options.quiet) { setWarning("Review the highlighted fields before saving."); focusDocumentField(documentIssues[0].field); }
+      return false;
+    }
     if (componentSaveBlocked) {
       setWarning(
         `Fix ${selectedComponentIssues.length} validation ${
@@ -1521,7 +1568,7 @@ export function SiteAdminWebConsole({
       const next = toEditableDetail(selectedAtStart.kind, selectedAtStart.id, detail);
       const newerLocalEdits = selectedSourceDraftRef.current !== sourceAtStart ||
         JSON.stringify(collectionDraftRef.current) !== JSON.stringify(collectionAtStart);
-      setSelected(next);
+      setSelected(selectedAtStart.raw && newerLocalEdits ? { ...next, raw: true } : next);
       setSlugDraft(next.id);
       const form = formFromEditablePayload(
         selectedAtStart.kind,
@@ -2094,6 +2141,18 @@ export function SiteAdminWebConsole({
     });
   }
 
+  function focusDocumentField(field: string) {
+    const metadata = ["date", "cover", "ogImage"].includes(field);
+    setInspectorOpen(metadata);
+    if (field === "body") setDocumentFocusRequest((value) => value + 1);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const root = document.querySelector<HTMLElement>(`[data-document-field="${field}"]`);
+      const control = root?.matches("input,textarea,select") ? root : root?.querySelector<HTMLElement>('input,textarea,select,[contenteditable="true"]');
+      root?.scrollIntoView({ block: "center" });
+      control?.focus({ preventScroll: true });
+    }));
+  }
+
   function reviewComponentIssue(direction: -1 | 1) {
     if (selectedComponentIssues.length === 0) return;
     const activeField = document.activeElement?.closest<HTMLElement>(
@@ -2150,6 +2209,7 @@ export function SiteAdminWebConsole({
         if (!selected) {
           const view = documentViewsRef.current.get(next.view);
           setContentSearch(view?.search || "");
+          setContentTask(view?.task || "all");
           restoreBrowseScroll(view?.scroll || 0);
         }
         return true;
@@ -2164,6 +2224,7 @@ export function SiteAdminWebConsole({
       setDocumentKind(next.view === "pages" ? "pages" : "posts");
       const view = documentViewsRef.current.get(next.view);
       setContentSearch(view?.search || "");
+      setContentTask(view?.task || "all");
       restoreBrowseScroll(view?.scroll || 0);
       return true;
     },
@@ -2174,7 +2235,7 @@ export function SiteAdminWebConsole({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const persist = () => {
       if (selectedComponentName) collectionViewsRef.current.set(selectedComponentName, { search: componentSearch, grouping: componentGrouping, expanded: componentExpandedIds, scroll: window.scrollY });
-      if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
+      if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, task: contentTask, scroll: window.scrollY });
       try { sessionStorage.setItem(`site-admin:views:${actor}`, JSON.stringify({ collections: [...collectionViewsRef.current], documents: [...documentViewsRef.current] })); } catch { /* Optional preference. */ }
     };
     const schedulePersist = () => {
@@ -2185,7 +2246,7 @@ export function SiteAdminWebConsole({
     window.addEventListener("pagehide", persist);
     window.addEventListener("scroll", schedulePersist, { passive: true });
     return () => { clearTimeout(timer); window.removeEventListener("pagehide", persist); window.removeEventListener("scroll", schedulePersist); };
-  }, [workspaceRestored, actor, selected, selectedComponentName, componentSearch, componentGrouping, componentExpandedIds, showCollectionIndex, documentKind, contentSearch]);
+  }, [workspaceRestored, actor, selected, selectedComponentName, componentSearch, componentGrouping, componentExpandedIds, showCollectionIndex, documentKind, contentSearch, contentTask]);
 
   function addCourseToTerm(term: string) {
     addTeachingEntry(term, teachingDefaultsRef.current.get(term));
@@ -2695,7 +2756,7 @@ export function SiteAdminWebConsole({
   }
 
   async function selectLibraryContent(nextKind: EditableKind, id: string) {
-    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
+    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, task: contentTask, scroll: window.scrollY });
     const opened = await selectContent(nextKind, id);
     if (opened) setComponentReturnTarget(null);
   }
@@ -2703,7 +2764,7 @@ export function SiteAdminWebConsole({
   function openDocumentKind(nextKind: "posts" | "pages") {
     if (!confirmDiscardChanges()) return;
     rememberCollectionView();
-    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
+    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, task: contentTask, scroll: window.scrollY });
     setArea("content");
     selectionGateRef.current.open();
     selectionLoadingRef.current = "";
@@ -2713,6 +2774,7 @@ export function SiteAdminWebConsole({
     setShowCollectionIndex(false);
     const view = documentViewsRef.current.get(nextKind);
     setContentSearch(view?.search || "");
+    setContentTask(view?.task || "all");
     setContentMode("browse");
     setSelected(null);
     setCollectionHistory(null);
@@ -2757,20 +2819,28 @@ export function SiteAdminWebConsole({
     setComponentReturnTarget(null);
     const view = documentViewsRef.current.get(index);
     setContentSearch(view?.search || "");
+    setContentTask(view?.task || "all");
     restoreBrowseScroll(view?.scroll || 0);
+    void refreshLists();
     return true;
   }
 
   function openCollectionIndex() {
-    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, scroll: window.scrollY });
+    if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, task: contentTask, scroll: window.scrollY });
     if (!closeSelectedContent()) return;
     setArea("content");
     setShowCollectionIndex(true);
     setContentSearch("");
+    setContentTask(documentViewsRef.current.get("collections")?.task || "all");
     restoreBrowseScroll(documentViewsRef.current.get("collections")?.scroll || 0);
   }
 
   function changeContentPicker(value: string) {
+    if (value.startsWith("pin:")) {
+      const [, kind, id] = value.split(":");
+      if (["posts", "pages", "components"].includes(kind) && id) void selectLibraryContent(kind as EditableKind, id);
+      return;
+    }
     if (value === "collections") {
       openCollectionIndex();
       return;
@@ -2789,9 +2859,17 @@ export function SiteAdminWebConsole({
   }
 
   function renderContentLibrary() {
+    const collectionItems = contentItems({ kind: "components", pages, posts, components });
+    const pinnedItems = contentPins.pins.flatMap((key) => {
+      const [kind, id] = key.split(":") as [EditableKind, string];
+      const item = (kind === "posts" ? postItems : kind === "pages" ? pageItems : collectionItems).find((item) => item.id === id);
+      return item ? [{ key, kind, item }] : [];
+    });
     const pickerValue =
       area === "home" || area === "now" || area === "announcements"
         ? area
+        : selected && pinnedItems.some((pin) => pin.key === `${selected.kind}:${selected.id}`)
+          ? `pin:${selected.kind}:${selected.id}`
         : selected?.kind === "components"
           ? `component:${selected.id}`
           : showCollectionIndex ? "collections" : documentKind;
@@ -2810,6 +2888,7 @@ export function SiteAdminWebConsole({
             value={pickerValue}
             onChange={(event) => changeContentPicker(event.target.value)}
           >
+            {pinnedItems.length ? <optgroup label="Pinned">{pinnedItems.map(({ key, item }) => <option key={key} value={`pin:${key}`}>{item.title}</option>)}</optgroup> : null}
             <optgroup label="Site">
               <option value="home">Home</option>
               <option value="now">Now</option>
@@ -2861,6 +2940,10 @@ export function SiteAdminWebConsole({
           </button>
         </div>
 
+        {pinnedItems.length ? <div className={styles.contentNavSection}>
+          <p className={styles.inspectorLabel}>Pinned</p>
+          {pinnedItems.map(({ key, kind, item }) => <button key={key} type="button" className={styles.contentNavButton} onClick={() => void selectLibraryContent(kind, item.id)}><span>{item.title}</span></button>)}
+        </div> : null}
         <div className={styles.contentNavSection}>
           <p className={styles.inspectorLabel}>Documents</p>
           {(["posts", "pages"] as const).map((value) => (
@@ -2878,7 +2961,7 @@ export function SiteAdminWebConsole({
             >
               <span>{titleForKind(value)}</span>
               <small>
-                {countLabel(value === "posts" ? posts?.count : pages?.count)} items
+                {countLabel(hasLoadedOnce ? value === "posts" ? postItems.length : pageItems.length : null)} items
               </small>
             </button>
           ))}
@@ -2915,6 +2998,36 @@ export function SiteAdminWebConsole({
     );
   }
 
+  function renderPin(kind: EditableKind, item: EditableSummary) {
+    const key = `${kind}:${item.id}`;
+    const pinned = contentPins.pins.includes(key);
+    return <IconButton label={`${pinned ? "Unpin" : "Pin"} ${item.title}`} active={pinned} aria-pressed={pinned} variant="ghost" size="sm" onClick={() => contentPins.toggle(key)}><span aria-hidden="true">{pinned ? "★" : "☆"}</span></IconButton>;
+  }
+
+  function renderIndexState(item: EditableSummary) {
+    return <span className={styles.contentIndexMeta}>
+      <span className={styles.contentTaskBadges}>
+        {item.pending ? <span className={styles.contentStateBadge}>Pending publication</span> : item.pending === false && !item.issueCount ? <span className={styles.contentStateBadge}>Up to date</span> : null}
+        {item.draft ? <span className={styles.contentStateBadge}>Hidden</span> : null}
+        {item.issueCount ? <span className={styles.contentStateBadge} data-problem="true">{item.issueCount} {item.issueCount === 1 ? "issue" : "issues"}</span> : null}
+      </span>
+      <small>{contentTask === "recent" && item.modifiedAt ? `Modified ${formatWhen(item.modifiedAt)}` : item.meta}</small>
+    </span>;
+  }
+
+  function renderTaskFilter() {
+    return <div className={styles.contentTaskToolbar}>
+      <label className={styles.fieldLabel}>Show
+        <select className={styles.textField} value={contentTask} onChange={(event) => setContentTask(event.target.value as ContentTaskFilter)} aria-label="Content task filter">
+          {CONTENT_TASK_FILTERS.map((filter) => <option key={filter.value} value={filter.value} disabled={!publicationReview && ["pending", "issues", "recent"].includes(filter.value)}>{filter.value === "recent" ? "Modified in the last 30 days" : filter.label}</option>)}
+        </select>
+      </label>
+      {!publicationReview ? <span role="status">{publicationReviewError ? "Content status unavailable." : "Checking content status…"} {publicationReviewError ? <button type="button" onClick={() => void refreshPublicationReview()}>Retry status</button> : null}</span> : null}
+      {contentTask !== "all" ? <Button variant="ghost" size="sm" onClick={() => setContentTask("all")}>Clear filter</Button> : null}
+      {contentPins.unavailable ? <span role="status">Pins are available for this session only.</span> : null}
+    </div>;
+  }
+
   function renderPageTreeNodes(
     nodes: PageTreeNode<EditableSummary>[],
     nested = false,
@@ -2923,7 +3036,7 @@ export function SiteAdminWebConsole({
       <ul className={nested ? styles.pageTreeChildren : styles.pageTreeList}>
         {nodes.map((node) => {
           const hasChildren = node.children.length > 0;
-          const expanded = hasChildren && !collapsedPageSlugSet.has(node.slug);
+          const expanded = hasChildren && (contentTask !== "all" || !collapsedPageSlugSet.has(node.slug));
           const childrenId = `site-admin-page-tree-${encodeURIComponent(node.slug)}`;
           const item = node.item;
           return (
@@ -2960,14 +3073,8 @@ export function SiteAdminWebConsole({
                   </span>
                 )}
 
-                {item ? (
-                  <span className={styles.contentIndexMeta}>
-                    {item.draft ? (
-                      <span className={styles.contentStateBadge}>Hidden</span>
-                    ) : null}
-                    <small>{item.meta}</small>
-                  </span>
-                ) : null}
+                {item ? renderIndexState(item) : null}
+                {item ? renderPin("pages", item) : null}
               </div>
 
               {expanded ? (
@@ -2982,14 +3089,16 @@ export function SiteAdminWebConsole({
 
   function renderDocumentIndex() {
     const searching = Boolean(contentSearch.trim());
-    const indexedItems = searching
+    const candidates = searching
       ? globalSearchItems
       : visibleItems.map((item) => ({ kind: documentKind, item }));
+    const indexedItems = candidates.filter(({ item }) => contentMatchesTask({ ...item, issueCount: item.issueCount || 0 }, contentTask));
+    if (contentTask === "recent") indexedItems.sort((a, b) => Date.parse(b.item.modifiedAt || "") - Date.parse(a.item.modifiedAt || ""));
     const typeLabel = titleForKind(documentKind);
     const placeholder = contentListPlaceholder({
       hasLoadedOnce,
       itemCount: indexedItems.length,
-      searching,
+      searching: searching || contentTask !== "all",
     });
 
     return (
@@ -3024,6 +3133,7 @@ export function SiteAdminWebConsole({
           </div>
         </div>
 
+        {renderTaskFilter()}
         {placeholder === "loading" ? (
           <ul className={styles.contentIndexList} aria-hidden="true">
             {[0, 1, 2, 3].map((row) => (
@@ -3032,12 +3142,12 @@ export function SiteAdminWebConsole({
               </li>
             ))}
           </ul>
-        ) : placeholder === "ready" && documentKind === "pages" && !searching ? (
+        ) : placeholder === "ready" && documentKind === "pages" && !searching && contentTask !== "recent" ? (
           renderPageTreeNodes(pageTree)
         ) : placeholder === "ready" ? (
           <ul className={styles.contentIndexList}>
             {indexedItems.map(({ kind: itemKind, item }) => (
-              <li key={`${itemKind}:${item.id}`}>
+              <li key={`${itemKind}:${item.id}`} className={styles.contentTaskRow}>
                 <button
                   type="button"
                   className={styles.contentIndexRow}
@@ -3045,7 +3155,7 @@ export function SiteAdminWebConsole({
                 >
                   <span className={styles.contentIndexPrimary}>
                     <strong>{item.title}</strong>
-                    {searching ? (
+                    {searching || (documentKind === "pages" && contentTask === "recent") ? (
                       <small>
                         {itemKind === "pages"
                           ? `Pages / ${pagePathLabel(item.id, pageItems)}`
@@ -3053,11 +3163,9 @@ export function SiteAdminWebConsole({
                       </small>
                     ) : null}
                   </span>
-                  <span className={styles.contentIndexMeta}>
-                    {item.draft ? <span className={styles.contentStateBadge}>Hidden</span> : null}
-                    <small>{item.meta}</small>
-                  </span>
+                  {renderIndexState(item)}
                 </button>
+                {renderPin(itemKind, item)}
               </li>
             ))}
           </ul>
@@ -3070,7 +3178,7 @@ export function SiteAdminWebConsole({
             </h3>
             <p>
               {placeholder === "no-matches"
-                ? "Try another title, slug, or metadata term."
+                ? "Try another search or clear the current filter."
                 : "Create the first item here."}
             </p>
           </div>
@@ -3080,19 +3188,24 @@ export function SiteAdminWebConsole({
   }
 
   function renderCollectionIndex() {
+    const items = contentItems({ kind: "components", pages, posts, components }).map((item) => taskMetadata("components", item)).filter((item) => contentMatchesTask({ ...item, issueCount: item.issueCount || 0 }, contentTask));
+    if (contentTask === "recent") items.sort((a, b) => Date.parse(b.modifiedAt || "") - Date.parse(a.modifiedAt || ""));
     return <Card className={`${styles.editorPanel} ${styles.contentIndexPanel}`}>
       <div className={styles.contentIndexHeader}>
         <h2 className={styles.panelTitle}>Collections</h2>
-        <span className={styles.contentIndexCount}>{componentDefinitions.length} collections</span>
+        <span className={styles.contentIndexCount}>{items.length} collections</span>
       </div>
+      {renderTaskFilter()}
       <ul className={styles.contentIndexList}>
-        {componentDefinitions.map((definition) => <li key={definition.name}>
-          <button type="button" className={styles.contentIndexRow} onClick={() => void selectLibraryContent("components", definition.name)}>
-            <span className={styles.contentIndexPrimary}><strong>{definition.label}</strong><small>{definition.primaryRoute}</small></span>
-            <span className={styles.contentIndexMeta}><small>{formatEntryCount(componentSummaryFor(components, definition.name)?.count ?? 0)}</small></span>
+        {items.map((item) => <li key={item.id} className={styles.contentTaskRow}>
+          <button type="button" className={styles.contentIndexRow} onClick={() => void selectLibraryContent("components", item.id)}>
+            <span className={styles.contentIndexPrimary}><strong>{item.title}</strong><small>{item.href}</small></span>
+            {renderIndexState(item)}
           </button>
+          {renderPin("components", item)}
         </li>)}
       </ul>
+      {!items.length ? <p className={styles.contentIndexEmpty}>No collections match this filter.</p> : null}
     </Card>;
   }
 
@@ -3295,6 +3408,10 @@ export function SiteAdminWebConsole({
                   ) : null}
                 </div>
               </div>
+                {documentIssues.length ? <section className={styles.validationSummary} aria-label="Fields needing attention">
+                  <strong>{documentIssues.length} {documentIssues.length === 1 ? "field needs" : "fields need"} attention</strong>
+                  <ul>{documentIssues.map((issue) => <li key={issue.field}><button type="button" onClick={() => focusDocumentField(issue.field)}>{issue.message}</button></li>)}</ul>
+                </section> : selected.raw ? <p className={styles.validationSummary} role="status">This document could not be read as structured content. Repair the source, then save to return to the regular editor.</p> : null}
                 {selectedIsStructured ? (
                   <>
                     <div className={styles.editorTitleGrid}>
@@ -3302,6 +3419,10 @@ export function SiteAdminWebConsole({
                         Title
                         <input
                           className={styles.textField}
+                          data-document-field="title"
+                          aria-label="Title"
+                          aria-invalid={documentIssues.some((issue) => issue.field === "title")}
+                          aria-describedby={documentIssues.some((issue) => issue.field === "title") ? "document-title-problem" : undefined}
                           value={contentForm.title}
                           onChange={(event) =>
                             setContentForm((current) => ({
@@ -3310,6 +3431,7 @@ export function SiteAdminWebConsole({
                             }))
                           }
                         />
+                        {documentIssues.find((issue) => issue.field === "title") ? <small id="document-title-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "title")?.message}</small> : null}
                       </label>
                     </div>
                     {selectedManagedComponent ? (
@@ -3356,7 +3478,7 @@ export function SiteAdminWebConsole({
                               <SiteAdminMarkdownEditor
                                 label={`${selected.title} body`}
                                 persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
-                                pagePreview={{ title: contentForm.title }}
+                                pagePreview={{ title: contentForm.title, routePath: selected.href }}
                                 value={contentForm.body}
                                 onChange={(body) =>
                                   setContentForm((current) => ({
@@ -3375,11 +3497,12 @@ export function SiteAdminWebConsole({
                         </details>
                       </>
                     ) : (
-                      <div className={styles.editorBodyShell}>
+                      <div className={styles.editorBodyShell} data-document-field="body">
                         <SiteAdminMarkdownEditor
                           label={`${selected.title} body`}
                           persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
-                          pagePreview={{ title: contentForm.title }}
+                          focusRequest={documentFocusRequest}
+                          pagePreview={{ title: contentForm.title, routePath: selected.href }}
                           value={contentForm.body}
                           onChange={(body) =>
                             setContentForm((current) => ({
@@ -3406,11 +3529,12 @@ export function SiteAdminWebConsole({
                     ) : selectedPublicationsDraft ? (
                       renderPublicationsEditor(selectedPublicationsDraft)
                     ) : (
-                      <div className={styles.editorBodyShell}>
+                      <div className={styles.editorBodyShell} data-document-field="body">
                         <SiteAdminMarkdownEditor
                           label={`${selected.title} MDX source`}
                           persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
-                          pagePreview={{ title: selected.title }}
+                          focusRequest={documentFocusRequest}
+                          pagePreview={{ title: selected.title, routePath: selected.href }}
                           value={sourceDraft}
                           onChange={setSourceDraft}
                           minHeight={560}
@@ -3519,6 +3643,10 @@ export function SiteAdminWebConsole({
                         <input
                           className={styles.textField}
                           type="date"
+                          data-document-field="date"
+                          aria-label="Date"
+                          aria-invalid={documentIssues.some((issue) => issue.field === "date")}
+                          aria-describedby={documentIssues.some((issue) => issue.field === "date") ? "document-date-problem" : undefined}
                           value={contentForm.date}
                           onChange={(event) =>
                             setContentForm((current) => ({
@@ -3527,6 +3655,7 @@ export function SiteAdminWebConsole({
                             }))
                           }
                         />
+                        {documentIssues.find((issue) => issue.field === "date") ? <small id="document-date-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "date")?.message}</small> : null}
                       </label>
                     ) : (
                       <label className={styles.fieldLabel}>
@@ -3592,6 +3721,10 @@ export function SiteAdminWebConsole({
                             Cover
                             <input
                               className={styles.textField}
+                              data-document-field="cover"
+                              aria-label="Cover"
+                              aria-invalid={documentIssues.some((issue) => issue.field === "cover")}
+                              aria-describedby={documentIssues.some((issue) => issue.field === "cover") ? "document-cover-problem" : undefined}
                               value={contentForm.cover}
                               onChange={(event) =>
                                 setContentForm((current) => ({
@@ -3601,6 +3734,7 @@ export function SiteAdminWebConsole({
                               }
                               placeholder="Optional"
                             />
+                            {documentIssues.find((issue) => issue.field === "cover") ? <small id="document-cover-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "cover")?.message}</small> : null}
                           </label>
                           <Button
                             onClick={() => setAssetPickerTarget("cover")}
@@ -3615,6 +3749,10 @@ export function SiteAdminWebConsole({
                             OG image
                             <input
                               className={styles.textField}
+                              data-document-field="ogImage"
+                              aria-label="OG image"
+                              aria-invalid={documentIssues.some((issue) => issue.field === "ogImage")}
+                              aria-describedby={documentIssues.some((issue) => issue.field === "ogImage") ? "document-ogImage-problem" : undefined}
                               value={contentForm.ogImage}
                               onChange={(event) =>
                                 setContentForm((current) => ({
@@ -3624,6 +3762,7 @@ export function SiteAdminWebConsole({
                               }
                               placeholder="Optional"
                             />
+                            {documentIssues.find((issue) => issue.field === "ogImage") ? <small id="document-ogImage-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "ogImage")?.message}</small> : null}
                           </label>
                           <Button
                             onClick={() => setAssetPickerTarget("ogImage")}
@@ -4069,7 +4208,7 @@ export function SiteAdminWebConsole({
             <SiteAdminMarkdownEditor
               label="Home body MDX"
               persistenceKey={`${actor}:home`}
-              pagePreview={{ title: homeTitle, home: true }}
+              pagePreview={{ title: homeTitle, home: true, routePath: "/" }}
               value={homeBody}
               onChange={setHomeBody}
               minHeight={620}
@@ -4286,7 +4425,7 @@ export function SiteAdminWebConsole({
 
       {groupEdit ? <SiteAdminCollectionGroupDialog group={groupEdit} onClose={() => setGroupEdit(null)} onApply={applyGroupChange} /> : null}
 
-      {collectionPreviewOpen && selected?.kind === "components" ? <SiteAdminPagePreview title={selected.title} source={selectedSourceDraft} onClose={() => setCollectionPreviewOpen(false)} /> : null}
+      {collectionPreviewOpen && selected?.kind === "components" ? <SiteAdminPagePreview title={selected.title} routePath={selected.href} source={selectedSourceDraft} onClose={() => setCollectionPreviewOpen(false)} /> : null}
 
       {publishReviewOpen ? <SiteAdminActionDialog title="Review publication" onClose={() => setPublishReviewOpen(false)} wide busy={releaseSaving}>
         <p className={styles.cardText}>Target: <strong>{contentPublishActionForBrowser() === "publish-content-production" ? "Production" : contentPublishActionForBrowser() === "publish-content-staging" ? "Staging" : "Local preview"}</strong></p>

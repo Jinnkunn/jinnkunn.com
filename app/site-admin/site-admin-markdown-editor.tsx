@@ -10,6 +10,7 @@ import {
 import { isVisualModeAvailable } from "@/lib/site-admin/mdx-visual-mode";
 import styles from "./site-admin-dashboard.module.css";
 import { SiteAdminPagePreview } from "./site-admin-page-preview";
+import type { PagePreviewOptions } from "@/lib/site-admin/page-preview-context";
 
 const SiteAdminSourceEditor = dynamic(
   () =>
@@ -53,7 +54,8 @@ type MarkdownEditorProps = {
   visualEditing?: boolean;
   onEditComponent?: (component: string) => void;
   persistenceKey?: string;
-  pagePreview?: { title: string; home?: boolean };
+  focusRequest?: number;
+  pagePreview?: PagePreviewOptions;
 };
 
 function editorStats(value: string) {
@@ -90,6 +92,7 @@ export function SiteAdminMarkdownEditor({
   onEditComponent,
   persistenceKey = label,
   pagePreview,
+  focusRequest = 0,
 }: MarkdownEditorProps) {
   const editorRootRef = useRef<HTMLDivElement | null>(null);
   const previewRequestIdRef = useRef(0);
@@ -120,6 +123,20 @@ export function SiteAdminMarkdownEditor({
   });
   const activeMode = mode === "visual" && !visualAvailable ? "source" : mode;
   const isSplitPreview = previewLayout === "split";
+  const focusOptionsRef = useRef({ visualEditing, compatible: visualCompatibility.compatible });
+  focusOptionsRef.current = { visualEditing, compatible: visualCompatibility.compatible };
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    setMode(focusOptionsRef.current.visualEditing && focusOptionsRef.current.compatible ? "visual" : "source");
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      const input = editorRootRef.current?.querySelector<HTMLElement>('.ProseMirror, .cm-content, textarea');
+      if (input) input.focus({ preventScroll: true });
+      if (input || ++attempts > 20) window.clearInterval(timer);
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [focusRequest]);
 
   const renderPreview = useCallback(async () => {
     const requestId = previewRequestIdRef.current + 1;
@@ -313,7 +330,7 @@ export function SiteAdminMarkdownEditor({
           {stats.components > 0 ? <span>{stats.components} components</span> : null}
         </div>
       </div>
-      {pagePreviewOpen && pagePreview ? <SiteAdminPagePreview title={pagePreview.title} home={pagePreview.home} source={value} onClose={() => setPagePreviewOpen(false)} /> : null}
+      {pagePreviewOpen && pagePreview ? <SiteAdminPagePreview {...pagePreview} source={value} onClose={() => setPagePreviewOpen(false)} /> : null}
 
       {visualError ? (
         <div className={styles.editorModeNotice} role="status">

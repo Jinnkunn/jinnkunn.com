@@ -10,12 +10,15 @@ import rehypeKatex from "rehype-katex";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import type { MDXComponents } from "mdx/types";
+import { collectPostHeadings, type PostHeading } from "./outline";
 
 // Runtime MDX compile. We evaluate MDX during server render so Site Admin edits
 // stored in D1 can land without a full site rebuild.
 export async function compilePostMdx(source: string): Promise<{
   Content: (props: { components?: MDXComponents }) => ReactElement;
+  headings: PostHeading[];
 }> {
+  let headings: PostHeading[] = [];
   const options: EvaluateOptions = {
     ...runtime,
     // remark-frontmatter MUST run before any rendering plugin so the
@@ -27,6 +30,7 @@ export async function compilePostMdx(source: string): Promise<{
     remarkPlugins: [[remarkFrontmatter, ["yaml"]], remarkGfm, remarkMath],
     rehypePlugins: [
       rehypeSlug,
+      () => (tree) => { headings = collectPostHeadings(tree); },
       [
         rehypeAutolinkHeadings,
         {
@@ -45,5 +49,6 @@ export async function compilePostMdx(source: string): Promise<{
   };
   return {
     Content: mod.default,
+    headings,
   };
 }

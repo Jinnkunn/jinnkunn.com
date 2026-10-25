@@ -115,6 +115,14 @@ export function buildPageTree<T extends PageTreeSource>(
   return stripMaps(root);
 }
 
+export function filterPageTree<T extends PageTreeSource>(nodes: PageTreeNode<T>[], matches: (item: T) => boolean): PageTreeNode<T>[] {
+  return nodes.flatMap((node) => {
+    const children = filterPageTree(node.children, matches);
+    const item = node.item && matches(node.item) ? node.item : null;
+    return item || children.length ? [{ ...node, item, children }] : [];
+  });
+}
+
 /** Returns human titles for every ancestor represented by a page slug. */
 export function pageBreadcrumb<T extends PageTreeSource>(
   slug: string,

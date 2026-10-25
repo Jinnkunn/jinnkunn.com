@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { getContentStore } from "@/lib/server/content-store-resolver";
 import matter from "gray-matter";
 
 import {
@@ -87,6 +88,10 @@ export async function GET(
     async () => {
       const resolved = await resolveSlug(ctx.params);
       if (!resolved.ok) return resolved.res;
+      if (new URL(req.url).searchParams.get("raw") === "1") {
+        const file = await getContentStore().readFile(`pages/${resolved.slug}.mdx`);
+        return file ? apiPayloadOk({ slug: resolved.slug, title: resolved.slug, source: file.content, version: file.sha, raw: true }) : apiError("page not found", { status: 404, code: "NOT_FOUND" });
+      }
       const detail = await readPage(resolved.slug);
       if (!detail)
         return apiError("page not found", { status: 404, code: "NOT_FOUND" });
