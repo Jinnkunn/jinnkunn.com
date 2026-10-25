@@ -17,6 +17,7 @@ import {
 import { wakeReleaseRunnerForJob } from "@/lib/server/release-runner-wake";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 import { loadSavedSnapshot } from "@/lib/server/publication-review-service";
+import { publicationValidation } from "@/lib/shared/publication-validation";
 
 export const runtime = "nodejs";
 
@@ -66,13 +67,20 @@ export async function POST(req: NextRequest) {
       const parsed = await readSiteAdminJsonCommand(req, parseCreateJob);
       if (!parsed.ok) return parsed.res;
       const reviewed = parsed.value.request.reviewSnapshotSha;
+      const publishesContent = /^publish-content-(production|staging)$/.test(String(parsed.value.action));
+      const snapshot = publishesContent ? await loadSavedSnapshot() : null;
+      const target = new URL(req.url).hostname.startsWith("staging.") ? "staging" : "production";
+      if (publishesContent && parsed.value.action !== `publish-content-${target}`) return apiError("Review belongs to a different environment.", { status: 400, code: "PUBLICATION_TARGET_MISMATCH" });
       if (reviewed !== undefined) {
         if (!/^publish-content-(production|staging)$/.test(String(parsed.value.action)) || !/^[a-f0-9]{64}$/.test(String(reviewed))) {
           return apiError("Invalid publication review.", { status: 400, code: "INVALID_PUBLICATION_REVIEW" });
         }
-        const target = new URL(req.url).hostname.startsWith("staging.") ? "staging" : "production";
-        if (parsed.value.action !== `publish-content-${target}`) return apiError("Review belongs to a different environment.", { status: 400, code: "PUBLICATION_TARGET_MISMATCH" });
-        if ((await loadSavedSnapshot()).sha !== reviewed) return apiError("Saved content changed after review. Refresh the review before publishing.", { status: 409, code: "PUBLICATION_SNAPSHOT_CHANGED" });
+        if (snapshot?.sha !== reviewed) return apiError("Saved content changed after review. Refresh the review before publishing.", { status: 409, code: "PUBLICATION_SNAPSHOT_CHANGED" });
+      }
+      if (snapshot) {
+        const validation = publicationValidation(snapshot.sources);
+        if (validation.blockers.length) return apiError("Saved drafts need attention before publication.", { status: 422, code: "PUBLICATION_VALIDATION_FAILED", extras: { issues: validation.blockers, snapshotSha: snapshot.sha } });
+        parsed.value.request.reviewSnapshotSha = snapshot.sha;
       }
       const out = await createReleaseJob({
         action: parsed.value.action,

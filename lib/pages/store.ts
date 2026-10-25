@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
 import { appendRedirect } from "@/lib/redirects";
+import { assertDocumentDraftSource } from "@/lib/shared/document-draft-validation";
 import { parsePageFile } from "./meta";
 import { assertValidPageSlug } from "./slug";
 import type { PageEntry } from "./types";
@@ -50,7 +51,7 @@ export async function listPages(opts?: {
     const fetched = await store.readFile(file.relPath);
     if (!fetched) continue;
     try {
-      const { entry } = parsePageFile(slug, fetched.content);
+      const { entry } = parsePageFile(slug, fetched.content, { allowIncomplete: opts?.includeDrafts });
       if (!opts?.includeDrafts && entry.draft) continue;
       out.push({ entry, version: fetched.sha });
     } catch {
@@ -61,12 +62,12 @@ export async function listPages(opts?: {
   return out;
 }
 
-export async function readPage(slug: string): Promise<PageDetail | null> {
+export async function readPage(slug: string, options: { allowIncomplete?: boolean } = {}): Promise<PageDetail | null> {
   assertValidPageSlug(slug);
   const store = await getStore();
   const file = await store.readFile(pageRelPath(slug));
   if (!file) return null;
-  const { entry } = parsePageFile(slug, file.content);
+  const { entry } = parsePageFile(slug, file.content, options);
   return { entry, version: file.sha, source: file.content };
 }
 
@@ -75,10 +76,10 @@ export async function createPage(
   source: string,
 ): Promise<PageDetail> {
   assertValidPageSlug(slug);
-  parsePageFile(slug, source);
+  assertDocumentDraftSource(source, "pages");
+  const { entry } = parsePageFile(slug, source, { allowIncomplete: true });
   const store = await getStore();
   const { sha } = await store.writeFile(pageRelPath(slug), source, { ifMatch: null });
-  const { entry } = parsePageFile(slug, source);
   return { entry, version: sha, source };
 }
 
@@ -88,10 +89,10 @@ export async function updatePage(
   ifMatch: ContentVersion,
 ): Promise<PageDetail> {
   assertValidPageSlug(slug);
-  parsePageFile(slug, source);
+  assertDocumentDraftSource(source, "pages");
+  const { entry } = parsePageFile(slug, source, { allowIncomplete: true });
   const store = await getStore();
   const { sha } = await store.writeFile(pageRelPath(slug), source, { ifMatch });
-  const { entry } = parsePageFile(slug, source);
   return { entry, version: sha, source };
 }
 
@@ -153,6 +154,6 @@ export async function movePage(
   } catch {
     // ignore — see comment above
   }
-  const { entry } = parsePageFile(toSlug, existing.content);
+  const { entry } = parsePageFile(toSlug, existing.content, { allowIncomplete: true });
   return { entry, version: sha, source: existing.content };
 }

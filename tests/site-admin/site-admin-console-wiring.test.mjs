@@ -135,9 +135,13 @@ test("publication is confirmed and conflicts no longer publish implicitly", () =
   const conflict = CONSOLE.slice(CONSOLE.indexOf("async function keepConflictEdits"), CONSOLE.indexOf("async function deleteSelectedContent"));
   assert.doesNotMatch(conflict, /queueSavedContentPublish/);
   assert.match(conflict, /recordSavedContent/);
-  assert.match(CONSOLE, /title="Review publication"/);
-  assert.match(CONSOLE, /This publishes all saved site content/);
+  const dialog = readFileSync(new URL("../../app/site-admin/site-admin-publication-review-dialog.tsx", import.meta.url), "utf8");
+  const reviewHook = readFileSync(new URL("../../app/site-admin/use-site-admin-publication-review.ts", import.meta.url), "utf8");
+  assert.match(CONSOLE, /SiteAdminPublicationReviewDialog/);
+  assert.match(dialog, /title="Review publication"/);
+  assert.match(dialog, /This publishes all saved site content/);
   assert.match(CONSOLE, /refreshPublicationReview\(\)\.then/);
-  assert.match(CONSOLE, /setPendingPublishCount\(review\.changes\.length\)/);
+  assert.match(reviewHook, /onCountChange\(review\.changes\.length\)/);
+  assert.match(dialog, /blockers\.length > 0/);
   assert.doesNotMatch(CONSOLE, /setPendingDocuments/);
 });

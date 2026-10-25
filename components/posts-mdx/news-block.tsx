@@ -2,12 +2,10 @@ import "server-only";
 
 import { Fragment } from "react";
 import type { ReactElement } from "react";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { parseNewsFeedItems, type NewsComponentFeedItem } from "@/lib/components/parse";
 import { compilePostMdx } from "@/lib/posts/compile";
-import { getSiteComponentDefinition } from "@jinnkunn/content-core/components";
+import { readComponentSource } from "@/lib/components/source";
 
 import { postMdxComponents } from "./components";
 import { NewsEntry } from "./news-entry";
@@ -17,19 +15,8 @@ interface NewsBlockProps {
   limit?: number;
 }
 
-const NEWS_SOURCE_PATH = resolve(
-  process.cwd(),
-  getSiteComponentDefinition("news").sourcePath,
-);
-
 async function loadEntries() {
-  let raw = "";
-  try {
-    raw = await readFile(NEWS_SOURCE_PATH, "utf8");
-  } catch {
-    return [];
-  }
-  return parseNewsFeedItems(raw);
+  return parseNewsFeedItems(await readComponentSource("news"));
 }
 
 function capFeedItems(

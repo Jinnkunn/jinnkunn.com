@@ -1,380 +1,119 @@
 #!/usr/bin/env node
-
-import { asBool, asString, parseArgs } from "../_lib/cli.mjs";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
-function normalizeEnvName(value) {
-  const raw = asString(value).toLowerCase();
-  if (raw === "staging") return "staging";
-  if (raw === "production" || raw === "prod") return "production";
-  return "staging";
+export function writeSmokeTarget(args, environment = {}) {
+  const env = args.find((arg) => arg.startsWith("--env="))?.slice(6) || "staging";
+  assert.equal(env, "staging", "Write smoke tests may only target staging, never production.");
+  const origin = new URL(environment.BASE_URL || "https://staging.jinkunchen.com");
+  assert.equal(origin.hostname, "staging.jinkunchen.com", "Use the dedicated staging host.");
+  assert.equal(origin.protocol, "https:");
+  assert.equal(origin.port, "");
+  assert.equal(origin.username + origin.password + origin.search + origin.hash, "");
+  assert.equal(origin.pathname, "/");
+  return { origin: origin.origin, execute: args.includes("--execute") };
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function unwrapApiData(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-  return "data" in raw ? raw.data : raw;
-}
-
-async function buildAutoSiteAdminCookie() {
-  const secret = asString(process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "");
-  try {
-    const auth = await createNextAuthSessionCookie({
-      secret,
-      maxAge: 60 * 30,
-      subjectPrefix: "write-smoke",
-    });
-    return auth.ok ? auth.cookie : "";
-  } catch {
-    return "";
-  }
-}
-
-async function requestJson({ method, url, cookie, body }) {
-  const headers = {};
-  if (cookie) headers.Cookie = cookie;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-
-  const res = await fetch(url, {
-    method,
-    headers,
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    cache: "no-store",
-  });
-  const text = await res.text().catch(() => "");
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = null;
-  }
-  return {
-    status: res.status,
-    ok: res.ok,
-    text,
-    json,
-  };
-}
-
-function assertCondition(condition, message) {
-  if (!condition) throw new Error(message);
-}
-
-function summarizeError(prefix, response) {
-  const code =
-    response?.json && typeof response.json === "object" && response.json
-      ? asString(response.json.code || "")
-      : "";
-  const message =
-    response?.json && typeof response.json === "object" && response.json
-      ? asString(response.json.error || "")
-      : "";
-  return `${prefix} (status=${response?.status || "?"}${code ? `, code=${code}` : ""}${message ? `, error=${message}` : ""})`;
-}
-
-async function getStatus(baseUrl, cookie) {
-  const response = await requestJson({
-    method: "GET",
-    url: `${baseUrl}/api/site-admin/status`,
-    cookie,
-  });
-  if (!response.ok || !response.json || response.json.ok !== true) {
-    throw new Error(summarizeError("status request failed", response));
-  }
-  return unwrapApiData(response.json);
-}
-
-async function getConfig(baseUrl, cookie) {
-  const response = await requestJson({
-    method: "GET",
-    url: `${baseUrl}/api/site-admin/config`,
-    cookie,
-  });
-  if (!response.ok || !response.json || response.json.ok !== true) {
-    throw new Error(summarizeError("config request failed", response));
-  }
-  return unwrapApiData(response.json);
-}
-
-async function saveSeoDescription(baseUrl, cookie, input) {
-  const response = await requestJson({
-    method: "POST",
-    url: `${baseUrl}/api/site-admin/config`,
-    cookie,
-    body: {
-      kind: "settings",
-      rowId: input.rowId,
-      patch: {
-        seoDescription: input.seoDescription,
-      },
-      expectedSiteConfigSha: input.expectedSiteConfigSha,
-    },
-  });
-  const payload = response.json;
-  if (response.ok && payload && payload.ok === true) {
-    const data = unwrapApiData(payload);
-    const sourceVersion =
-      data && typeof data === "object" && data ? data.sourceVersion : null;
-    const siteConfigSha =
-      sourceVersion && typeof sourceVersion === "object"
-        ? asString(sourceVersion.siteConfigSha || "")
-        : "";
-    assertCondition(Boolean(siteConfigSha), "save succeeded but missing sourceVersion.siteConfigSha");
-    return {
-      ok: true,
-      siteConfigSha,
-      raw: data,
-    };
-  }
-
-  const code =
-    payload && typeof payload === "object" && payload ? asString(payload.code || "") : "";
-  const error =
-    payload && typeof payload === "object" && payload ? asString(payload.error || "") : "";
-  return {
-    ok: false,
-    status: response.status,
-    code,
-    error,
-  };
-}
-
-async function triggerDeploy(baseUrl, cookie) {
-  const response = await requestJson({
-    method: "POST",
-    url: `${baseUrl}/api/site-admin/deploy`,
-    cookie,
-  });
-  if (!response.ok || !response.json || response.json.ok !== true) {
-    throw new Error(summarizeError("deploy trigger failed", response));
-  }
-  return unwrapApiData(response.json);
-}
-
-async function waitForPendingDeploy(baseUrl, cookie, expected, timeoutMs) {
-  const started = Date.now();
-  for (;;) {
-    const status = await getStatus(baseUrl, cookie);
-    const pending = status?.source?.pendingDeploy;
-    if (pending === expected) return status;
-    if (Date.now() - started > timeoutMs) {
-      throw new Error(
-        `pendingDeploy did not reach ${String(expected)} within ${timeoutMs}ms (last=${String(
-          pending,
-        )})`,
-      );
-    }
-    await sleep(2_000);
-  }
-}
-
-async function resolveCloudflareWorkersDevBaseUrl(envName) {
-  const accountId = asString(process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID || "");
-  const apiToken = asString(process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN || "");
-  const workerName =
-    envName === "staging"
-      ? asString(process.env.CLOUDFLARE_WORKER_NAME_STAGING || process.env.CLOUDFLARE_WORKER_NAME || "")
-      : asString(process.env.CLOUDFLARE_WORKER_NAME_PRODUCTION || process.env.CLOUDFLARE_WORKER_NAME || "");
-  if (!accountId || !apiToken || !workerName) return "";
-
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/subdomain`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    },
-  ).catch(() => null);
-
-  if (!(response instanceof Response) || !response.ok) return "";
-  const raw = (await response.json().catch(() => null)) || null;
-  if (!raw || typeof raw !== "object" || raw.success !== true) return "";
-  const subdomain = asString(raw?.result?.subdomain || "");
-  if (!subdomain) return "";
-  return `https://${workerName}.${subdomain}.workers.dev`;
-}
-
-async function resolveBaseUrl(envName, argBaseUrl) {
-  const explicit = asString(argBaseUrl);
-  if (explicit) return explicit.replace(/\/+$/, "");
-
-  if (envName === "production") {
-    const production =
-      asString(process.env.SITE_ADMIN_BASE_URL_PRODUCTION || "") ||
-      asString(process.env.SITE_ADMIN_BASE_URL || "") ||
-      "https://jinkunchen.com";
-    return production.replace(/\/+$/, "");
-  }
-
-  const stagingExplicit =
-    asString(process.env.SITE_ADMIN_BASE_URL_STAGING || "") ||
-    asString(process.env.SITE_ADMIN_STAGING_BASE_URL || "");
-  if (stagingExplicit) return stagingExplicit.replace(/\/+$/, "");
-
-  const derived = await resolveCloudflareWorkersDevBaseUrl("staging");
-  if (derived) return derived.replace(/\/+$/, "");
-  throw new Error("missing staging baseUrl (set SITE_ADMIN_BASE_URL_STAGING or pass --baseUrl)");
-}
-
-function resolveExpectedBranch(envName, argExpectedBranch) {
-  const explicit = asString(argExpectedBranch);
-  if (explicit) return explicit;
-  if (envName === "production") {
-    return asString(process.env.SITE_ADMIN_REPO_BRANCH_PRODUCTION || "main");
-  }
-  return asString(process.env.SITE_ADMIN_REPO_BRANCH_STAGING || "site-admin-staging");
-}
-
-function appendMarker(original, marker) {
-  const base = asString(original);
-  return base ? `${base} ${marker}` : marker;
+export function assertIsolatedReview(review, ownedPath) {
+  assert.ok(Array.isArray(review.changes), "Publication review is unavailable.");
+  assert.ok(review.changes.every((change) => change.path === ownedPath && !change.oldPath), "Other saved drafts are pending. Refusing to publish unrelated content.");
+  assert.equal(review.validation?.blockers?.length || 0, 0, "Publication validation failed.");
+  assert.match(review.snapshotSha, /^[a-f0-9]{64}$/);
 }
 
 async function main() {
+  // Validate the destination before loading credentials or making any request.
+  const target = writeSmokeTarget(process.argv.slice(2), process.env);
   loadProjectEnv({ override: false });
-
-  const args = parseArgs(process.argv.slice(2));
-  const envName = normalizeEnvName(args.env || process.env.SITE_ADMIN_WRITE_SMOKE_ENV || "staging");
-  const runConflict = asBool(args.conflict, envName === "staging");
-  const deployTimeoutMs = Number.parseInt(asString(args.deployTimeoutMs || ""), 10) || 180_000;
-  const baseUrl = await resolveBaseUrl(envName, args.baseUrl);
-  const expectedBranch = resolveExpectedBranch(envName, args.expectedBranch);
-
-  let cookie = asString(args.cookie || process.env.SITE_ADMIN_COOKIE || "");
-  if (!cookie) {
-    cookie = await buildAutoSiteAdminCookie();
-  }
-  assertCondition(Boolean(cookie), "missing site-admin cookie and auto-cookie generation failed");
-
-  const statusBefore = await getStatus(baseUrl, cookie);
-  assertCondition(
-    asString(statusBefore?.source?.storeKind || "") === "github",
-    `unexpected source.storeKind=${String(statusBefore?.source?.storeKind || "")}`,
-  );
-  assertCondition(
-    asString(statusBefore?.source?.branch || "") === expectedBranch,
-    `unexpected source.branch=${String(statusBefore?.source?.branch || "")}, expected=${expectedBranch}`,
-  );
-
-  const configBefore = await getConfig(baseUrl, cookie);
-  const settings = configBefore?.settings || null;
-  assertCondition(Boolean(settings && settings.rowId), "missing settings rowId in config payload");
-  const rowId = asString(settings.rowId || "");
-  const originalSeoDescription = asString(settings.seoDescription || "");
-  const sourceVersion = configBefore?.sourceVersion || {};
-  const initialSiteConfigSha = asString(sourceVersion.siteConfigSha || "");
-  assertCondition(Boolean(initialSiteConfigSha), "missing sourceVersion.siteConfigSha");
-
-  const markerBase = `[write-smoke ${envName} ${new Date().toISOString()}]`;
-  const nextSeoDescription = appendMarker(originalSeoDescription, markerBase);
-  const firstSave = await saveSeoDescription(baseUrl, cookie, {
-    rowId,
-    seoDescription: nextSeoDescription,
-    expectedSiteConfigSha: initialSiteConfigSha,
-  });
-  if (!firstSave.ok) {
-    throw new Error(
-      `first save failed (status=${firstSave.status}, code=${firstSave.code}, error=${firstSave.error})`,
-    );
-  }
-
-  let conflictResult = null;
-  if (runConflict) {
-    const staleAttempt = await saveSeoDescription(baseUrl, cookie, {
-      rowId,
-      seoDescription: appendMarker(originalSeoDescription, `${markerBase} [stale]`),
-      expectedSiteConfigSha: initialSiteConfigSha,
+  const auth = await createNextAuthSessionCookie({ subjectPrefix: "d1-write-smoke", maxAge: 1800 });
+  assert.equal(auth.ok, true, "A staging admin session is required.");
+  const request = async (path, method = "GET", body) => {
+    const response = await fetch(`${target.origin}${path}`, {
+      method, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(30_000),
+      headers: { cookie: auth.cookie, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    conflictResult = staleAttempt;
-    assertCondition(!staleAttempt.ok, "expected stale save to fail but it succeeded");
-    assertCondition(
-      staleAttempt.status === 409 && staleAttempt.code === "SOURCE_CONFLICT",
-      `expected SOURCE_CONFLICT 409, got status=${staleAttempt.status}, code=${staleAttempt.code}`,
-    );
-  }
-
-  const restoreSave = await saveSeoDescription(baseUrl, cookie, {
-    rowId,
-    seoDescription: originalSeoDescription,
-    expectedSiteConfigSha: firstSave.siteConfigSha,
-  });
-  if (!restoreSave.ok) {
-    throw new Error(
-      `restore save failed (status=${restoreSave.status}, code=${restoreSave.code}, error=${restoreSave.error})`,
-    );
-  }
-
-  const warnings = [];
-  const statusAfterRestore = await getStatus(baseUrl, cookie);
-  const pendingAfterRestore = statusAfterRestore?.source?.pendingDeploy;
-  if (pendingAfterRestore === true) {
-    // expected path
-  } else if (pendingAfterRestore === null) {
-    warnings.push(
-      "pendingDeploy is null before deploy (runtime cannot currently compare source vs active deployment); falling back to deploy-response validation.",
-    );
-  } else {
-    throw new Error(
-      `unexpected pendingDeploy=${String(
-        pendingAfterRestore,
-      )} after save/restore (expected true or null)`,
-    );
-  }
-
-  const deployOut = await triggerDeploy(baseUrl, cookie);
-  let pendingAfterDeploy = await getStatus(baseUrl, cookie);
-  if (pendingAfterRestore === true) {
-    pendingAfterDeploy = await waitForPendingDeploy(baseUrl, cookie, false, deployTimeoutMs);
-  } else if (pendingAfterDeploy?.source?.pendingDeploy === true) {
-    pendingAfterDeploy = await waitForPendingDeploy(baseUrl, cookie, false, deployTimeoutMs);
-  }
-
-  const report = {
-    ok: true,
-    env: envName,
-    baseUrl,
-    expectedBranch,
-    conflict: runConflict,
-    sourceBefore: {
-      headSha: statusBefore?.source?.headSha || null,
-      pendingDeploy: statusBefore?.source?.pendingDeploy ?? null,
-    },
-    sourceAfterSave: {
-      headSha: statusAfterRestore?.source?.headSha || null,
-      pendingDeploy: statusAfterRestore?.source?.pendingDeploy ?? null,
-    },
-    deploy: {
-      provider: deployOut?.provider || null,
-      deploymentId: deployOut?.deploymentId || null,
-      status: deployOut?.status ?? null,
-      triggeredAt: deployOut?.triggeredAt || null,
-    },
-    sourceAfterDeploy: {
-      headSha: pendingAfterDeploy?.source?.headSha || null,
-      pendingDeploy: pendingAfterDeploy?.source?.pendingDeploy ?? null,
-    },
-    conflictResult:
-      runConflict && conflictResult
-        ? {
-            status: conflictResult.status,
-            code: conflictResult.code,
-            error: conflictResult.error,
-          }
-        : null,
-    warnings,
+    const json = await response.json().catch(() => null);
+    return { status: response.status, ok: response.ok, data: json?.data ?? json, code: json?.code };
   };
-
-  console.log(JSON.stringify(report, null, 2));
+  const read = async (path) => { const result = await request(path); assert.equal(result.ok, true, `${path}: HTTP ${result.status}`); return result.data; };
+  const baseline = await read("/api/site-admin/publication-review");
+  assertIsolatedReview(baseline, "");
+  const jobs = await read("/api/site-admin/release-jobs?limit=30");
+  assert.equal(jobs.jobs.some((job) => ["queued", "running"].includes(job.status)), false, "A release is already active.");
+  const status = await read("/api/site-admin/status");
+  assert.equal(status.source?.storeKind, "db", "Staging must use D1.");
+  if (!target.execute) {
+    console.log(JSON.stringify({ ok: true, mode: "read-only", writes: 0, target: target.origin, snapshotSha: baseline.snapshotSha, next: "Pass --execute to create, publish, verify and remove one isolated staging test post." }));
+    return;
+  }
+  const slug = `qa-publish-${randomUUID()}`, path = `posts/${slug}.mdx`, endpoint = `/api/site-admin/posts/${slug}`;
+  const title = `Publication QA ${slug}`, marker = randomUUID();
+  let version = "", activeJob = "", publicAttempted = false;
+  const waitForJob = async (id) => {
+    const until = Date.now() + 20 * 60_000;
+    while (Date.now() < until) {
+      const data = await read(`/api/site-admin/release-jobs/${id}`), job = data.job ?? data;
+      if (["succeeded", "failed", "canceled"].includes(job.status)) return job;
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    throw new Error(`Release ${id} did not finish. Inspect it before retrying; no duplicate job was queued.`);
+  };
+  const publish = async () => {
+    const review = await read("/api/site-admin/publication-review");
+    assertIsolatedReview(review, path);
+    if (!review.changes.length) return;
+    const result = await request("/api/site-admin/release-jobs", "POST", { action: "publish-content-staging", request: { reviewSnapshotSha: review.snapshotSha, origin: "isolated-d1-write-smoke" } });
+    assert.equal(result.status, 202, `Publication rejected (${result.status}, ${result.code || "unknown"}).`);
+    activeJob = result.data.job.id;
+    const job = await waitForJob(activeJob);
+    activeJob = "";
+    assert.equal(job.status, "succeeded", `Release ${job.id} ${job.status}. Inspect release events before retrying.`);
+  };
+  const publicText = async (pathname) => {
+    const response = await fetch(`${target.origin}${pathname}`, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(30_000), headers: { cookie: auth.cookie } });
+    return { status: response.status, body: await response.text(), overlay: response.headers.get("x-static-overlay") };
+  };
+  try {
+    const incomplete = '---\ntitle: ""\ndate: ""\ndraft: true\n---\n';
+    const created = await request("/api/site-admin/posts", "POST", { slug, source: incomplete });
+    assert.equal(created.status, 201); version = created.data.version;
+    assert.equal((await read(endpoint)).source, incomplete, "Incomplete draft must survive a real D1 round-trip.");
+    const source = `---\ntitle: ${JSON.stringify(title)}\ndate: ${new Date().toISOString().slice(0, 10)}\ndraft: false\n---\n\n${marker}\n`;
+    const saved = await request(endpoint, "PATCH", { source, version });
+    assert.equal(saved.status, 200); const staleVersion = version; version = saved.data.version;
+    const conflict = await request(endpoint, "PATCH", { source: incomplete, version: staleVersion });
+    assert.equal(conflict.status, 409); assert.equal(conflict.code, "SOURCE_CONFLICT");
+    assert.equal((await read(endpoint)).source, source, "A rejected stale write cannot change the saved draft.");
+    publicAttempted = true;
+    await publish();
+    const page = await publicText(`/blog/${slug}`);
+    assert.equal(page.status, 200); assert.equal(page.overlay, "1"); assert.ok(page.body.includes(marker));
+    assert.ok((await publicText("/blog")).body.includes(title));
+    assert.ok(JSON.stringify(await read(`/api/search?q=${encodeURIComponent(title)}`)).includes(slug));
+    console.log(JSON.stringify({ ok: true, stage: "published", slug, conflict: "rejected", publicHtml: "verified", search: "verified" }));
+  } finally {
+    // Do not race an uncertain runner or overwrite another session's version.
+    if (activeJob) {
+      console.error(`Cleanup deferred: inspect release ${activeJob} and test post ${path}; a runner may still hold its snapshot.`);
+      process.exitCode = 1;
+    } else if (version) {
+      const removed = await request(endpoint, "DELETE", { version });
+      assert.equal(removed.status, 200, `Cleanup conflict for ${path}; no other version was removed.`);
+      if (publicAttempted) {
+        await publish();
+        assert.equal((await publicText(`/blog/${slug}`)).status, 404);
+        assert.equal(JSON.stringify(await read(`/api/search?q=${encodeURIComponent(title)}`)).includes(slug), false);
+      }
+      assert.equal((await request(endpoint)).status, 404);
+      console.log(JSON.stringify({ ok: true, stage: "cleaned", slug }));
+    }
+  }
 }
 
-main().catch((err) => {
-  console.error(`[site-admin-write-smoke] FAIL: ${err instanceof Error ? err.message : String(err)}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main().catch((error) => { console.error(`[d1-write-smoke] ${error.message}`); process.exitCode = 1; });
+}

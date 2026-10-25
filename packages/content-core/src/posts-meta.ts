@@ -91,22 +91,22 @@ function coerceStringArray(value: unknown): string[] {
   return out;
 }
 
-function validateFrontmatter(data: Record<string, unknown>): PostFrontmatter {
+function validateFrontmatter(data: Record<string, unknown>, allowIncomplete = false): PostFrontmatter {
   const title = typeof data.title === "string" ? data.title.trim() : "";
-  if (!title) throw new Error("post: frontmatter.title is required");
+  if (!title && !allowIncomplete) throw new Error("post: frontmatter.title is required");
   const dateRaw = data.date;
   const dateStr =
     typeof dateRaw === "string"
       ? dateRaw
-      : dateRaw instanceof Date
+      : dateRaw instanceof Date && Number.isFinite(dateRaw.getTime())
         ? dateRaw.toISOString()
         : "";
-  if (!dateStr) throw new Error(`post: frontmatter.date is required (${title})`);
+  if (!dateStr && !allowIncomplete) throw new Error(`post: frontmatter.date is required (${title})`);
   const iso = toIsoDate(dateStr);
-  if (!iso) throw new Error(`post: frontmatter.date is unparsable (${title}): ${dateStr}`);
+  if (!iso && !allowIncomplete) throw new Error(`post: frontmatter.date is unparsable (${title}): ${dateStr}`);
   return {
     title,
-    date: iso,
+    date: iso || "",
     description: typeof data.description === "string" ? data.description : undefined,
     draft: Boolean(data.draft),
     tags: coerceStringArray(data.tags),
@@ -118,9 +118,10 @@ function validateFrontmatter(data: Record<string, unknown>): PostFrontmatter {
 export function parsePostFile(
   slug: string,
   source: string,
+  options: { allowIncomplete?: boolean } = {},
 ): { frontmatter: PostFrontmatter; body: string; entry: PostEntry } {
-  const parsed = matter(source);
-  const frontmatter = validateFrontmatter(parsed.data as Record<string, unknown>);
+  const parsed = matter(source, {});
+  const frontmatter = validateFrontmatter(parsed.data as Record<string, unknown>, options.allowIncomplete);
   const body = String(parsed.content || "");
   const wordCount = countWordsInMdxBody(body);
   const readingMinutes = wordCount > 0 ? Math.max(1, Math.round(wordCount / WORDS_PER_MINUTE)) : 0;

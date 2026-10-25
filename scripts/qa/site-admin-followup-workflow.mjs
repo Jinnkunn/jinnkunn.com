@@ -8,6 +8,7 @@ import { ensureNextBuild, findAvailablePort, startNextServer, waitForHttp } from
 import { launchBrowser } from "../_lib/playwright.mjs";
 import { publicationSnapshot, publicationReview } from "../../lib/shared/publication-snapshot.mjs";
 import { contentInventory } from "../../lib/shared/content-inventory.ts";
+import { publicationValidation } from "../../lib/shared/publication-validation.ts";
 import { describePublicationChange } from "../../lib/shared/publication-review-details.ts";
 
 const log = (message) => console.log(`[followup-workflow] ${message}`);
@@ -61,7 +62,7 @@ async function main() {
       }
       if (url.pathname === "/api/site-admin/publication-review") {
         const current = publicationSnapshot(sources()), review = publicationReview(current, baseline);
-        return json({ ...review, inventory: contentInventory(current.sources, modified), changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
+        return json({ ...review, validation: publicationValidation(current.sources), inventory: contentInventory(current.sources, modified), changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
       }
       if (url.pathname === "/api/site-admin/announcements") {
         if (req.method() === "POST") { const body = req.postDataJSON(); writes.push(body); assert.equal(body.action, "upsert"); notice = body.announcement; noticeVersion++; }
@@ -86,6 +87,29 @@ async function main() {
       const response = await route.fetch({ url: `${local}${url.pathname}${url.search}`, headers: { ...req.headers(), cookie: auth.cookie }, maxRedirects: 0 });
       return route.fulfill({ response });
     });
+    log("Shared public presenters: post metadata/outline, page breadcrumbs and unsaved collection context");
+    const renderPreview = async (input) => {
+      const response = await fetch(`${local}/api/site-admin/preview/page`, { method: "POST", headers: { cookie: auth.cookie, "content-type": "application/json" }, body: JSON.stringify(input) });
+      const payload = await response.json();
+      assert.equal(response.status, 200, JSON.stringify(payload));
+      return payload.data ?? payload;
+    };
+    const longBody = ["## First section", "word ".repeat(250), "## Second section", "word ".repeat(250), "## Third section", "word ".repeat(250)].join("\n\n");
+    const postPreview = await renderPreview({ title: "Ignored title", source: "Ignored body", document: { kind: "posts", slug: "qa-draft", source: `---\ntitle: Unsaved preview title\ndate: 2026-10-25\n---\n${longBody}` } });
+    assert.equal(postPreview.context.renderer, "posts");
+    assert.equal(postPreview.approximate, false, "Ordinary Markdown must use the real renderer");
+    assert.ok(postPreview.html.includes("October 25, 2026"));
+    assert.ok(postPreview.html.includes('aria-label="Article contents"'));
+    assert.ok(postPreview.html.includes('id="first-section"'));
+    const pagePreview = await renderPreview({ title: "Ignored", source: "", document: { kind: "pages", slug: "docs/qa", source: '---\ntitle: Preview child\nupdated: 2026-10-24\n---\nA real page body.' } });
+    assert.equal(pagePreview.approximate, false);
+    assert.ok(pagePreview.html.includes("October 24, 2026")); assert.ok(pagePreview.html.includes("notion-breadcrumb"));
+    const worksPreview = await renderPreview({ title: "Works", routePath: "/works", component: "works", source: '<WorksEntry role="Unsaved preview role" affiliation="QA Labs" period="Jan 2026 - Now">Preview body.</WorksEntry>' });
+    assert.equal(worksPreview.approximate, false);
+    assert.ok(worksPreview.html.includes("Unsaved preview role"));
+    assert.ok(worksPreview.html.includes("For all of my teaching works"));
+    const unsafePreview = await renderPreview({ title: "Unsupported", source: '{globalThis.process.exit(93)}', routePath: "/preview" });
+    assert.equal(unsafePreview.approximate, true, "Executable expressions are never evaluated");
     page = await context.newPage(); page.setDefaultTimeout(12_000);
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (["warning", "error"].includes(message.type())) consoleWarnings.push(message.text()); });
@@ -145,16 +169,29 @@ async function main() {
     await page.getByRole("button", { name: /Pending post.*Pending publication/ }).click();
     const titleInput = page.getByRole("textbox", { name: "Title", exact: true });
     await titleInput.fill("");
+    await eventually(async () => assert.equal(matter(docs.get("posts/pending.mdx"), {}).data.title, ""), "Blank title is saved as an incomplete draft");
+    await page.getByRole("button", { name: "Publish updates", exact: true }).first().click();
+    const reviewDialog = page.getByRole("dialog", { name: "Review publication", exact: true });
+    await reviewDialog.getByRole("heading", { name: "Needs attention before publishing" }).waitFor();
+    assert.equal(await reviewDialog.getByRole("button", { name: "Confirm publish", exact: true }).isDisabled(), true);
+    await page.screenshot({ path: "/tmp/four-items-publication-validation-desktop.png" });
+    await reviewDialog.getByRole("button", { name: /posts\/pending\.mdx · title: Add a title/ }).click();
+    await eventually(async () => assert.equal(await titleInput.evaluate((el) => el === document.activeElement), true), "Publication issue returns to the exact field");
     await page.getByRole("button", { name: "Add a title.", exact: true }).click();
     await eventually(async () => assert.equal(await titleInput.evaluate((el) => el === document.activeElement), true), "Issue focuses the title field");
     await titleInput.fill("Pending post");
     await page.getByRole("button", { name: "Inspector", exact: true }).click();
     const date = page.locator('[data-document-field="date"]');
     await date.fill("");
+    await eventually(async () => assert.equal(matter(docs.get("posts/pending.mdx"), {}).data.date, ""), "Blank date survives autosave");
     await page.locator("[data-inspector-close]").click();
     await page.getByRole("button", { name: "Choose a valid publication date.", exact: true }).click();
     await eventually(async () => assert.equal(await date.evaluate((el) => el === document.activeElement), true), "Issue focuses metadata inside Inspector");
     await date.fill("2000-01-01");
+    await eventually(async () => {
+      const savedDate = matter(docs.get("posts/pending.mdx"), {}).data.date;
+      assert.equal(savedDate instanceof Date ? savedDate.toISOString().slice(0, 10) : savedDate, "2000-01-01");
+    }, "Valid date is saved before navigating away");
     await page.locator("[data-inspector-close]").click();
     await page.getByRole("button", { name: "Back to posts", exact: true }).click();
     await page.getByRole("button", { name: /Announcements/ }).first().click();
@@ -177,6 +214,15 @@ async function main() {
     await page.getByRole("combobox", { name: "Browse content", exact: true }).selectOption("pin:posts:pending");
     await page.getByRole("textbox", { name: "Title", exact: true }).waitFor();
     assert.equal(await page.getByRole("textbox", { name: "Title", exact: true }).inputValue(), "Pending post", "Pinned content remains reachable on mobile");
+    await page.getByRole("button", { name: "Page preview", exact: true }).click();
+    await preview.getByRole("status").filter({ hasText: /^Draft in/ }).waitFor();
+    await preview.getByRole("checkbox", { name: "Include announcement" }).uncheck();
+    await preview.getByRole("status").filter({ hasText: /^Draft in/ }).waitFor();
+    await preview.locator("iframe").contentFrame().getByRole("heading", { name: "Pending post", exact: true }).waitFor();
+    await preview.locator("iframe").contentFrame().locator('[aria-label="Post metadata"]').scrollIntoViewIfNeeded();
+    await preview.locator("iframe").contentFrame().getByText("January 1, 2000", { exact: true }).waitFor();
+    await page.screenshot({ path: "/tmp/four-items-page-preview-mobile.png" });
+    await page.keyboard.press("Escape");
     log("Public article: accessible outline, active section, deep link, focus and mobile geometry");
     await page.goto(`${origin}/blog/when-an-ai-agent-says-i-who-are-we-trusting`);
     const outline = page.locator("details.mdx-post__outline");

@@ -4,7 +4,7 @@ import type { PagePreviewOptions } from "@/lib/site-admin/page-preview-context";
 import { SiteAdminActionDialog } from "./site-admin-action-dialog";
 import styles from "./site-admin-dashboard.module.css";
 
-export function SiteAdminPagePreview({ title, source, home, routePath, announcement, onClose }: PagePreviewOptions & { source: string; onClose: () => void }) {
+export function SiteAdminPagePreview({ title, source, home, routePath, announcement, component, document: draftDocument, onClose }: PagePreviewOptions & { source: string; onClose: () => void }) {
   const [frame, setFrame] = useState({ html: "", css: "", classes: "", revision: 0 });
   const [frameLoading, setFrameLoading] = useState(false);
   const [mobile, setMobile] = useState(false);
@@ -16,7 +16,7 @@ export function SiteAdminPagePreview({ title, source, home, routePath, announcem
   const [loading, setLoading] = useState(true);
   const [approximate, setApproximate] = useState(false);
   const [retry, setRetry] = useState(0);
-  const request = JSON.stringify({ source, title, home, routePath, announcement, includeAnnouncement, display });
+  const request = JSON.stringify({ source, title, home, routePath, announcement, component, document: draftDocument, includeAnnouncement, display });
   useEffect(() => {
     setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
     const position = { x: window.scrollX, y: window.scrollY };

@@ -45,6 +45,18 @@ npm run publish:content:prod:from-staging
 
 This path should not create git commits and should not dirty the repository. It builds any temporary static shell overlay from an ignored release snapshot under `.cache/release`.
 
+## Validation and QA
+
+Incomplete titles, dates and bodies can be saved as drafts without replacement text or an invented date. Malformed frontmatter and unsafe image references remain save errors. Publication checks the complete saved snapshot: incomplete public content blocks release, while incomplete hidden documents and draft announcements only warn. The API and runner repeat the check; direct CLI publishes and code promotions cannot bypass it.
+
+Page preview shares the public article/page presenters, including metadata, breadcrumbs, headings and neighbouring posts. It reads reusable blocks from the published snapshot, replacing only the explicitly previewed collection. MDX previews accept literal data, not executable JavaScript. Unsupported content is labeled approximate.
+
+- `npm run smoke:site-admin:write:local` runs an isolated in-memory SQLite database through the real D1 adapter, document repository and release queue. It covers conflicts, validation, failed-runner retry and HTML/search snapshots without network access.
+- `npm run smoke:site-admin:write:staging` checks staging readiness without writing.
+- `npm run smoke:site-admin:write:staging:execute` requires an explicitly authorized staging test window. It refuses any pre-existing pending drafts or active release, creates one uniquely named test post, verifies publication/search and removes it using its own version token. If another session edits or an uncertain runner remains active, it stops instead of publishing unrelated content or deleting another version. Inspect the reported post/job before retrying.
+- Production is not a permitted write-smoke target. Ordinary production releases continue through the guarded manual paths.
+- `node scripts/content/validate-publication.mjs --env=staging` (or `production`) dumps into a temporary directory and validates without writing remote content. `--root=.` validates the local snapshot.
+
 ## Published Content Reads
 
 Public routes such as `/`, `/blog`, `/publications`, `/news`, `/works`, `/teaching`, `/bio`, and `/pages/*` use prerendered HTML. They do not read unreviewed drafts on each visit. This keeps the public path within the Workers Free CPU budget.

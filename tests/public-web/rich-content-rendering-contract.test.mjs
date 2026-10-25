@@ -15,7 +15,7 @@ function assertIncludes(source, expected, label) {
 
 test("rich-content-rendering-contract: MDX rich text keeps Notion-compatible wrappers", async () => {
   const components = await read("components/posts-mdx/components.tsx");
-  const postView = await read("components/posts-mdx/post-view.tsx");
+  const postView = await read("components/posts-mdx/document-layouts.tsx");
   const newsBlock = await read("components/posts-mdx/news-block.tsx");
   const newsEntry = await read("components/posts-mdx/news-entry.tsx");
 

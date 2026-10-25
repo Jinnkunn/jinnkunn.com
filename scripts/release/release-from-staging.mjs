@@ -298,6 +298,7 @@ async function main() {
           ok: true,
           dryRun: true,
           plan: {
+            validateProductionDrafts: true,
             verifyStagingAuthenticated: !args.skipAuthenticated,
             checkStagingVisual: !args.skipVisual,
             snapshotPreviousProduction: Boolean(productionVersionId),
@@ -373,6 +374,9 @@ async function main() {
       label: "check:staging-visual",
     });
   }
+
+  console.log("[release-from-staging] validating production content before changing the Worker");
+  run("node", ["scripts/content/validate-publication.mjs", "--env=production"], { label: "production publication preflight" });
 
   if (productionVersionId) {
     console.log(`[release-from-staging] snapshotting current production version`);

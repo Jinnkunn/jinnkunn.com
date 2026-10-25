@@ -11,6 +11,7 @@ import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import type { MDXComponents } from "mdx/types";
 import { collectPostHeadings, type PostHeading } from "./outline";
+import { isPagePreview } from "./preview-context";
 
 // Runtime MDX compile. We evaluate MDX during server render so Site Admin edits
 // stored in D1 can land without a full site rebuild.
@@ -18,6 +19,7 @@ export async function compilePostMdx(source: string): Promise<{
   Content: (props: { components?: MDXComponents }) => ReactElement;
   headings: PostHeading[];
 }> {
+  if (isPagePreview()) return (await import("./compile-preview")).compilePreviewMdx(source);
   let headings: PostHeading[] = [];
   const options: EvaluateOptions = {
     ...runtime,

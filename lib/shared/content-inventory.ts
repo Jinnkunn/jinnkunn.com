@@ -1,6 +1,7 @@
 import matter from "gray-matter";
 import { isSiteComponentName } from "../site-admin/component-registry.ts";
 import { documentFieldProblems } from "./document-fields.ts";
+import { frontmatterProblems } from "./document-draft-validation.ts";
 import {
   parseNewsComponentDraft, parseTeachingComponentDraft, parseWorksComponentDraft, parsePublicationsComponentDraft,
   newsEntryIssues, teachingEntryIssues, worksEntryIssues, publicationEntryIssues,
@@ -12,6 +13,8 @@ export type ContentInventoryItem = { path: string; modifiedAt: string | null; hi
 export function documentProblems(source: string, kind: "posts" | "pages"): ContentProblem[] {
   try {
     const { data, content } = matter(source, {});
+    const structural = frontmatterProblems(data);
+    if (structural.length) return structural;
     return documentFieldProblems({ ...data, body: content }, kind);
   } catch { return [{ field: "source", message: "Frontmatter could not be read. Review the source." }]; }
 }

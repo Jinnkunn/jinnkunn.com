@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ReactElement } from "react";
 
-import { ClassicPageShell } from "@/components/classic/classic-page-shell";
+import { HomeArticle } from "@/components/posts-mdx/document-layouts";
 import { postMdxComponents } from "@/components/posts-mdx/components";
 import { compilePostMdx } from "@/lib/posts/compile";
 import type { SiteAdminHomeData } from "@jinnkunn/contracts/api";
@@ -21,15 +21,12 @@ export async function HomeView({
   const body = data.bodyMdx?.trim() ?? "";
   const Content = body ? (await compilePostMdx(body)).Content : null;
   return (
-    <ClassicPageShell
+    <HomeArticle
       title={data.title}
-      className="super-content page__index parent-page__index"
     >
       {Content ? (
-        <div className="mdx-post__body">
-          <Content components={postMdxComponents} />
-        </div>
+        <Content components={postMdxComponents} />
       ) : null}
-    </ClassicPageShell>
+    </HomeArticle>
   );
 }

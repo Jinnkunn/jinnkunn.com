@@ -2,8 +2,9 @@ import matter from "gray-matter";
 import { getActiveMonochromeAppearance, type MonochromeAppearance } from "../appearance.ts";
 import { announcementVisibleOnRoute, getActiveAnnouncement, normalizeAnnouncementsDocument, type SiteAnnouncement } from "../shared/announcements.ts";
 import { SITE_COMPONENT_DEFINITIONS } from "./component-registry.ts";
+import type { SiteComponentName } from "./component-registry.ts";
 
-export type PagePreviewOptions = { title: string; home?: boolean; routePath?: string; announcement?: SiteAnnouncement };
+export type PagePreviewOptions = { title: string; home?: boolean; routePath?: string; announcement?: SiteAnnouncement; component?: SiteComponentName; document?: { kind: "posts" | "pages"; slug: string; source: string } };
 
 export function pagePreviewContext(sources: Record<string, string>, pathname: string, candidate?: SiteAnnouncement, now = new Date()) {
   const announcements = normalizeAnnouncementsDocument(sources["filesystem/announcements.json"] ? JSON.parse(sources["filesystem/announcements.json"]) : undefined);

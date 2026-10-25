@@ -12,12 +12,12 @@ import {
   ContentStoreConflictError,
   ContentStoreNotFoundError,
   deletePost,
-  readPost,
   updatePost,
 } from "@/lib/posts/store";
 import { parsePostFile } from "@jinnkunn/content-core/posts";
 import { isValidSlug } from "@/lib/posts/slug";
 import { getContentStore } from "@/lib/server/content-store-resolver";
+import { documentSourceProblems } from "@/lib/shared/document-draft-validation";
 import type { ParseResult } from "@/lib/site-admin/request-types";
 
 export const runtime = "nodejs";
@@ -37,7 +37,7 @@ function parseUpdateCommand(
   body: Record<string, unknown>,
 ): ParseResult<UpdatePostCommand> {
   const source = typeof body.source === "string" ? body.source : "";
-  if (!source.trim())
+  if (typeof body.source !== "string")
     return { ok: false, error: "source (MDX body) is required", status: 400 };
   const version = typeof body.version === "string" ? body.version.trim() : "";
   if (!version)
@@ -85,15 +85,15 @@ export async function GET(
     async () => {
       const resolved = await resolveSlug(ctx.params);
       if (!resolved.ok) return resolved.res;
-      if (new URL(req.url).searchParams.get("raw") === "1") {
-        const file = await getContentStore().readFile(`posts/${resolved.slug}.mdx`);
-        return file ? apiPayloadOk({ slug: resolved.slug, title: resolved.slug, source: file.content, version: file.sha, raw: true }) : apiError("post not found", { status: 404, code: "NOT_FOUND" });
+      const file = await getContentStore().readFile(`posts/${resolved.slug}.mdx`);
+      if (!file) return apiError("post not found", { status: 404, code: "NOT_FOUND" });
+      if (new URL(req.url).searchParams.get("raw") === "1" || documentSourceProblems(file.content).length) {
+        return apiPayloadOk({ slug: resolved.slug, title: resolved.slug, source: file.content, version: file.sha, raw: true });
       }
-      const detail = await readPost(resolved.slug);
-      if (!detail)
-        return apiError("post not found", { status: 404, code: "NOT_FOUND" });
-      const parsed = parsePostFile(resolved.slug, detail.source);
-      const frontmatterKeys = Object.keys(matter(detail.source).data);
+      const parsed = parsePostFile(resolved.slug, file.content, { allowIncomplete: true });
+      const detail = { entry: parsed.entry, source: file.content, version: file.sha };
+      const rawFrontmatter = matter(detail.source, {}).data;
+      const frontmatterKeys = Object.keys(rawFrontmatter);
       return apiPayloadOk({
         slug: detail.entry.slug,
         href: detail.entry.href,
@@ -107,7 +107,7 @@ export async function GET(
         readingMinutes: detail.entry.readingMinutes,
         version: detail.version,
         source: detail.source,
-        frontmatter: parsed.frontmatter,
+        frontmatter: { ...parsed.frontmatter, ...(typeof rawFrontmatter.date === "string" && !parsed.frontmatter.date ? { date: rawFrontmatter.date } : {}) },
         frontmatterKeys,
         body: parsed.body,
       });

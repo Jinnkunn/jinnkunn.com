@@ -15,6 +15,7 @@ import {
   type ContentVersion,
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
+import { assertDocumentDraftSource } from "@/lib/shared/document-draft-validation";
 import {
   SITE_COMPONENT_DEFINITIONS,
   SITE_COMPONENT_NAMES,
@@ -65,6 +66,7 @@ export async function updateComponent(
   source: string,
   ifMatch: ContentVersion,
 ): Promise<ComponentDetail> {
+  assertDocumentDraftSource(source, "pages");
   const store = await getStore();
   const { sha } = await store.writeFile(componentRelPath(name), source, {
     ifMatch,

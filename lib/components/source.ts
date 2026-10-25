@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { getSiteComponentDefinition } from "@jinnkunn/content-core/components";
+import type { SiteComponentName } from "@jinnkunn/content-core/components";
+import { previewComponentSource } from "../posts/preview-context";
 
 import {
   parseTeachingEntries,
@@ -12,7 +14,9 @@ import {
   type WorksComponentEntry,
 } from "./parse";
 
-async function readComponentSource(name: "teaching" | "works"): Promise<string> {
+export async function readComponentSource(name: SiteComponentName): Promise<string> {
+  const preview = previewComponentSource(name);
+  if (preview !== undefined) return preview;
   const sourcePath = resolve(
     process.cwd(),
     getSiteComponentDefinition(name).sourcePath,

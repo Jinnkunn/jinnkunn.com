@@ -1,4 +1,5 @@
 import { getPostEntries } from "@/lib/posts/index";
+import { adjacentBlogDocuments, compareBlogDocuments } from "./posts/navigation";
 
 export type BlogPostIndexItem = {
   kind: "list" | "page";
@@ -35,12 +36,7 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
     readingMinutes: post.readingMinutes,
   }));
 
-  items.sort((a, b) => {
-    if (a.dateIso && b.dateIso) return a.dateIso < b.dateIso ? 1 : a.dateIso > b.dateIso ? -1 : 0;
-    if (a.dateIso && !b.dateIso) return -1;
-    if (!a.dateIso && b.dateIso) return 1;
-    return a.href.localeCompare(b.href);
-  });
+  items.sort(compareBlogDocuments);
 
   return items;
 }
@@ -50,11 +46,5 @@ export async function getAdjacentBlogPosts(href: string): Promise<{
   next: BlogPostIndexItem | null;
 }> {
   const idx = await getBlogIndex();
-  const i = idx.findIndex((it) => it.href === href);
-  if (i === -1) return { prev: null, next: null };
-  // Newest first: "prev" means newer, "next" means older.
-  return {
-    prev: i > 0 ? idx[i - 1] : null,
-    next: i < idx.length - 1 ? idx[i + 1] : null,
-  };
+  return adjacentBlogDocuments(idx, href);
 }

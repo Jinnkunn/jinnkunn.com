@@ -129,7 +129,7 @@ export function normalizeAnnouncement(
 ): SiteAnnouncement | null {
   if (!isRecord(value)) return null;
   const id = text(value.id, 120) || fallbackId;
-  const title = text(value.title, 240) || "Untitled announcement";
+  const title = typeof value.title === "string" ? text(value.title, 240) : "Untitled announcement";
   const status: AnnouncementStatus =
     value.status === "published" || value.status === "archived"
       ? value.status

@@ -482,7 +482,7 @@ test("public-web-style-guardrails: data-page embed blocks read from components, 
   for (const [name, source] of Object.entries(directBlocks)) {
     assertIncludes(
       source,
-      `getSiteComponentDefinition("${name}")`,
+      `readComponentSource("${name}")`,
       `${name}-block reads its source path from the component registry`,
     );
     assertIncludes(
@@ -862,7 +862,7 @@ test("public-web-style-guardrails: native MDX blockquotes use Notion quote styli
 });
 
 test("public-web-style-guardrails: blog post metadata renders as a distinct Notion-style strip", async () => {
-  const postView = await read("components/posts-mdx/post-view.tsx");
+  const postView = await read("components/posts-mdx/document-layouts.tsx");
   const postsCss = await read("app/(classic)/posts-mdx.css");
   const notionBlocksCss = await read("app/(classic)/notion-blocks.css");
 

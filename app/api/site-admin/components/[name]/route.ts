@@ -33,7 +33,7 @@ function parseUpdateCommand(
   body: Record<string, unknown>,
 ): ParseResult<UpdateComponentCommand> {
   const source = typeof body.source === "string" ? body.source : "";
-  if (!source.trim())
+  if (typeof body.source !== "string")
     return { ok: false, error: "source (MDX body) is required", status: 400 };
   const version = typeof body.version === "string" ? body.version.trim() : "";
   if (!version)

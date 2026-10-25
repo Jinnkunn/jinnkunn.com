@@ -13,6 +13,7 @@ import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs"
 import { d1DatabaseIdForEnv } from "../_lib/wrangler-d1.mjs";
 import { verifyOverlayContent } from "../_lib/overlay-serving-verification.mjs";
 import { readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
+import { assertPublicationReady } from "../../lib/shared/publication-validation.ts";
 import { assertPublicationSnapshot, PUBLICATION_BASELINE_PATH, publicationSearchSnapshot } from "../../lib/shared/publication-snapshot.mjs";
 import {
   acquireReleaseLock,
@@ -1335,6 +1336,9 @@ async function copyStagingOverlayToProduction({ git, dryRun, skipVerify }) {
   if (stagingRows.length === 0) {
     throw new Error("No staging content overlay exists. Publish content to staging first.");
   }
+  const baseline = stagingRows.find((row) => row.asset_path === PUBLICATION_BASELINE_PATH);
+  if (!baseline) throw new Error("Staging publication baseline is missing. Republish staging content first.");
+  assertPublicationReady(JSON.parse(baseline.body));
   const stagingStatus = await readOverlayStatus("staging");
   if (!stagingStatus?.ok) {
     throw new Error("Staging content overlay status is missing or unhealthy.");
@@ -1636,6 +1640,7 @@ async function main() {
 
   const publicationBaseline = readPublicationSnapshot(releaseRoot);
   assertPublicationSnapshot(publicationBaseline, process.env.CONTENT_PUBLICATION_EXPECT_SNAPSHOT);
+  assertPublicationReady(publicationBaseline);
   const contentInputSha = hashContentInput(releaseRoot);
   const liveBuildId = args.skipBuild
     ? ""

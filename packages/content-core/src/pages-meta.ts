@@ -53,16 +53,16 @@ function extractDescriptionFromBody(body: string, explicit?: string): string | n
   return null;
 }
 
-function validateFrontmatter(data: Record<string, unknown>): PageFrontmatter {
+function validateFrontmatter(data: Record<string, unknown>, allowIncomplete = false): PageFrontmatter {
   const title = typeof data.title === "string" ? data.title.trim() : "";
-  if (!title) throw new Error("page: frontmatter.title is required");
+  if (!title && !allowIncomplete) throw new Error("page: frontmatter.title is required");
   let updated: string | undefined;
   const rawUpdated = data.updated;
   if (typeof rawUpdated === "string" && rawUpdated.trim()) {
     const iso = toIsoDate(rawUpdated);
-    if (!iso) throw new Error(`page: frontmatter.updated is unparsable (${title}): ${rawUpdated}`);
-    updated = iso;
-  } else if (rawUpdated instanceof Date) {
+    if (!iso && !allowIncomplete) throw new Error(`page: frontmatter.updated is unparsable (${title}): ${rawUpdated}`);
+    updated = iso || undefined;
+  } else if (rawUpdated instanceof Date && Number.isFinite(rawUpdated.getTime())) {
     updated = rawUpdated.toISOString().slice(0, 10);
   }
   return {
@@ -76,9 +76,10 @@ function validateFrontmatter(data: Record<string, unknown>): PageFrontmatter {
 export function parsePageFile(
   slug: string,
   source: string,
+  options: { allowIncomplete?: boolean } = {},
 ): { frontmatter: PageFrontmatter; body: string; entry: PageEntry } {
-  const parsed = matter(source);
-  const frontmatter = validateFrontmatter(parsed.data as Record<string, unknown>);
+  const parsed = matter(source, {});
+  const frontmatter = validateFrontmatter(parsed.data as Record<string, unknown>, options.allowIncomplete);
   const body = String(parsed.content || "");
   const wordCount = countWordsInMdxBody(body);
   const readingMinutes = wordCount > 0 ? Math.max(1, Math.round(wordCount / WORDS_PER_MINUTE)) : 0;

@@ -16,7 +16,6 @@ import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import { isSiteAdminSourceConflictError } from "@/lib/server/site-admin-source-store";
 import {
   normalizeAnnouncement,
-  announcementProblems,
   type SiteAnnouncement,
 } from "@/lib/shared/announcements";
 
@@ -49,16 +48,8 @@ function parseCommand(raw: Record<string, unknown>):
   if (!announcement) {
     return { ok: false, error: "Missing or invalid `announcement`", status: 400 };
   }
-  const issues = announcementProblems(announcement);
-  if (issues.length) return { ok: false, error: issues[0].message, status: 400 };
-  if (!announcement.id || !announcement.title) {
-    return { ok: false, error: "Announcement id and title are required", status: 400 };
-  }
-  if (announcement.status === "published" && !announcement.bodyMdx.trim()) {
-    return { ok: false, error: "Published announcements need body content", status: 400 };
-  }
-  if (announcement.scope === "paths" && announcement.routes.length === 0) {
-    return { ok: false, error: "Path-scoped announcements need at least one route", status: 400 };
+  if (!announcement.id) {
+    return { ok: false, error: "Announcement id is required", status: 400 };
   }
   return { ok: true, value: { action, announcement, expectedFileSha } };
 }

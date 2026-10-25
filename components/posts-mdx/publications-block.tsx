@@ -1,31 +1,18 @@
 import "server-only";
 
 import type { ReactElement } from "react";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { parsePublicationsEntries } from "@/lib/components/parse";
 import { PublicationList } from "@/components/publications/publication-list";
-import { getSiteComponentDefinition } from "@jinnkunn/content-core/components";
+import { readComponentSource } from "@/lib/components/source";
 
 interface PublicationsBlockProps {
   /** Cap rendered entries (newest first). Omit for all entries. */
   limit?: number;
 }
 
-const PUBLICATIONS_SOURCE_PATH = resolve(
-  process.cwd(),
-  getSiteComponentDefinition("publications").sourcePath,
-);
-
 async function loadEntries() {
-  let raw = "";
-  try {
-    raw = await readFile(PUBLICATIONS_SOURCE_PATH, "utf8");
-  } catch {
-    return [];
-  }
-  return parsePublicationsEntries(raw);
+  return parsePublicationsEntries(await readComponentSource("publications"));
 }
 
 /** Embeddable publications-list view. The /publications route itself

@@ -7,6 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
+import { readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
+import { assertPublicationReady } from "../../lib/shared/publication-validation.ts";
 import { readActiveDeployment } from "../_lib/cloudflare-api.mjs";
 import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
 import { readMarker, writeMarker } from "../_lib/release-cache.mjs";
@@ -692,6 +694,7 @@ async function main() {
       label: `dump ${args.contentEnv} D1 to release snapshot content/`,
     });
   }
+  assertPublicationReady(readPublicationSnapshot(releaseRoot));
 
   const checksRun = [];
   let checksCached = false;

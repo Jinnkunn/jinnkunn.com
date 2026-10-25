@@ -296,10 +296,11 @@ async function main() {
 
     log("News: local recovery, validation, save failure and conflict resolution");
     await open("News");
+    fixture.failures.set("news", 503);
     await page.getByRole("button", { name: "Add update", exact: true }).click();
     const body = () => panel().locator('[contenteditable="true"][aria-label="Body"]');
     await body().fill("");
-    assert.equal(await saveButton().isDisabled(), true);
+    assert.equal(await saveButton().isDisabled(), false, "Incomplete entries may be saved as drafts; publication validates them separately");
     await eventually(async () => {
       const snapshot = await page.evaluate(() => {
         const key = Object.keys(localStorage).find((value) => value.startsWith("site-admin-content-draft:") && value.endsWith(":components:news"));

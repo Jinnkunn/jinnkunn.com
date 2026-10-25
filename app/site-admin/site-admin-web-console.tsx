@@ -32,8 +32,6 @@ import {
   visibilityLabel,
 } from "./site-admin-console-model";
 import {
-  buildPageTree,
-  filterPageTree,
   pageBreadcrumb,
   pagePathLabel,
   type PageTreeNode,
@@ -57,14 +55,9 @@ import {
 import {
   componentConflictDetail,
   componentEntryDomId,
-  componentEntryFingerprint,
   componentEntryState as deriveComponentEntryState,
   componentItemMatches as matchesComponentItem,
-  newsEntryIssues,
-  publicationEntryIssues,
-  teachingEntryIssues,
   todayInHalifax,
-  worksEntryIssues,
   type ComponentGrouping,
   type NewsComponentDraft,
   type PublicationsComponentDraft,
@@ -79,7 +72,6 @@ import {
   structuredCollectionSearchValues,
 } from "./site-admin-structured-collection-schema";
 import { createCollectionActions } from "./site-admin-collection-actions";
-import { SiteAdminActionDialog } from "./site-admin-action-dialog";
 import { SiteAdminCollectionGroupDialog, type CollectionGroupEdit, type CollectionGroupChange } from "./site-admin-collection-group-dialog";
 import { useSiteAdminDraftPersistence } from "./use-site-admin-draft-persistence";
 import { useSiteAdminSingletonDraft } from "./use-site-admin-singleton-draft";
@@ -93,11 +85,6 @@ import {
   commitCollectionDraft,
   groupCollectionItems,
   parseCollectionDraft,
-  redoCollectionDraft,
-  serializeCollectionDraft,
-  undoCollectionDraft,
-  type CollectionDraft,
-  type CollectionHistory,
 } from "./site-admin-collection-draft";
 import {
   SiteAdminMediaLibrary,
@@ -105,10 +92,12 @@ import {
 } from "./site-admin-media-library";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
 import { SiteAdminPagePreview } from "./site-admin-page-preview";
-import { SiteAdminPublicationChanges } from "./site-admin-publication-changes";
 import { CONTENT_TASK_FILTERS, contentMatchesTask, type ContentTaskFilter } from "./site-admin-content-tasks";
-import { useSiteAdminContentPins } from "./use-site-admin-content-pins";
-import { documentFieldProblems } from "@/lib/shared/document-fields";
+import { useSiteAdminContentLibrary } from "./use-site-admin-content-library";
+import { useSiteAdminCollectionDraft } from "./use-site-admin-collection-draft";
+import { useSiteAdminPublicationReview } from "./use-site-admin-publication-review";
+import { SiteAdminPublicationReviewDialog } from "./site-admin-publication-review-dialog";
+import { documentFieldProblems, documentDraftProblems } from "@/lib/shared/document-fields";
 import { SiteAdminAnnouncementsPanel } from "./site-admin-announcements-panel";
 import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
@@ -472,13 +461,13 @@ function sourceForNewContent(input: {
 
 function sourceForEditedContent(kind: EditableKind, form: EditableContentForm) {
   if (kind === "components") return form.body;
-  const title = form.title.trim() || (kind === "posts" ? "Untitled Post" : "Untitled Page");
+  const title = form.title.trim();
   const tags = tagArrayFromText(form.tags);
   const hasKey = (key: string) => form.frontmatterKeys.includes(key);
   const lines = [
     "---",
     `title: ${frontmatterString(title)}`,
-    ...(kind === "posts" ? [`date: ${form.date || todayInHalifax()}`] : []),
+    ...(kind === "posts" ? [`date: ${form.date || '\"\"'}`] : []),
     ...(hasKey("description") || form.description.trim()
       ? [`description: ${frontmatterString(form.description)}`]
       : []),
@@ -509,10 +498,10 @@ function formFromEditablePayload(
   }
   const frontmatter = payload.frontmatter || {};
   return {
-    title: frontmatter.title || payload.title || id,
+    title: frontmatter.title ?? payload.title ?? "",
     description: frontmatter.description || payload.description || "",
-    date: frontmatter.date || payload.dateIso || todayInHalifax(),
-    updated: frontmatter.updated || (payload.updatedIso ? dateInputFromIso(payload.updatedIso) : ""),
+    date: frontmatter.date ?? payload.dateIso?.slice(0, 10) ?? "",
+    updated: frontmatter.updated ?? payload.updatedIso?.slice(0, 10) ?? "",
     draft: Boolean(frontmatter.draft ?? payload.draft),
     tags: tagTextFromArray(frontmatter.tags),
     cover: frontmatter.cover || "",
@@ -727,22 +716,14 @@ export function SiteAdminWebConsole({
   const [historyDate, setHistoryDate] = useState(todayInHalifax());
   const [pages, setPages] = useState<PagesPayload | null>(null);
   const [pageTreeOrder, setPageTreeOrder] = useState<string[]>([]);
-  const [collapsedPageSlugs, setCollapsedPageSlugs] = useState<string[]>([]);
   const [posts, setPosts] = useState<PostsPayload | null>(null);
   const [components, setComponents] = useState<ComponentsPayload | null>(null);
   const [, setKind] = useState<EditableKind>("posts");
-  const [documentKind, setDocumentKind] = useState<"posts" | "pages">("posts");
-  const [showCollectionIndex, setShowCollectionIndex] = useState(false);
   const [contentMode, setContentMode] = useState<ContentMode>("browse");
-  const [contentSearch, setContentSearch] = useState("");
-  const [contentTask, setContentTask] = useState<ContentTaskFilter>("all");
-  const contentPins = useSiteAdminContentPins(actor);
   const [componentSearch, setComponentSearch] = useState("");
   const [componentGrouping, setComponentGrouping] =
     useState<ComponentGrouping>("auto");
   const [componentExpandedIds, setComponentExpandedIds] = useState<string[]>([]);
-  const [collectionHistory, setCollectionHistory] = useState<CollectionHistory | null>(null);
-  const [collectionBaseline, setCollectionBaseline] = useState("");
   const [groupEdit, setGroupEdit] = useState<CollectionGroupEdit | null>(null);
   const teachingDefaultsRef = useRef(new Map<string, { role: string; period: string }>());
   const [componentDragId, setComponentDragId] = useState("");
@@ -786,13 +767,8 @@ export function SiteAdminWebConsole({
   const [error, setError] = useState("");
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingPublishCount, setPendingPublishCount] = useState(0);
-  const [publishReviewOpen, setPublishReviewOpen] = useState(false);
   const [collectionPreviewOpen, setCollectionPreviewOpen] = useState(false);
   const [documentFocusRequest, setDocumentFocusRequest] = useState(0);
-  const [publicationReview, setPublicationReview] = useState<PublicationReview | null>(null);
-  const [publicationReviewError, setPublicationReviewError] = useState("");
-  const [publicationReviewLoading, setPublicationReviewLoading] = useState(false);
-  const publicationReviewRequestRef = useRef(0);
   const savedContentRevisionRef = useRef(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [announcementDirty, setAnnouncementDirty] = useState(false);
@@ -811,7 +787,6 @@ export function SiteAdminWebConsole({
   const selectedSourceDraftRef = useRef("");
   const shellRef = useRef<HTMLElement>(null);
   const chromeRef = useRef<HTMLElement>(null);
-  const collectionDraftRef = useRef<CollectionDraft | null>(null);
   const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number; expanded: string[] }>());
   const documentViewsRef = useRef(new Map<string, { search: string; scroll: number; task?: ContentTaskFilter }>());
   const saveSelectedContentRef = useRef<
@@ -819,6 +794,16 @@ export function SiteAdminWebConsole({
   >(async () => {});
   const saveHomeRef = useRef<() => Promise<void>>(async () => {});
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
+
+  const { publicationReview, publicationReviewError, setPublicationReviewError, publicationReviewLoading, publishReviewOpen, setPublishReviewOpen, refreshPublicationReview } = useSiteAdminPublicationReview({
+    ready: hasLoadedOnce,
+    read: (signal) => readJson<PublicationReview>("/api/site-admin/publication-review", { signal }),
+    onCountChange: setPendingPublishCount,
+  });
+  const rawPageItems = useMemo(() => contentItems({ kind: "pages", pages, posts, components }), [components, pages, posts]);
+  const rawPostItems = useMemo(() => contentItems({ kind: "posts", pages, posts, components }), [components, pages, posts]);
+  const { documentKind, setDocumentKind, showCollectionIndex, setShowCollectionIndex, contentSearch, setContentSearch, contentTask, setContentTask, setCollapsedPageSlugs, contentPins, taskMetadata, pageItems, postItems, visibleItems, globalSearchItems, pageTree, collapsedPageSlugSet } = useSiteAdminContentLibrary({ actor, rawPages: rawPageItems, rawPosts: rawPostItems, review: publicationReview, pageTreeOrder });
+  const { collectionHistory, setCollectionHistory, collectionBaseline, setCollectionBaseline, selectedComponentName, collectionDraft, collectionDraftRef, collectionSource, selectedNewsDraft, selectedTeachingDraft, selectedWorksDraft, selectedPublicationsDraft, selectedComponentIssues, componentBaselineFingerprints, componentSaveProblems, componentSaveBlocked, checkpointCollectionEdit, undo: undoCollection, redo: redoCollection } = useSiteAdminCollectionDraft(selected, sourceDraft);
 
   const refreshSummaryOnly = useCallback(async () => {
     try {
@@ -942,66 +927,6 @@ export function SiteAdminWebConsole({
     return () => window.cancelAnimationFrame(frame);
   }, [selectedContentKey]);
 
-  const rawPageItems = useMemo(
-    () => contentItems({ kind: "pages", pages, posts, components }),
-    [components, pages, posts],
-  );
-  const rawPostItems = useMemo(
-    () => contentItems({ kind: "posts", pages, posts, components }),
-    [components, pages, posts],
-  );
-  const taskMetadata = useMemo(() => {
-    const inventory = new Map(publicationReview?.inventory?.map((item) => [item.path, item]));
-    const paths = new Set(publicationReview?.changes.flatMap((item) => [item.path, item.oldPath]));
-    const routes = new Set(publicationReview?.changes.flatMap((item) => item.details?.routes || []));
-    return (kind: EditableKind, item: EditableSummary): EditableSummary => {
-      const status = inventory.get(`${kind}/${item.id}.mdx`);
-      return { ...item, pending: publicationReview ? paths.has(`${kind}/${item.id}.mdx`) || routes.has(item.href) : undefined,
-        issueCount: status?.issues.length || 0, modifiedAt: status?.modifiedAt, pinned: contentPins.pins.includes(`${kind}:${item.id}`) };
-    };
-  }, [publicationReview, contentPins.pins]);
-  const pageItems = useMemo(() => {
-    const missing = publicationReview?.inventory?.filter((item) => item.path.startsWith("pages/") && !rawPageItems.some((page) => item.path === `pages/${page.id}.mdx`)) || [];
-    return [...rawPageItems, ...missing.map((item) => ({ id: item.path.slice(6, -4), title: item.path.slice(6, -4), href: `/pages/${item.path.slice(6, -4)}`, meta: "Source needs review", draft: item.hidden }))].map((item) => taskMetadata("pages", item));
-  }, [rawPageItems, taskMetadata, publicationReview]);
-  const postItems = useMemo(() => {
-    const missing = publicationReview?.inventory?.filter((item) => item.path.startsWith("posts/") && !rawPostItems.some((post) => item.path === `posts/${post.id}.mdx`)) || [];
-    return [...rawPostItems, ...missing.map((item) => ({ id: item.path.slice(6, -4), title: item.path.slice(6, -4), href: `/blog/${item.path.slice(6, -4)}`, meta: "Source needs review", draft: item.hidden }))].map((item) => taskMetadata("posts", item));
-  }, [rawPostItems, taskMetadata, publicationReview]);
-  const currentItems = useMemo(
-    () => (documentKind === "pages" ? pageItems : postItems),
-    [documentKind, pageItems, postItems],
-  );
-  const visibleItems = useMemo(() => {
-    const query = contentSearch.trim().toLowerCase();
-    if (!query) return currentItems;
-    return currentItems.filter((item) =>
-      [item.title, item.id, item.meta].some((value) =>
-        String(value || "").toLowerCase().includes(query),
-      ),
-    );
-  }, [contentSearch, currentItems]);
-  const globalSearchItems = useMemo(() => {
-    const query = contentSearch.trim().toLowerCase();
-    if (!query) return [];
-    return (["posts", "pages"] as const).flatMap((itemKind) =>
-      (itemKind === "posts" ? postItems : pageItems)
-        .filter((item) =>
-          [item.title, item.id, item.meta].some((value) =>
-            String(value || "").toLowerCase().includes(query),
-          ),
-        )
-        .map((item) => ({ kind: itemKind, item })),
-    );
-  }, [contentSearch, pageItems, postItems]);
-  const pageTree = useMemo(
-    () => filterPageTree(buildPageTree(pageItems, pageTreeOrder), (item) => contentMatchesTask({ ...item, issueCount: item.issueCount || 0 }, contentTask)),
-    [pageItems, pageTreeOrder, contentTask],
-  );
-  const collapsedPageSlugSet = useMemo(
-    () => new Set(collapsedPageSlugs),
-    [collapsedPageSlugs],
-  );
   const selectedPageBreadcrumb = useMemo(
     () =>
       selected?.kind === "pages"
@@ -1020,60 +945,10 @@ export function SiteAdminWebConsole({
   const selectedManagedSummary = selectedManagedComponent
     ? componentSummaryFor(components, selectedManagedComponent.name)
     : undefined;
-  const selectedComponentName =
-    selected?.kind === "components" && isSiteComponentName(selected.id)
-      ? selected.id
-      : null;
   const selectedComponentDefinition = selectedComponentName
     ? componentDefinitions.find((definition) => definition.name === selectedComponentName) || null
     : null;
   const selectedIsNewsComponent = selectedComponentName === "news";
-  const collectionDraft = collectionHistory?.present.name === selectedComponentName
-    ? collectionHistory.present : null;
-  collectionDraftRef.current = collectionDraft;
-  const collectionSource = useMemo(
-    () => collectionDraft ? serializeCollectionDraft(collectionDraft) : sourceDraft,
-    [collectionDraft, sourceDraft],
-  );
-  const selectedNewsDraft = collectionDraft?.name === "news" ? collectionDraft.value : null;
-  const selectedTeachingDraft = collectionDraft?.name === "teaching" ? collectionDraft.value : null;
-  const selectedWorksDraft = collectionDraft?.name === "works" ? collectionDraft.value : null;
-  const selectedPublicationsDraft = collectionDraft?.name === "publications" ? collectionDraft.value : null;
-  const selectedComponentIssues = useMemo(() => {
-    if (selectedNewsDraft) {
-      return selectedNewsDraft.items.flatMap((item) =>
-        item.type === "entry" ? newsEntryIssues(item) : [],
-      );
-    }
-    if (selectedTeachingDraft) {
-      return selectedTeachingDraft.items.flatMap(teachingEntryIssues);
-    }
-    if (selectedWorksDraft) {
-      return selectedWorksDraft.items.flatMap(worksEntryIssues);
-    }
-    if (selectedPublicationsDraft) {
-      return selectedPublicationsDraft.items.flatMap(publicationEntryIssues);
-    }
-    return [];
-  }, [
-    selectedNewsDraft,
-    selectedPublicationsDraft,
-    selectedTeachingDraft,
-    selectedWorksDraft,
-  ]);
-  const componentBaselineFingerprints = useMemo(() => {
-    if (!selected || selected.kind !== "components" || !selectedComponentName) {
-      return new Map<string, string>();
-    }
-    const baseline: CollectionDraft = collectionBaseline
-      ? JSON.parse(collectionBaseline)
-      : parseCollectionDraft(selectedComponentName, selected.source);
-    const items: Array<{ id: string }> = baseline.value.items;
-    return new Map(
-      items.map((item) => [item.id, componentEntryFingerprint(item)]),
-    );
-  }, [collectionBaseline, selected, selectedComponentName]);
-  const componentSaveBlocked = selectedComponentIssues.length > 0;
   const release = summary?.release;
   const source = summary?.source;
   const activityReleaseJob = useMemo(
@@ -1116,6 +991,7 @@ export function SiteAdminWebConsole({
           : "Content";
   const selectedIsStructured = !selected?.raw && (selected?.kind === "posts" || selected?.kind === "pages");
   const documentIssues = selectedIsStructured && selected && selected.kind !== "components" ? documentFieldProblems(contentForm, selected.kind) : [];
+  const documentSaveIssues = selectedIsStructured && selected && selected.kind !== "components" ? documentDraftProblems(contentForm, selected.kind) : [];
   const selectedSourceDraft = selected
     ? selectedIsStructured
       ? sourceForEditedContent(selected.kind, contentForm)
@@ -1161,7 +1037,7 @@ export function SiteAdminWebConsole({
     releaseIsRunning;
   const documentStatus = editorialStatus({
     saving,
-    blocked: componentSaveBlocked || documentIssues.length > 0,
+    blocked: componentSaveBlocked || documentSaveIssues.length > 0,
     dirty: selectedDirty,
     runnerOffline: releaseRunnerOffline,
     liveSync,
@@ -1176,9 +1052,7 @@ export function SiteAdminWebConsole({
       ? "Publishing"
       : liveSync.label;
   const editorStatusHint = componentSaveBlocked
-    ? `${selectedComponentIssues.length} validation ${
-        selectedComponentIssues.length === 1 ? "issue" : "issues"
-      } · recovery copy kept locally`
+    ? "Repair the source before saving. Recovery copy kept locally."
     : recoveredDocumentNeedsReview
     ? "Recovered edits are based on another version. Review them before saving the draft."
     : selectedDirty
@@ -1314,7 +1188,7 @@ export function SiteAdminWebConsole({
   }), [selectedSourceDraft, selectedIsStructured, contentForm, collectionDraft, selected?.version]);
   useSiteAdminDraftPersistence({
     kind: `${actor}:${selected?.kind || ""}`, id: selected?.id || "", dirty: selectedDirty, snapshot: recoverySnapshot,
-    autosaveEnabled: area === "content" && contentMode !== "create" && !selected?.raw && !saving && !conflict && !componentSaveBlocked && documentIssues.length === 0 && !recoveredDocumentNeedsReview,
+    autosaveEnabled: area === "content" && contentMode !== "create" && !selected?.raw && !saving && !conflict && !componentSaveBlocked && documentSaveIssues.length === 0 && !recoveredDocumentNeedsReview,
     onSave: () => saveSelectedContentRef.current({ quiet: true }),
     onRecoverySaved: (at) => { setLocalAutosaveAt(at); setLocalDraftSnapshot(null); },
     onRecoveryFailure: () => setWarning("This browser could not keep a recovery copy. Save the draft before leaving."),
@@ -1501,7 +1375,7 @@ export function SiteAdminWebConsole({
     try {
       let detail: EditableDetailPayload;
       const normalList = nextKind === "posts" ? posts?.posts : nextKind === "pages" ? pages?.pages : undefined;
-      const sourceNeedsRepair = nextKind !== "components" && normalList && !normalList.some((item) => item.slug === id) && publicationReview?.inventory?.some((item) => item.path === `${nextKind}/${id}.mdx` && item.issues.length);
+      const sourceNeedsRepair = nextKind !== "components" && publicationReview?.inventory?.some((item) => item.path === `${nextKind}/${id}.mdx` && (item.issues.some((issue) => issue.field === "source") || (normalList && !normalList.some((item) => item.slug === id) && item.issues.length)));
       try { detail = await readJson<EditableDetailPayload>(`${endpointFor(nextKind, id)}${sourceNeedsRepair ? "?raw=1" : ""}`); }
       catch (error) {
         const knownProblem = publicationReview?.inventory?.find((item) => item.path === `${nextKind}/${id}.mdx`)?.issues.length;
@@ -1528,15 +1402,13 @@ export function SiteAdminWebConsole({
 
   async function saveSelectedContent(options: { quiet?: boolean } = {}) {
     if (!selected || saving) return false;
-    if (documentIssues.length) {
-      if (!options.quiet) { setWarning("Review the highlighted fields before saving."); focusDocumentField(documentIssues[0].field); }
+    if (documentSaveIssues.length) {
+      if (!options.quiet) { setWarning("Review the highlighted fields before saving."); focusDocumentField(documentSaveIssues[0].field); }
       return false;
     }
     if (componentSaveBlocked) {
       setWarning(
-        `Fix ${selectedComponentIssues.length} validation ${
-          selectedComponentIssues.length === 1 ? "issue" : "issues"
-        } before saving.`,
+        componentSaveProblems[0].message,
       );
       return false;
     }
@@ -1935,7 +1807,7 @@ export function SiteAdminWebConsole({
   }
 
   async function publishSavedContent() {
-    if (!publicationReview || !publicationReview.changes.length || hasUnsavedChanges) return;
+    if (!publicationReview || !publicationReview.changes.length || hasUnsavedChanges || publicationReviewLoading || publicationReviewError || publicationReview.validation?.blockers.length) return;
     setReleaseSaving(true);
     setError("");
     setWarning("");
@@ -2142,7 +2014,7 @@ export function SiteAdminWebConsole({
   }
 
   function focusDocumentField(field: string) {
-    const metadata = ["date", "cover", "ogImage"].includes(field);
+    const metadata = ["date", "updated", "cover", "ogImage"].includes(field);
     setInspectorOpen(metadata);
     if (field === "body") setDocumentFocusRequest((value) => value + 1);
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
@@ -2173,9 +2045,6 @@ export function SiteAdminWebConsole({
     focusComponentIssue(selectedComponentIssues[nextIndex]);
   }
 
-  function checkpointCollectionEdit() {
-    setCollectionHistory((current) => current ? { ...current, group: "" } : null);
-  }
 
   function applyCollectionSource(source: string) {
     if (!selectedComponentName) return;
@@ -2271,33 +2140,12 @@ export function SiteAdminWebConsole({
     await publishSavedContent();
   }
 
-  const refreshPublicationReview = useCallback(async () => {
-    const requestId = ++publicationReviewRequestRef.current;
-    setPublicationReviewLoading(true);
-    setPublicationReviewError("");
-    setPublicationReview(null);
-    try {
-      const review = await readJson<PublicationReview>("/api/site-admin/publication-review");
-      if (requestId !== publicationReviewRequestRef.current) return null;
-      setPublicationReview(review);
-      setPendingPublishCount(review.changes.length);
-      return review;
-    } catch (error) {
-      if (requestId === publicationReviewRequestRef.current) setPublicationReviewError(error instanceof Error ? error.message : String(error));
-      return null;
-    } finally {
-      if (requestId === publicationReviewRequestRef.current) setPublicationReviewLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { if (hasLoadedOnce) void refreshPublicationReview(); }, [hasLoadedOnce, refreshPublicationReview]);
-  useEffect(() => { if (publishReviewOpen) void refreshPublicationReview(); }, [publishReviewOpen, refreshPublicationReview]);
 
   const collectionEditorActions = {
     canUndo: Boolean(collectionHistory?.past.length),
     canRedo: Boolean(collectionHistory?.future.length),
-    onUndo: () => setCollectionHistory((current) => current ? undoCollectionDraft(current) : null),
-    onRedo: () => setCollectionHistory((current) => current ? redoCollectionDraft(current) : null),
+    onUndo: undoCollection,
+    onRedo: redoCollection,
     onCheckpoint: checkpointCollectionEdit,
     status: documentStatus.label,
     statusDetail: componentSaveBlocked ? "Recovery copy kept locally"
@@ -3409,7 +3257,8 @@ export function SiteAdminWebConsole({
                 </div>
               </div>
                 {documentIssues.length ? <section className={styles.validationSummary} aria-label="Fields needing attention">
-                  <strong>{documentIssues.length} {documentIssues.length === 1 ? "field needs" : "fields need"} attention</strong>
+                  <strong>{documentIssues.length} {documentIssues.length === 1 ? "field needs" : "fields need"} attention before publication</strong>
+                  {!documentSaveIssues.length ? <p>Incomplete drafts can still be saved.</p> : null}
                   <ul>{documentIssues.map((issue) => <li key={issue.field}><button type="button" onClick={() => focusDocumentField(issue.field)}>{issue.message}</button></li>)}</ul>
                 </section> : selected.raw ? <p className={styles.validationSummary} role="status">This document could not be read as structured content. Repair the source, then save to return to the regular editor.</p> : null}
                 {selectedIsStructured ? (
@@ -3478,7 +3327,7 @@ export function SiteAdminWebConsole({
                               <SiteAdminMarkdownEditor
                                 label={`${selected.title} body`}
                                 persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
-                                pagePreview={{ title: contentForm.title, routePath: selected.href }}
+                                pagePreview={{ title: contentForm.title, routePath: selected.href, document: { kind: selected.kind === "posts" ? "posts" : "pages", slug: selected.id, source: selectedSourceDraft } }}
                                 value={contentForm.body}
                                 onChange={(body) =>
                                   setContentForm((current) => ({
@@ -3502,7 +3351,7 @@ export function SiteAdminWebConsole({
                           label={`${selected.title} body`}
                           persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
                           focusRequest={documentFocusRequest}
-                          pagePreview={{ title: contentForm.title, routePath: selected.href }}
+                          pagePreview={{ title: contentForm.title, routePath: selected.href, document: { kind: selected.kind === "posts" ? "posts" : "pages", slug: selected.id, source: selectedSourceDraft } }}
                           value={contentForm.body}
                           onChange={(body) =>
                             setContentForm((current) => ({
@@ -3534,7 +3383,7 @@ export function SiteAdminWebConsole({
                           label={`${selected.title} MDX source`}
                           persistenceKey={`${actor}:${selected.kind}:${selected.id}`}
                           focusRequest={documentFocusRequest}
-                          pagePreview={{ title: selected.title, routePath: selected.href }}
+                          pagePreview={{ title: selected.title, routePath: selected.href, document: selected.kind === "components" ? undefined : { kind: selected.kind, slug: selected.id, source: selectedSourceDraft } }}
                           value={sourceDraft}
                           onChange={setSourceDraft}
                           minHeight={560}
@@ -3663,6 +3512,9 @@ export function SiteAdminWebConsole({
                         <input
                           className={styles.textField}
                           type="date"
+                          data-document-field="updated"
+                          aria-invalid={documentIssues.some((issue) => issue.field === "updated")}
+                          aria-describedby={documentIssues.some((issue) => issue.field === "updated") ? "document-updated-problem" : undefined}
                           value={contentForm.updated}
                           onChange={(event) =>
                             setContentForm((current) => ({
@@ -3671,6 +3523,7 @@ export function SiteAdminWebConsole({
                             }))
                           }
                         />
+                        {documentIssues.find((issue) => issue.field === "updated") ? <small id="document-updated-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "updated")?.message}</small> : null}
                       </label>
                     )}
                     <label className={styles.checkField}>
@@ -4425,25 +4278,27 @@ export function SiteAdminWebConsole({
 
       {groupEdit ? <SiteAdminCollectionGroupDialog group={groupEdit} onClose={() => setGroupEdit(null)} onApply={applyGroupChange} /> : null}
 
-      {collectionPreviewOpen && selected?.kind === "components" ? <SiteAdminPagePreview title={selected.title} routePath={selected.href} source={selectedSourceDraft} onClose={() => setCollectionPreviewOpen(false)} /> : null}
+      {collectionPreviewOpen && selected?.kind === "components" ? <SiteAdminPagePreview title={selected.title} routePath={selected.href} component={selectedComponentName || undefined} source={selectedSourceDraft} onClose={() => setCollectionPreviewOpen(false)} /> : null}
 
-      {publishReviewOpen ? <SiteAdminActionDialog title="Review publication" onClose={() => setPublishReviewOpen(false)} wide busy={releaseSaving}>
-        <p className={styles.cardText}>Target: <strong>{contentPublishActionForBrowser() === "publish-content-production" ? "Production" : contentPublishActionForBrowser() === "publish-content-staging" ? "Staging" : "Local preview"}</strong></p>
-        <p className={styles.cardText}>This publishes all saved site content, not just the open entry. Saved changes from other sessions are included.</p>
-        <h3 className={styles.reviewHeading}>Saved changes across the site</h3>
-        {hasUnsavedChanges ? <p role="alert">Save your open draft before confirming publication.</p> : null}
-        {publicationReviewLoading ? <p role="status">Comparing saved content with the published snapshot…</p> : null}
-        {publicationReviewError ? <p role="alert">{publicationReviewError}</p> : null}
-        <SiteAdminPublicationChanges changes={publicationReview?.changes || []} />
-        {publicationReview?.changes.length === 0 ? <p className={styles.cardText}>All saved content matches the published snapshot.</p> : null}
-        <div className={styles.conflictActions}>
-          <Button variant="subtle" onClick={() => setPublishReviewOpen(false)}>Cancel</Button>
-          <Button variant="subtle" disabled={publicationReviewLoading} onClick={() => void refreshPublicationReview()}>Refresh review</Button>
-          <Button tone="accent" disabled={hasUnsavedChanges || saving || releaseSaving || releaseIsRunning || publicationReviewLoading || Boolean(publicationReviewError) || !publicationReview?.changes.length || !contentPublishActionForBrowser()} onClick={() => {
-            void publishCurrentContent();
-          }}>Confirm publish</Button>
-        </div>
-      </SiteAdminActionDialog> : null}
+      {publishReviewOpen ? <SiteAdminPublicationReviewDialog
+        review={publicationReview} loading={publicationReviewLoading} error={publicationReviewError}
+        busy={releaseSaving} disabled={hasUnsavedChanges || saving || releaseSaving || releaseIsRunning || !contentPublishActionForBrowser()}
+        hasUnsaved={hasUnsavedChanges}
+        target={contentPublishActionForBrowser() === "publish-content-production" ? "Production" : contentPublishActionForBrowser() === "publish-content-staging" ? "Staging" : "Local preview"}
+        onClose={() => setPublishReviewOpen(false)} onRefresh={() => void refreshPublicationReview()} onConfirm={() => void publishCurrentContent()}
+        onIssue={async (issue) => {
+          setPublishReviewOpen(false);
+          const match = /^(posts|pages|components)\/(.+)\.mdx$/.exec(issue.path);
+          if (match) {
+            const opened = selected?.kind === match[1] && selected.id === match[2] || await selectContent(match[1] as EditableKind, match[2]);
+            if (!opened) return;
+            if (match[1] === "components" && issue.entryId) focusComponentIssue({ entryId: issue.entryId, field: issue.field, message: issue.message });
+            else focusDocumentField(issue.field);
+          } else if (issue.path === "home.json") changeArea("home");
+          else if (issue.path === "filesystem/announcements.json") changeArea("announcements");
+          else changeArea("settings");
+        }}
+      /> : null}
 
       {conflict ? (
         <SiteAdminConflictDialog

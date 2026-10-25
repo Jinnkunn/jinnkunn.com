@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import compiledBaseline from "@/content/generated/publication-baseline.json";
 import { getDocumentRepository } from "./content-store-resolver";
 import { contentInventory } from "../shared/content-inventory";
+import { publicationValidation } from "../shared/publication-validation";
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor";
 import { PUBLICATION_BASELINE_PATH, isPublicationSource, publicationReview, publicationSnapshot } from "../shared/publication-snapshot";
 import { describePublicationChange } from "../shared/publication-review-details";
@@ -65,7 +66,8 @@ export async function loadPublicationReview() {
   const current = await loadSavedSnapshot(modified);
   const baseline = await loadPublishedSnapshot();
   const review = publicationReview(current, baseline);
-  return { ...review, inventory: contentInventory(current.sources, modified), changes: review.changes.map((change) => ({
+  const inventory = contentInventory(current.sources, modified);
+  return { ...review, validation: publicationValidation(current.sources, inventory), inventory, changes: review.changes.map((change) => ({
     ...change,
     title: ({ "home.json": "Home", "now.json": "Now", "page-tree.json": "Page order", "filesystem/announcements.json": "Announcements", "filesystem/site-config.json": "Site settings", "filesystem/protected-routes.json": "Page access" } as Record<string, string>)[change.path] || change.title,
     details: describePublicationChange(change, current, baseline),

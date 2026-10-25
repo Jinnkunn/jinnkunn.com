@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
 import { appendRedirect } from "@/lib/redirects";
+import { assertDocumentDraftSource } from "@/lib/shared/document-draft-validation";
 import { parsePostFile } from "./meta";
 import { assertValidSlug } from "./slug";
 import type { PostEntry } from "./types";
@@ -49,7 +50,7 @@ export async function listPosts(opts?: {
     const fetched = await store.readFile(file.relPath);
     if (!fetched) continue;
     try {
-      const { entry } = parsePostFile(slug, fetched.content);
+      const { entry } = parsePostFile(slug, fetched.content, { allowIncomplete: opts?.includeDrafts });
       if (!opts?.includeDrafts && entry.draft) continue;
       out.push({ entry, version: fetched.sha });
     } catch {
@@ -63,12 +64,12 @@ export async function listPosts(opts?: {
   return out;
 }
 
-export async function readPost(slug: string): Promise<PostDetail | null> {
+export async function readPost(slug: string, options: { allowIncomplete?: boolean } = {}): Promise<PostDetail | null> {
   assertValidSlug(slug);
   const store = await getStore();
   const file = await store.readFile(postRelPath(slug));
   if (!file) return null;
-  const { entry } = parsePostFile(slug, file.content);
+  const { entry } = parsePostFile(slug, file.content, options);
   return { entry, version: file.sha, source: file.content };
 }
 
@@ -77,12 +78,11 @@ export async function createPost(
   source: string,
 ): Promise<PostDetail> {
   assertValidSlug(slug);
-  // Validate frontmatter + body before touching the store.
-  parsePostFile(slug, source);
+  assertDocumentDraftSource(source, "posts");
+  const { entry } = parsePostFile(slug, source, { allowIncomplete: true });
   const store = await getStore();
   // `ifMatch: null` enforces "must not already exist".
   const { sha } = await store.writeFile(postRelPath(slug), source, { ifMatch: null });
-  const { entry } = parsePostFile(slug, source);
   return { entry, version: sha, source };
 }
 
@@ -92,10 +92,10 @@ export async function updatePost(
   ifMatch: ContentVersion,
 ): Promise<PostDetail> {
   assertValidSlug(slug);
-  parsePostFile(slug, source);
+  assertDocumentDraftSource(source, "posts");
+  const { entry } = parsePostFile(slug, source, { allowIncomplete: true });
   const store = await getStore();
   const { sha } = await store.writeFile(postRelPath(slug), source, { ifMatch });
-  const { entry } = parsePostFile(slug, source);
   return { entry, version: sha, source };
 }
 
@@ -147,6 +147,6 @@ export async function movePost(
   } catch {
     // see movePage — losing the redirect is recoverable later
   }
-  const { entry } = parsePostFile(toSlug, existing.content);
+  const { entry } = parsePostFile(toSlug, existing.content, { allowIncomplete: true });
   return { entry, version: sha, source: existing.content };
 }

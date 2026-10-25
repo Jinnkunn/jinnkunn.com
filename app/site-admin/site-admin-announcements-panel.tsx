@@ -112,7 +112,7 @@ export function SiteAdminAnnouncementsPanel({
   const persistence = useSiteAdminSingletonDraft({
     kind: `${actor}:announcements`, id: "active", ready: Boolean(payload) && !loading,
     dirty, source: fingerprint(draft), form: draft, baseVersion: payload?.sourceVersion.fileSha || "",
-    enabled: !loading && !saving && Boolean(draft) && !conflict && issues.length === 0,
+    enabled: !loading && !saving && Boolean(draft) && !conflict,
     onSave: () => save(),
     onRestore: (restored) => {
       if (!restored) return;
@@ -157,7 +157,7 @@ export function SiteAdminAnnouncementsPanel({
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
       if (!dirty || saving) return;
       event.preventDefault();
-      if (issues.length) focusIssue(issues[0].field); else void persistence.save();
+      void persistence.save();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -195,7 +195,6 @@ export function SiteAdminAnnouncementsPanel({
 
   async function save(expectedVersion?: string): Promise<boolean> {
     if (!draft || !payload || saving) return false;
-    if (issues.length) { setError("Review the highlighted announcement fields before saving."); focusIssue(issues[0].field); return false; }
     const captured = draft;
     const normalized = normalizeAnnouncement(captured, captured.id);
     if (!normalized) return false;
@@ -300,7 +299,7 @@ export function SiteAdminAnnouncementsPanel({
                 onClick={() => select(item.id)}
               >
                 <span>
-                  <strong>{item.title}</strong>
+                  <strong>{item.title || "Untitled announcement"}</strong>
                   <small>{item.scope === "all-public" ? "All public pages" : item.scope === "home" ? "Home" : item.routes.join(", ")}</small>
                 </span>
                 <em data-status={item.status}>{item.status}</em>
@@ -326,14 +325,14 @@ export function SiteAdminAnnouncementsPanel({
             <div className={styles.actions}>
               <Button variant="subtle" size="sm" onClick={() => setPreviewOpen(true)}>Page preview</Button>
               <Button onClick={() => void remove()} variant="ghost" size="sm" disabled={saving}>Delete</Button>
-              <Button onClick={() => { if (issues.length) focusIssue(issues[0].field); else void persistence.save(); }} tone="accent" size="sm" disabled={saving || !dirty}>
+              <Button onClick={() => void persistence.save()} tone="accent" size="sm" disabled={saving || !dirty}>
                 {saving ? "Saving draft" : "Save draft"}
               </Button>
             </div>
           </header>
 
           <SiteAdminDraftStatus {...persistence} dirty={dirty} saving={saving} pending={pending} live={live} onRetry={() => void persistence.save()} onRestore={persistence.restore} onDismiss={persistence.dismiss} onReview={onReview} />
-          {issues.length ? <ul aria-label="Announcement fields needing attention" className={styles.issues}>{issues.map((issue) => <li key={issue.field}><button type="button" onClick={() => focusIssue(issue.field)}>{issue.message}</button></li>)}</ul> : null}
+          {issues.length ? <section><p>Drafts can be saved. Review these fields before publication.</p><ul aria-label="Announcement fields needing attention" className={styles.issues}>{issues.map((issue) => <li key={issue.field}><button type="button" onClick={() => focusIssue(issue.field)}>{issue.message}</button></li>)}</ul></section> : null}
           <div className={styles.fieldGrid}>
             <label>
               Title

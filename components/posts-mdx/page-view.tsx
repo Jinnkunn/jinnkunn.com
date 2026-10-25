@@ -1,124 +1,21 @@
-/* eslint-disable @next/next/no-html-link-for-pages -- Public pages use static-shell document navigation on Cloudflare Workers Free. */
 import "server-only";
-
-import { Fragment } from "react";
-
-import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import { getPageEntry } from "@/lib/pages/index";
 import type { PageEntry } from "@jinnkunn/content-core/pages";
 import { compilePostMdx } from "@/lib/posts/compile";
-import { formatLongDate } from "@jinnkunn/content-core/posts";
 import { postMdxComponents } from "./components";
+import { PageArticle, type DocumentBreadcrumb } from "./document-layouts";
 
-interface BreadcrumbItem {
-  label: string;
-  /** Public URL of this trail item, or null if this segment doesn't
-   * correspond to an existing MDX page (intermediate folder). Null
-   * items render as plain text instead of a link. */
-  href: string | null;
-}
-
-/** Build a breadcrumb trail from a page's slug. For
- * `teaching/archive/2024-25-fall/csci3141`, this looks up
- * `/teaching`, `/teaching/archive`, `/teaching/archive/2024-25-fall`
- * each as a page entry, taking each one's title when present and
- * falling back to the raw segment when there's no MDX file at that
- * prefix (folder-only level). The final item is the current page. */
-async function buildBreadcrumbTrail(entry: PageEntry): Promise<BreadcrumbItem[]> {
+async function buildBreadcrumbTrail(entry: PageEntry): Promise<DocumentBreadcrumb[]> {
   const segments = entry.slug.split("/").filter(Boolean);
-  const trail: BreadcrumbItem[] = [];
-  // Resolve each parent (every segment except the last) in parallel —
-  // each call is one filesystem read for the parent's MDX file.
-  const parentSlugs = segments.slice(0, -1).map((_, i) =>
-    segments.slice(0, i + 1).join("/"),
-  );
-  const parentEntries = await Promise.all(
-    parentSlugs.map((slug) => getPageEntry(slug)),
-  );
-  parentSlugs.forEach((slug, i) => {
-    const parent = parentEntries[i];
-    trail.push({
-      label: parent?.title || segments[i],
-      href: parent ? `/${slug}` : null,
-    });
-  });
-  trail.push({ label: entry.title, href: `/${entry.slug}` });
-  return trail;
+  const parentSlugs = segments.slice(0, -1).map((_, i) => segments.slice(0, i + 1).join("/"));
+  const parents = await Promise.all(parentSlugs.map((slug) => getPageEntry(slug)));
+  return [
+    ...parentSlugs.map((slug, i) => ({ label: parents[i]?.title || segments[i], href: parents[i] ? `/${slug}` : null })),
+    { label: entry.title, href: `/${entry.slug}` },
+  ];
 }
 
-export async function PageView({
-  entry,
-  source,
-}: {
-  entry: PageEntry;
-  source: string;
-}) {
-  const [{ Content }, trail] = await Promise.all([
-    compilePostMdx(source),
-    buildBreadcrumbTrail(entry),
-  ]);
-
-  return (
-    <ClassicPageShell
-      title={entry.title}
-      className="super-content page__mdx-page parent-page__mdx-page"
-      beforeHeader={
-        <div className="super-navbar__breadcrumbs">
-          <div className="notion-breadcrumb">
-            <a href="/" className="notion-link notion-breadcrumb__item">
-              <div className="notion-navbar__title notion-breadcrumb__title">Home</div>
-            </a>
-            {trail.map((item, index) => (
-              <Fragment key={`${item.href ?? "noref"}-${index}`}>
-                <span className="notion-breadcrumb__divider">/</span>
-                {item.href ? (
-                  <a
-                    href={item.href}
-                    className="notion-link notion-breadcrumb__item"
-                  >
-                    <div className="notion-navbar__title notion-breadcrumb__title">
-                      {item.label}
-                    </div>
-                  </a>
-                ) : (
-                  <div className="notion-breadcrumb__item notion-breadcrumb__item--placeholder">
-                    <div className="notion-navbar__title notion-breadcrumb__title">
-                      {item.label}
-                    </div>
-                  </div>
-                )}
-              </Fragment>
-            ))}
-          </div>
-        </div>
-      }
-    >
-      {/* Same "last updated" fact as a blog post's publish date, so it uses
-        * the same designed property strip (post-view.tsx) instead of a bare
-        * properties row — and the same long-form format, since the raw ISO
-        * string used to leak through here onto /chen, /yiling and the
-        * publications notes. */}
-      {entry.updatedIso && (
-        <div
-          className="notion-page__properties mdx-post__meta ds-property-strip"
-          aria-label="Page metadata"
-        >
-          <div className="notion-page__property mdx-post__meta-item ds-property-strip__item">
-            <div className="notion-property notion-property__date notion-semantic-string ds-property-strip__property">
-              <span className="notion-property__date-icon" aria-hidden="true" />
-              <span className="date">
-                Updated{" "}
-                <time dateTime={entry.updatedIso}>
-                  {formatLongDate(entry.updatedIso)}
-                </time>
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-      <div className="mdx-post__body">
-        <Content components={postMdxComponents} />
-      </div>
-    </ClassicPageShell>
-  );
+export async function PageView({ entry, source }: { entry: PageEntry; source: string }) {
+  const [{ Content }, trail] = await Promise.all([compilePostMdx(source), buildBreadcrumbTrail(entry)]);
+  return <PageArticle entry={entry} trail={trail}><Content components={postMdxComponents} /></PageArticle>;
 }
