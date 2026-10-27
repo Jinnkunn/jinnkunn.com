@@ -355,7 +355,8 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.screenshot({ path: "/tmp/followup-media-desktop.png" });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: "/tmp/followup-media-mobile.png" });
+    await item("Reusable diagram.png").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "/tmp/followup-media-mobile.png", animations: "disabled" });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await item("Reusable diagram.png").getByRole("button", { name: "Delete", exact: true }).click();
     await item("Reusable diagram.png").waitFor({ state: "detached" });

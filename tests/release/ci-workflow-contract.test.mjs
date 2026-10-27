@@ -134,6 +134,9 @@ test("ci: workspace-quality job still runs tsc, vitest and cargo", () => {
   assert.match(yaml, /working-directory: apps\/workspace\s*\n\s*run: npm run typecheck/);
   assert.match(yaml, /working-directory: apps\/workspace\s*\n\s*run: npm test/);
   assert.match(yaml, /cargo test --lib/);
+  const workspace = yaml.slice(yaml.indexOf("  workspace-quality:"));
+  assert.match(workspace, /name: Install \(shared packages\)\s+run: npm ci/);
+  assert.ok(workspace.indexOf("Install (shared packages)") < workspace.indexOf("Type Check (workspace)"));
 });
 
 test("release gate includes the workspace typecheck and vitest run", () => {
