@@ -18,6 +18,15 @@ import { test } from "node:test";
 
 const ROOT = process.cwd();
 
+test("ci: isolated admin regressions run serially without mutating a remote environment", () => {
+  const yaml = read(".github/workflows/ci.yml");
+  const step = readStepBlocks(yaml).get("Admin Browser Regression").lines.join("\n");
+  assert.match(step, /npm run smoke:site-admin:collections\s+npm run smoke:site-admin:drafts\s+npm run smoke:site-admin:followup/);
+  assert.doesNotMatch(step, /--execute|--publisher|--env=production|secrets\./);
+  assert.equal(stepGate(yaml, "Admin Browser Regression"), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'");
+  assert.match(yaml, /playwright-core install --with-deps chromium/);
+});
+
 // The four steps the dead `event_name == 'push'` gate silently disabled.
 const UI_QUALITY_STEPS = [
   "UI Smoke (Quick)",

@@ -14,6 +14,7 @@ import {
   uploadAsset,
 } from "@/lib/server/assets-store";
 import type { ParseResult } from "@/lib/site-admin/request-types";
+import { loadAssetUsage } from "@/lib/server/asset-reference-service";
 
 export const runtime = "nodejs";
 
@@ -75,6 +76,7 @@ export async function GET(req: NextRequest) {
     req,
     async () => {
       const assets = await listAssets();
+      const usage = await loadAssetUsage(assets);
       return apiPayloadOk({
         assets: assets.map((asset) => ({
           key: asset.key,
@@ -84,6 +86,8 @@ export async function GET(req: NextRequest) {
           contentType: asset.contentType,
           version: asset.sha,
           uploadedAt: asset.uploadedAt,
+          usageVerified: usage.verified,
+          references: usage.references[asset.key] || [],
         })),
       });
     },
@@ -183,6 +187,13 @@ export async function DELETE(req: NextRequest) {
       let message = "";
       let status = 200;
       try {
+        const assets = await listAssets();
+        const asset = assets.find((item) => item.key === key);
+        if (!asset) return apiError("Asset not found. Refresh the media library.", { status: 404, code: "ASSET_NOT_FOUND" });
+        const usage = await loadAssetUsage([asset]);
+        if (!usage.verified) return apiError("Could not verify draft and published references in both environments. No file was deleted. Retry after refreshing.", { status: 503, code: "ASSET_USAGE_UNAVAILABLE" });
+        const references = usage.references[key] || [];
+        if (references.length) return apiError(`This image is still used by ${references.length} draft or published document(s). Remove those references and publish the changes before deleting it.`, { status: 409, code: "ASSET_IN_USE" });
         await deleteAsset(key, version);
         await writeSiteAdminAuditLog({
           actor: ctx.login,

@@ -3538,9 +3538,15 @@ button.statusPill:disabled {
 
 .mediaToolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   justify-content: space-between;
   gap: 14px;
+}
+
+.mediaToolbar > select {
+  width: auto;
+  max-width: 100%;
 }
 
 .mediaToolbar .fieldLabel {
@@ -4099,4 +4105,25 @@ button.statusPill:disabled {
   .markdownPreviewShell {
     padding: 28px 22px 96px;
   }
+}
+.assetReferences {
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+
+.assetReferences summary {
+  cursor: pointer;
+  color: var(--ds-text-muted);
+}
+
+.assetReferences ul {
+  padding-inline-start: 1.25rem;
+}
+
+.assetReferences code {
+  overflow-wrap: anywhere;
+}
+
+.assetReferences input {
+  font-weight: 400;
 }

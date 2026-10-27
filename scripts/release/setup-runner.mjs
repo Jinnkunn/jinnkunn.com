@@ -26,6 +26,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -57,7 +58,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3) || "";
   return {
     check: argv.includes("--check"),
+    agentOnly: argv.includes("--agent-only"),
     repo: path.resolve(value("repo") || process.env.RELEASE_AGENT_REPO || ROOT),
+    control: path.resolve(value("control") || ROOT),
+    envFile: path.resolve(value("env-file") || path.join(path.dirname(value("repo") || process.env.RELEASE_AGENT_REPO || ROOT), "release-agent.env")),
     nodeBin: value("node") || process.execPath,
     cloudflaredBin: value("cloudflared") || which("cloudflared"),
     tunnelName: value("tunnel") || "jinnkunn-release-runner",
@@ -81,7 +85,7 @@ function renderTemplate(name, substitutions) {
   const raw = fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8");
   return raw.replace(/\{\{([A-Z_]+)\}\}/g, (match, key) => {
     if (!(key in substitutions)) throw new Error(`template ${name} uses unknown key ${key}`);
-    return substitutions[key];
+    return String(substitutions[key]).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   });
 }
 
@@ -104,6 +108,7 @@ function envKeysPresent(repo) {
 
 function checkEnvKeys(repo) {
   const present = envKeysPresent(repo);
+  for (const key of [...REQUIRED_ENV_KEYS, ...RECOMMENDED_ENV_KEYS]) if (process.env[key]) present.add(key);
   const missingRequired = REQUIRED_ENV_KEYS.filter((key) => !present.has(key));
   const missingRecommended = RECOMMENDED_ENV_KEYS.filter((key) => !present.has(key));
   for (const key of REQUIRED_ENV_KEYS.filter((k) => present.has(k))) {
@@ -204,9 +209,12 @@ function main() {
   if (!fs.existsSync(path.join(args.repo, "scripts", "release", "release-agent.mjs"))) {
     throw new Error(`${args.repo} does not look like the runner repo (missing scripts/release/release-agent.mjs)`);
   }
+  if (!fs.existsSync(path.join(args.control, "scripts", "release", "release-agent.mjs"))) throw new Error("Control checkout is missing release-agent.mjs");
   if (!fs.existsSync(path.join(args.repo, "node_modules"))) {
     warn(`${args.repo}/node_modules is missing — run \`npm ci\` there before the first job`);
   }
+  loadProjectEnv({ files: [args.envFile], override: false });
+  loadProjectEnv({ cwd: args.repo, files: [".env.local", ".env"], override: false });
   checkEnvKeys(args.repo);
   checkSleepSettings();
   if (!args.check) fs.mkdirSync(logDir, { recursive: true });
@@ -223,6 +231,8 @@ function main() {
     rendered: renderTemplate(`${AGENT_LABEL}.plist.template`, {
       NODE_BIN: args.nodeBin,
       REPO_ROOT: args.repo,
+      CONTROL_ROOT: args.control,
+      ENV_FILE: args.envFile,
       LOG_DIR: logDir,
       PATH_LINE: pathLine,
       HOME: home,
@@ -230,7 +240,9 @@ function main() {
     check: args.check,
   });
 
-  if (!args.cloudflaredBin) {
+  if (args.agentOnly) {
+    log("tunnel unchanged (--agent-only)");
+  } else if (!args.cloudflaredBin) {
     warn(
       "cloudflared not found — the wake tunnel LaunchAgent was skipped. Install cloudflared (brew install cloudflared), authenticate the tunnel, then re-run. The agent still claims jobs via its poll loop.",
     );

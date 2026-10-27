@@ -67,7 +67,7 @@ async function main() {
       if (req.method() === "GET" && url.pathname === "/api/site-admin/posts") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ count: qaPosts.length, posts: qaPosts }) });
       if (req.method() === "GET" && url.pathname.startsWith("/api/site-admin/posts/")) {
         const post = qaPosts.find((item) => item.slug === url.pathname.split("/").at(-1));
-        if (post) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...post, source: `---\ntitle: ${post.title}\n---\nFixture post body.`, body: "Fixture post body.", frontmatter: { title: post.title, date: post.dateIso, draft: false }, frontmatterKeys: ["title", "date", "draft"] }) });
+        if (post) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...post, source: `---\ntitle: ${JSON.stringify(post.title)}\ndate: ${post.dateIso}\ndraft: false\n---\nFixture post body.`, body: "Fixture post body.", frontmatter: { title: post.title, date: post.dateIso, draft: false }, frontmatterKeys: ["title", "date", "draft"] }) });
       }
       if (url.pathname.startsWith("/api/site-admin/")) return fixture.handle(route);
       if (req.method() !== "GET") throw new Error(`Unexpected write outside fixture: ${req.url()}`);
@@ -176,9 +176,11 @@ async function main() {
     page.on("dialog", (dialog) => void dialog.dismiss());
     await page.getByLabel("Title", { exact: true }).fill("Unsaved title");
     await page.goBack();
+    await page.getByRole("dialog", { name: "Unsaved changes", exact: true }).getByRole("button", { name: "Stay here", exact: true }).click();
     await eventually(() => assert.equal(new URL(page.url()).searchParams.get("id"), qaPosts[0].slug), "canceled Back returns to the document URL");
     assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Unsaved title");
     await page.getByLabel("Title", { exact: true }).fill(qaPosts[0].title);
+    await eventually(async () => assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), qaPosts[0].title), "Reverting the title restores the exact input");
     page.removeAllListeners("dialog");
     page.on("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Back to posts", exact: true }).click();

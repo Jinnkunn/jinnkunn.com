@@ -101,9 +101,16 @@ test("search-api-model: snippet and tokenization helpers return stable output", 
 });
 
 test("search-api-model: ignored paths exclude admin/api/internal routes", () => {
+  assert.equal(isIgnoredPath("/site-admin"), true);
   assert.equal(isIgnoredPath("/site-admin/routes"), true);
   assert.equal(isIgnoredPath("/api/search"), true);
   assert.equal(isIgnoredPath("/_next/static/chunk.js"), true);
   assert.equal(isIgnoredPath("/blog/list"), true);
   assert.equal(isIgnoredPath("/publications"), false);
+});
+
+test("search-api-model: full-width queries normalize and Chinese snippets honor sentence boundaries", () => {
+  assert.equal(normalizeQuery(" ＡＩ　２０２６ "), "AI 2026");
+  assert.deepEqual(tokenizeSearchQuery("ＡＩ　日喀则"), ["ai", "日喀则"]);
+  assert.equal(buildSnippetByTerms("前一个句子。日喀则相关信息正在更新。后一个句子。", ["日喀则"]), "… 日喀则相关信息正在更新。 …");
 });

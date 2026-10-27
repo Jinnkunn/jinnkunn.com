@@ -67,6 +67,17 @@ jobs:
               - "scripts/qa/perf-budget.mjs"
               - "package.json"
               - "package-lock.json"
+            admin_quality:
+              - "app/**"
+              - "components/**"
+              - "lib/**"
+              - "packages/**"
+              - "scripts/qa/site-admin-*"
+              - "scripts/qa/public-acceptance-workflow.mjs"
+              - "scripts/_lib/**"
+              - ".github/workflows/ci.yml"
+              - "package.json"
+              - "package-lock.json"
 
       - name: Lint
         run: npm run lint
@@ -83,6 +94,20 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Install Chromium for Admin Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        run: npx --no-install playwright-core install --with-deps chromium
+
+      # These isolated suites share the local Next middleware manifest and must
+      # run serially. No staging/production mutations or credentials are needed.
+      - name: Admin Browser Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        run: |
+          npm run smoke:site-admin:collections
+          npm run smoke:site-admin:drafts
+          npm run smoke:site-admin:followup
+          node scripts/qa/public-acceptance-workflow.mjs
 
       - name: Site Admin Write Smoke (Staging)
         # `secrets.X != ''` is not reliable inside `if:` (the secrets
@@ -152,6 +177,13 @@ jobs:
           path: |
             output/ui-smoke/**
             output/ui-snapshots/**
+            /tmp/*workflow*.png
+            /tmp/collections-*.png
+            /tmp/priority-*.png
+            /tmp/followup-*.png
+            /tmp/next-four-*.png
+            /tmp/four-items-*.png
+            /tmp/public-acceptance-*.png
           if-no-files-found: ignore
 
       - name: Upload A11y Artifacts

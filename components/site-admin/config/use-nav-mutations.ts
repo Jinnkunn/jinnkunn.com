@@ -49,6 +49,20 @@ export function useSiteAdminNavMutations({
     });
   };
 
+  // Only acknowledge the values sent by this request, not edits made while it ran.
+  const acknowledgeNavDraft = (rowId: string, saved: Partial<NavItemRow>) => {
+    setNavDraft((prev) => {
+      const remaining = { ...prev[rowId] };
+      for (const key of Object.keys(saved) as (keyof NavItemRow)[]) {
+        if (Object.is(remaining[key], saved[key])) delete remaining[key];
+      }
+      const next = { ...prev };
+      if (Object.keys(remaining).length) next[rowId] = remaining;
+      else delete next[rowId];
+      return next;
+    });
+  };
+
   const toggleOpenNav = (rowId: string) => {
     setOpenNav((prev) => ({ ...prev, [rowId]: !prev[rowId] }));
   };
@@ -71,7 +85,7 @@ export function useSiteAdminNavMutations({
 
       setSourceVersion(data.sourceVersion);
       setNav((prev) => prev.map((it) => (it.rowId === row.rowId ? { ...it, ...patch } : it)));
-      clearNavDraft(row.rowId);
+      acknowledgeNavDraft(row.rowId, patch);
     } catch (e: unknown) {
       setErr(errorFromUnknown(e));
     } finally {
@@ -79,16 +93,16 @@ export function useSiteAdminNavMutations({
     }
   };
 
-  const saveAllNavRows = async () => {
-    if (!sourceVersion?.siteConfigSha) {
+  const saveAllNavRows = async (expectedVersion = sourceVersion) => {
+    if (!expectedVersion?.siteConfigSha) {
       setErr("Missing sourceVersion. Reload latest and try again.");
-      return;
+      return false;
     }
     const pendingRows = Object.entries(navDraft);
-    if (pendingRows.length === 0) return;
+    if (pendingRows.length === 0) return true;
     setBusy(true);
     setErr("");
-    let expectedSiteConfigSha = sourceVersion.siteConfigSha;
+    let expectedSiteConfigSha = expectedVersion.siteConfigSha;
     try {
       for (const [rowId, patch] of pendingRows) {
         const data = await siteAdminBackend.postConfig({
@@ -102,10 +116,12 @@ export function useSiteAdminNavMutations({
         setNav((current) =>
           current.map((item) => (item.rowId === rowId ? { ...item, ...patch } : item)),
         );
-        clearNavDraft(rowId);
+        acknowledgeNavDraft(rowId, patch);
       }
+      return true;
     } catch (e: unknown) {
       setErr(errorFromUnknown(e));
+      return false;
     } finally {
       setBusy(false);
     }

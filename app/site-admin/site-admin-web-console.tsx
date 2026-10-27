@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
+import { EMPTY_CONTENT_FORM, formFromEditablePayload, sourceForEditedContent, frontmatterString, restoreDocumentForm, type EditableContentForm, type EditableKind } from "./site-admin-document-model";
 
 import { SiteAdminStatusPanel } from "@/components/site-admin/status/panel";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,6 @@ import {
   contentListPlaceholder,
   contentSaveEffects,
   countLabel,
-  createSelectionGate,
   editorialStatus,
   liveSyncStatus,
   visibilityLabel,
@@ -46,44 +46,27 @@ import {
   type SiteAdminConflict,
 } from "./site-admin-conflict-dialog";
 import {
-  StructuredCollectionDivider,
-  StructuredCollectionEditor,
-  StructuredCollectionEmpty,
-  StructuredCollectionEntry,
-  StructuredCollectionEntryForm,
-} from "./site-admin-structured-collection-editor";
-import {
   componentConflictDetail,
   componentEntryDomId,
-  componentEntryState as deriveComponentEntryState,
-  componentItemMatches as matchesComponentItem,
   todayInHalifax,
   type ComponentGrouping,
-  type NewsComponentDraft,
-  type PublicationsComponentDraft,
-  type TeachingComponentDraft,
-  type WorksComponentDraft,
 } from "./site-admin-structured-collection-model";
-import {
-  NEWS_ENTRY_FIELDS,
-  PUBLICATION_ENTRY_FIELDS,
-  TEACHING_ENTRY_FIELDS,
-  WORKS_ENTRY_FIELDS,
-  structuredCollectionSearchValues,
-} from "./site-admin-structured-collection-schema";
 import { createCollectionActions } from "./site-admin-collection-actions";
 import { SiteAdminCollectionGroupDialog, type CollectionGroupEdit, type CollectionGroupChange } from "./site-admin-collection-group-dialog";
 import { useSiteAdminDraftPersistence } from "./use-site-admin-draft-persistence";
 import { useSiteAdminSingletonDraft } from "./use-site-admin-singleton-draft";
-import { SiteAdminDraftStatus } from "./site-admin-draft-status";
+import { useSiteAdminNavigationGuard, type SiteAdminNavigationActions } from "./use-site-admin-navigation-guard";
+import { SiteAdminNavigationDialog } from "./site-admin-navigation-dialog";
+import { useSiteAdminDocumentSession, type EditableDetail } from "./use-site-admin-document-session";
+import { SiteAdminCollectionEditors } from "./site-admin-collection-editors";
+import { SiteAdminHomeEditor } from "./site-admin-home-editor";
+import { SiteAdminNowEditor } from "./site-admin-now-editor";
 import { useSiteAdminWorkspaceLocation } from "./use-site-admin-workspace-location";
 import { useSiteAdminReleaseMonitor, type ReleaseJobsPayload } from "./use-site-admin-release-monitor";
-import { clearLocalDraft, readLocalDraft, requiresRecoveryReview, type LocalDraftSnapshot as StoredLocalDraftSnapshot } from "./site-admin-draft-storage";
+import { clearLocalDraft, readLocalDraft, requiresRecoveryReview } from "./site-admin-draft-storage";
 import {
   collectionHistory as createCollectionHistory,
-  collectionPlainText,
   commitCollectionDraft,
-  groupCollectionItems,
   parseCollectionDraft,
 } from "./site-admin-collection-draft";
 import {
@@ -198,7 +181,6 @@ type ComponentsPayload = {
   usage: Record<string, unknown[]>;
 };
 
-type EditableKind = "posts" | "pages" | "components";
 
 type EditableSummary = {
   id: string;
@@ -211,17 +193,6 @@ type EditableSummary = {
   issueCount?: number;
   modifiedAt?: string | null;
   pinned?: boolean;
-};
-
-type EditableDetail = {
-  raw?: boolean;
-  kind: EditableKind;
-  id: string;
-  title: string;
-  href: string;
-  meta: string;
-  version: string;
-  source: string;
 };
 
 type EditableDetailPayload = {
@@ -238,37 +209,13 @@ type EditableDetailPayload = {
   version: string;
   source: string;
   body?: string;
-  frontmatter?: EditableFrontmatterPayload;
+  frontmatter?: Record<string, unknown>;
   frontmatterKeys?: string[];
   definition?: ComponentDefinition;
   summary?: ComponentSummary;
 };
 
-type EditableFrontmatterPayload = {
-  title?: string;
-  description?: string;
-  date?: string;
-  updated?: string;
-  draft?: boolean;
-  tags?: string[];
-  cover?: string;
-  ogImage?: string;
-};
 
-type EditableContentForm = {
-  title: string;
-  description: string;
-  date: string;
-  updated: string;
-  draft: boolean;
-  tags: string;
-  cover: string;
-  ogImage: string;
-  body: string;
-  frontmatterKeys: string[];
-};
-
-type LocalDraftSnapshot = StoredLocalDraftSnapshot<EditableContentForm>;
 
 type CreatePayload = {
   slug: string;
@@ -305,18 +252,6 @@ const DEFAULT_CREATE_BODY = "Write the post here.";
 const COMPONENT_DEFINITIONS =
   SITE_COMPONENT_DEFINITIONS as readonly ComponentDefinition[];
 
-const EMPTY_CONTENT_FORM: EditableContentForm = {
-  title: "",
-  description: "",
-  date: "",
-  updated: "",
-  draft: false,
-  tags: "",
-  cover: "",
-  ogImage: "",
-  body: "",
-  frontmatterKeys: [],
-};
 
 function dateInputFromIso(value: string | undefined): string {
   if (!value) return todayInHalifax();
@@ -368,25 +303,9 @@ function slugFromTitle(value: string) {
   );
 }
 
-function frontmatterString(value: string) {
-  return JSON.stringify(value.trim());
-}
 
-function frontmatterLine(key: string, value: string) {
-  const trimmed = value.trim();
-  return trimmed ? [`${key}: ${frontmatterString(trimmed)}`] : [];
-}
 
-function tagArrayFromText(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
 
-function tagTextFromArray(value: string[] | undefined) {
-  return (value || []).join(", ");
-}
 
 function componentDefinitionsFromPayload(
   payload: ComponentsPayload | null,
@@ -459,57 +378,7 @@ function sourceForNewContent(input: {
   return lines.join("\n");
 }
 
-function sourceForEditedContent(kind: EditableKind, form: EditableContentForm) {
-  if (kind === "components") return form.body;
-  const title = form.title.trim();
-  const tags = tagArrayFromText(form.tags);
-  const hasKey = (key: string) => form.frontmatterKeys.includes(key);
-  const lines = [
-    "---",
-    `title: ${frontmatterString(title)}`,
-    ...(kind === "posts" ? [`date: ${form.date || '\"\"'}`] : []),
-    ...(hasKey("description") || form.description.trim()
-      ? [`description: ${frontmatterString(form.description)}`]
-      : []),
-    ...(kind === "pages" && (hasKey("updated") || form.updated) && form.updated
-      ? [`updated: ${form.updated}`]
-      : []),
-    ...(kind === "posts" && (hasKey("tags") || tags.length > 0) && tags.length > 0
-      ? ["tags:", ...tags.map((tag) => `  - ${frontmatterString(tag)}`)]
-      : []),
-    ...(hasKey("cover") || form.cover.trim() ? frontmatterLine("cover", form.cover) : []),
-    ...(hasKey("ogImage") || form.ogImage.trim() ? frontmatterLine("ogImage", form.ogImage) : []),
-    ...(hasKey("draft") || form.draft ? [`draft: ${form.draft ? "true" : "false"}`] : []),
-    "---",
-    "",
-    form.body.trimEnd(),
-    "",
-  ];
-  return lines.join("\n");
-}
 
-function formFromEditablePayload(
-  kind: EditableKind,
-  id: string,
-  payload: EditableDetailPayload,
-): EditableContentForm {
-  if (kind === "components") {
-    return { ...EMPTY_CONTENT_FORM, title: payload.title || id, body: payload.source || "" };
-  }
-  const frontmatter = payload.frontmatter || {};
-  return {
-    title: frontmatter.title ?? payload.title ?? "",
-    description: frontmatter.description || payload.description || "",
-    date: frontmatter.date ?? payload.dateIso?.slice(0, 10) ?? "",
-    updated: frontmatter.updated ?? payload.updatedIso?.slice(0, 10) ?? "",
-    draft: Boolean(frontmatter.draft ?? payload.draft),
-    tags: tagTextFromArray(frontmatter.tags),
-    cover: frontmatter.cover || "",
-    ogImage: frontmatter.ogImage || "",
-    body: payload.body ?? payload.source ?? "",
-    frontmatterKeys: payload.frontmatterKeys || [],
-  };
-}
 
 function encodePathSegments(value: string) {
   return value
@@ -730,17 +599,14 @@ export function SiteAdminWebConsole({
   const [componentDropId, setComponentDropId] = useState("");
   const [componentReturnTarget, setComponentReturnTarget] =
     useState<ComponentReturnTarget | null>(null);
-  const [selected, setSelected] = useState<EditableDetail | null>(null);
-  const [sourceDraft, setSourceDraft] = useState("");
-  const [contentForm, setContentForm] =
-    useState<EditableContentForm>(EMPTY_CONTENT_FORM);
-  const [contentFormBaseline, setContentFormBaseline] = useState("");
-  const [slugDraft, setSlugDraft] = useState("");
-  const [localAutosaveAt, setLocalAutosaveAt] = useState("");
-  const [recoveredDocumentNeedsReview, setRecoveredDocumentNeedsReview] = useState(false);
-  const [contentSavedAt, setContentSavedAt] = useState("");
-  const [localDraftSnapshot, setLocalDraftSnapshot] =
-    useState<LocalDraftSnapshot | null>(null);
+  const {
+    selected, setSelected, sourceDraft, setSourceDraft, contentForm, setContentForm,
+    contentFormBaseline, setContentFormBaseline, slugDraft, setSlugDraft,
+    localAutosaveAt, setLocalAutosaveAt, recoveredDocumentNeedsReview, setRecoveredDocumentNeedsReview,
+    contentSavedAt, setContentSavedAt, localDraftSnapshot, setLocalDraftSnapshot,
+    selectionGateRef, selectionLoadingRef, selectedSourceDraftRef,
+    updateContentField,
+  } = useSiteAdminDocumentSession();
   const [createKind, setCreateKind] = useState<"posts" | "pages">("posts");
   const [createSlug, setCreateSlug] = useState("");
   const [createTitle, setCreateTitle] = useState("Untitled Post");
@@ -771,20 +637,19 @@ export function SiteAdminWebConsole({
   const [documentFocusRequest, setDocumentFocusRequest] = useState(0);
   const savedContentRevisionRef = useRef(0);
   const [settingsDirty, setSettingsDirty] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [announcementDirty, setAnnouncementDirty] = useState(false);
   const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const settingsNavigationRef = useRef<SiteAdminNavigationActions | null>(null);
+  const announcementNavigationRef = useRef<SiteAdminNavigationActions | null>(null);
+  const navigationSaveRef = useRef<() => Promise<boolean>>(async () => false);
+  const discardEditorDraftsRef = useRef<() => void>(() => {});
+  const discardActiveDraftsRef = useRef<() => void>(() => {});
   const [singletonConflict, setSingletonConflict] = useState<(SiteAdminConflict & { kind: "home" | "now"; version: string }) | null>(null);
   const [releaseJobs, setReleaseJobs] = useState<SiteAdminReleaseJobLike[] | null>(
     null,
   );
   const [releaseJobsError, setReleaseJobsError] = useState("");
-  // One token per opened document. Every await in the load/save paths rechecks
-  // it so a response for document A can never be written into document B.
-  const selectionGateRef = useRef(createSelectionGate());
-  // The document whose detail GET is in flight, so a repeat click on the same
-  // row is dropped without also dropping a click on a different row.
-  const selectionLoadingRef = useRef("");
-  const selectedSourceDraftRef = useRef("");
   const shellRef = useRef<HTMLElement>(null);
   const chromeRef = useRef<HTMLElement>(null);
   const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number; expanded: string[] }>());
@@ -803,7 +668,7 @@ export function SiteAdminWebConsole({
   const rawPageItems = useMemo(() => contentItems({ kind: "pages", pages, posts, components }), [components, pages, posts]);
   const rawPostItems = useMemo(() => contentItems({ kind: "posts", pages, posts, components }), [components, pages, posts]);
   const { documentKind, setDocumentKind, showCollectionIndex, setShowCollectionIndex, contentSearch, setContentSearch, contentTask, setContentTask, setCollapsedPageSlugs, contentPins, taskMetadata, pageItems, postItems, visibleItems, globalSearchItems, pageTree, collapsedPageSlugSet } = useSiteAdminContentLibrary({ actor, rawPages: rawPageItems, rawPosts: rawPostItems, review: publicationReview, pageTreeOrder });
-  const { collectionHistory, setCollectionHistory, collectionBaseline, setCollectionBaseline, selectedComponentName, collectionDraft, collectionDraftRef, collectionSource, selectedNewsDraft, selectedTeachingDraft, selectedWorksDraft, selectedPublicationsDraft, selectedComponentIssues, componentBaselineFingerprints, componentSaveProblems, componentSaveBlocked, checkpointCollectionEdit, undo: undoCollection, redo: redoCollection } = useSiteAdminCollectionDraft(selected, sourceDraft);
+  const { collectionHistory, setCollectionHistory, collectionBaseline, setCollectionBaseline, selectedComponentName, collectionDraft, collectionDraftRef, collectionSource, selectedTeachingDraft, selectedComponentIssues, componentBaselineFingerprints, componentSaveProblems, componentSaveBlocked, checkpointCollectionEdit, undo: undoCollection, redo: redoCollection } = useSiteAdminCollectionDraft(selected, sourceDraft);
 
   const refreshSummaryOnly = useCallback(async () => {
     try {
@@ -948,7 +813,6 @@ export function SiteAdminWebConsole({
   const selectedComponentDefinition = selectedComponentName
     ? componentDefinitions.find((definition) => definition.name === selectedComponentName) || null
     : null;
-  const selectedIsNewsComponent = selectedComponentName === "news";
   const release = summary?.release;
   const source = summary?.source;
   const activityReleaseJob = useMemo(
@@ -1010,8 +874,18 @@ export function SiteAdminWebConsole({
   const homeDirty = Boolean(home && `${homeTitle}\n${homeBody}` !== homeBaseline);
   const nowComparable = `${nowText}\n${nowContext}\n${nowLocation}\n${nowDate}`;
   const nowDirty = Boolean(now && nowComparable !== nowBaseline);
+  const createDirty = contentMode === "create" && Boolean(createSlug || createDescription || createVisible ||
+    createTitle !== (createKind === "posts" ? "Untitled Post" : "Untitled Page") ||
+    createBody !== (createKind === "posts" ? "Write the post here." : "Write the page here.") || createDate !== todayInHalifax());
   const hasUnsavedChanges =
-    selectedDirty || homeDirty || nowDirty || settingsDirty || announcementDirty;
+    selectedDirty || homeDirty || nowDirty || settingsDirty || announcementDirty || createDirty;
+  const navigation = useSiteAdminNavigationGuard({
+    dirty: hasUnsavedChanges,
+    saving: saving || settingsSaving || announcementSaving,
+    save: () => navigationSaveRef.current(),
+    discard: () => discardActiveDraftsRef.current(),
+    error,
+  });
   const slugDirty = Boolean(
     selected &&
       (selected.kind === "posts" || selected.kind === "pages") &&
@@ -1188,7 +1062,7 @@ export function SiteAdminWebConsole({
   }), [selectedSourceDraft, selectedIsStructured, contentForm, collectionDraft, selected?.version]);
   useSiteAdminDraftPersistence({
     kind: `${actor}:${selected?.kind || ""}`, id: selected?.id || "", dirty: selectedDirty, snapshot: recoverySnapshot,
-    autosaveEnabled: area === "content" && contentMode !== "create" && !selected?.raw && !saving && !conflict && !componentSaveBlocked && documentSaveIssues.length === 0 && !recoveredDocumentNeedsReview,
+    autosaveEnabled: area === "content" && contentMode !== "create" && !navigation.pending && !selected?.raw && !saving && !conflict && !componentSaveBlocked && documentSaveIssues.length === 0 && !recoveredDocumentNeedsReview,
     onSave: () => saveSelectedContentRef.current({ quiet: true }),
     onRecoverySaved: (at) => { setLocalAutosaveAt(at); setLocalDraftSnapshot(null); },
     onRecoveryFailure: () => setWarning("This browser could not keep a recovery copy. Save the draft before leaving."),
@@ -1202,16 +1076,28 @@ export function SiteAdminWebConsole({
     kind: `${actor}:home`, id: "home", ready: Boolean(home), dirty: homeDirty,
     source: JSON.stringify(homeForm), form: homeForm, baseVersion: home?.sourceVersion.fileSha || "",
     enabled: area === "home" && !loading && !saving && !singletonConflict,
+    pauseAutosave: navigation.pending,
     onSave: () => saveHome(), onRestore: (form) => { setHomeTitle(form.title); setHomeBody(form.bodyMdx); },
   });
   const nowPersistence = useSiteAdminSingletonDraft({
     kind: `${actor}:now`, id: "now", ready: Boolean(now), dirty: nowDirty,
     source: JSON.stringify(nowForm), form: nowForm, baseVersion: now?.sourceVersion.fileSha || "",
     enabled: area === "now" && !loading && !saving && !singletonConflict && Boolean(nowText.trim()),
+    pauseAutosave: navigation.pending,
     onSave: () => saveNow(), onRestore: (form) => { setNowText(form.text); setNowContext(form.context); setNowLocation(form.location); setNowDate(form.date); },
   });
   saveHomeRef.current = async () => { await homePersistence.save(); };
   saveNowRef.current = async () => { await nowPersistence.save(); };
+  navigationSaveRef.current = async () => {
+    if (area === "settings") return await settingsNavigationRef.current?.save() ?? false;
+    if (area === "announcements") return await announcementNavigationRef.current?.save() ?? false;
+    if (area === "home") return homePersistence.save();
+    if (area === "now") return nowPersistence.save();
+    if (contentMode === "create") return createContent();
+    return await saveSelectedContentRef.current() === true;
+  };
+  discardEditorDraftsRef.current = discardEditorDrafts;
+  discardActiveDraftsRef.current = discardActiveDrafts;
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -1227,7 +1113,7 @@ export function SiteAdminWebConsole({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
       event.preventDefault();
-      if (saving) return;
+      if (saving || navigation.pending) return;
       if (area === "home" && homeDirty) {
         void saveHomeRef.current();
       } else if (area === "now" && nowDirty) {
@@ -1238,19 +1124,15 @@ export function SiteAdminWebConsole({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [area, homeDirty, nowDirty, saving, selectedDirty]);
+  }, [area, homeDirty, nowDirty, saving, selectedDirty, navigation.pending]);
 
   function toggleSelectedVisibility() {
     setContentForm((current) => ({ ...current, draft: !current.draft }));
   }
 
-  function confirmDiscardChanges(): boolean {
-    if (((area === "home" || area === "now") && saving) || announcementSaving) {
-      setWarning("A draft save is in progress. Please wait before switching pages.");
-      return false;
-    }
-    if (!hasUnsavedChanges) return true;
-    return window.confirm("You have unsaved edits. Discard them and continue?");
+  function setVersionRestoring(active: boolean) {
+    setSaving(active);
+    setBlockingMutation(active);
   }
 
   /**
@@ -1259,6 +1141,8 @@ export function SiteAdminWebConsole({
    * after the author said to throw them away.
    */
   function discardEditorDrafts() {
+    settingsNavigationRef.current?.discard();
+    announcementNavigationRef.current?.discard();
     if (selected && selectedDirty) clearLocalDraft(`${actor}:${selected.kind}`, selected.id);
     if (homeDirty) { homePersistence.dismiss(); homePersistence.resume(); }
     if (nowDirty) { nowPersistence.dismiss(); nowPersistence.resume(); }
@@ -1283,16 +1167,42 @@ export function SiteAdminWebConsole({
     setNowDate(dateInputFromIso(now?.data.current.updatedAt));
   }
 
-  function changeArea(nextArea: Area) {
+  function discardActiveDrafts() {
+    settingsNavigationRef.current?.discard();
+    announcementNavigationRef.current?.discard();
+    if (selected && selectedDirty) {
+      clearLocalDraft(`${actor}:${selected.kind}`, selected.id);
+      setSourceDraft(selected.source);
+      const form = formFromEditablePayload(selected.kind, selected.id, selected);
+      setContentForm(form);
+      setContentFormBaseline(selected.raw || selected.kind === "components" ? selected.source : sourceForEditedContent(selected.kind, form));
+      const draft = selected.kind === "components" && !selected.raw && isSiteComponentName(selected.id) ? parseCollectionDraft(selected.id, selected.source) : null;
+      setCollectionHistory(draft ? createCollectionHistory(draft) : null);
+      setCollectionBaseline(draft ? JSON.stringify(draft) : "");
+      setLocalDraftSnapshot(null); setRecoveredDocumentNeedsReview(false);
+    }
+    if (homeDirty) {
+      homePersistence.dismiss(); homePersistence.resume();
+      setHomeTitle(home?.data.title || ""); setHomeBody(home?.data.bodyMdx || "");
+    }
+    if (nowDirty) {
+      nowPersistence.dismiss(); nowPersistence.resume();
+      setNowText(now?.data.current.text || ""); setNowContext(now?.data.current.context || "");
+      setNowLocation(now?.data.current.location || ""); setNowDate(dateInputFromIso(now?.data.current.updatedAt));
+    }
+    if (createDirty) setContentMode("browse");
+  }
+
+  async function changeArea(nextArea: Area) {
     if (nextArea === area) {
       setInspectorOpen(false);
       return;
     }
-    if (!confirmDiscardChanges()) return;
+    if (!await navigation.authorize()) return;
     if (announcementDirty) clearLocalDraft(`${actor}:announcements`, "active");
     // A dirty settings draft is discarded by unmounting its panel; wiping the
     // document editor for it would throw away a selection that was never dirty.
-    if (selectedDirty || homeDirty || nowDirty) discardEditorDrafts();
+    if (selectedDirty || homeDirty || nowDirty) discardEditorDraftsRef.current();
     setArea(nextArea);
     setInspectorOpen(false);
   }
@@ -1323,7 +1233,7 @@ export function SiteAdminWebConsole({
     const form = formFromEditablePayload(nextKind, id, detail);
     setContentForm(form);
     const baseline =
-      nextKind === "posts" || nextKind === "pages"
+      !detail.raw && (nextKind === "posts" || nextKind === "pages")
         ? sourceForEditedContent(nextKind, form)
         : next.source;
     setContentFormBaseline(baseline);
@@ -1354,11 +1264,11 @@ export function SiteAdminWebConsole({
     if (!discardConfirmed && area === "content" && selected?.kind === nextKind && selected.id === id) return true;
     if (
       (area !== "content" || (selected && (selected.kind !== nextKind || selected.id !== id))) &&
-      !discardConfirmed && !confirmDiscardChanges()
+      !discardConfirmed && !await navigation.authorize()
     ) {
       return false;
     }
-    if (area !== "content" && hasUnsavedChanges) discardEditorDrafts();
+    if (area !== "content" && hasUnsavedChanges) discardEditorDraftsRef.current();
     rememberCollectionView();
     // A double-click used to fire two detail GETs whose responses could land
     // out of order. Only the repeat click is dropped: opening a *different*
@@ -1454,7 +1364,7 @@ export function SiteAdminWebConsole({
       setContentFormBaseline(
         newerLocalEdits
           ? sourceAtStart
-          : selectedAtStart.kind === "posts" || selectedAtStart.kind === "pages"
+          : !detail.raw && (selectedAtStart.kind === "posts" || selectedAtStart.kind === "pages")
             ? sourceForEditedContent(selectedAtStart.kind, form)
             : next.source,
       );
@@ -1648,7 +1558,7 @@ export function SiteAdminWebConsole({
         setError("This local autosave cannot be restored into the structured editor.");
         return;
       }
-      setContentForm(localDraftSnapshot.form);
+      setContentForm(restoreDocumentForm(selected.kind, localDraftSnapshot.form, localDraftSnapshot.source));
     } else {
       setSourceDraft(localDraftSnapshot.source);
       if (selected.kind === "components" && isSiteComponentName(selected.id)) {
@@ -1663,7 +1573,9 @@ export function SiteAdminWebConsole({
     setNotice("Local autosave restored.");
   }
 
-  function beginCreate(nextKind?: "posts" | "pages") {
+  async function beginCreate(nextKind?: "posts" | "pages") {
+    if (!await navigation.authorize()) return;
+    discardEditorDraftsRef.current();
     const resolvedKind = nextKind ?? documentKind;
     setContentMode("create");
     setCreateKind(resolvedKind);
@@ -1675,11 +1587,11 @@ export function SiteAdminWebConsole({
     setCreateVisible(false);
   }
 
-  async function createContent() {
+  async function createContent(): Promise<boolean> {
     const slug = createSlug.trim() || slugFromTitle(createTitle);
     if (!slug) {
       setError("Slug is required.");
-      return;
+      return false;
     }
     setSaving(true);
     setError("");
@@ -1698,7 +1610,9 @@ export function SiteAdminWebConsole({
         }),
       });
       const listsRefreshed = await refreshLists();
-      await selectContent(createKind, slug);
+      // The POST is committed. Do not offer to create it again if the detail read fails.
+      setContentMode("browse");
+      await selectContent(createKind, slug, true);
       setContentSavedAt(new Date().toISOString());
       recordSavedContent();
       await refreshSummaryOnly();
@@ -1714,8 +1628,10 @@ export function SiteAdminWebConsole({
       if (!listsRefreshed) {
         setWarning("Created. The content lists could not be refreshed — use Refresh to reload them.");
       }
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1944,20 +1860,11 @@ export function SiteAdminWebConsole({
     }
   }
 
-  const {
-    addNewsEntry, addNewsDivider, updateNewsItem, deleteNewsItem,
-    duplicateNewsItem, moveSelectedNewsItem,
-    addTeachingEntry, updateTeachingTerm, updateTeachingItem, deleteTeachingItem,
-    duplicateTeachingItem, moveSelectedTeachingItem,
-    addWorksEntry, moveWorksGroup, updateWorksItem, deleteWorksItem,
-    duplicateWorksItem, moveSelectedWorksItem,
-    addPublicationEntry, updatePublicationYear, updatePublicationItem, deletePublicationItem,
-    duplicatePublicationItem, moveSelectedPublicationItem,
-    reorderSelectedComponentItems,
-  } = createCollectionActions({
+  const collectionActions = createCollectionActions({
     setCollectionHistory, setComponentExpandedIds, setComponentSearch, selectedComponentName, componentSearch,
     teachingTerm: selectedTeachingDraft?.items[0]?.term || "",
   });
+  const { addTeachingEntry, updateTeachingTerm, moveWorksGroup, updatePublicationYear, reorderSelectedComponentItems } = collectionActions;
 
   function handleComponentDragStart(event: DragEvent<HTMLElement>, id: string) {
     if (componentSearch.trim()) {
@@ -2083,10 +1990,10 @@ export function SiteAdminWebConsole({
         }
         return true;
       }
-      if (!confirmDiscardChanges()) return false;
+      if (!await navigation.authorize()) return false;
       rememberCollectionView();
       if (next.area === "content" && next.kind && next.id) return selectContent(next.kind as EditableKind, next.id, true);
-      discardEditorDrafts();
+      discardEditorDraftsRef.current();
       selectionGateRef.current.open();
       setArea(next.area as Area);
       setShowCollectionIndex(next.view === "collections");
@@ -2156,416 +2063,6 @@ export function SiteAdminWebConsole({
     publishDisabled: saving || releaseSaving || releaseIsRunning || componentSaveBlocked || loading || Boolean(conflict) || !contentPublishActionForBrowser() || (!selectedDirty && publishBlocked),
   };
 
-  function renderNewsEditor(draft: NewsComponentDraft) {
-    const searching = Boolean(componentSearch.trim());
-    const items = draft.items
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => {
-        if (item.type === "divider") return !searching;
-        return matchesComponentItem(
-          componentSearch,
-          structuredCollectionSearchValues(item, NEWS_ENTRY_FIELDS),
-        );
-      });
-
-    return (
-      <StructuredCollectionEditor
-        key="news"
-        {...collectionEditorActions}
-        title="News entries"
-        description="Edit dated updates directly. The public News page keeps using the same reusable collection."
-        count={draft.items.filter((item) => item.type === "entry").length}
-        entryLabel="updates"
-        addLabel="Add update"
-        onAdd={addNewsEntry}
-        secondaryLabel="Add divider"
-        onSecondary={addNewsDivider}
-        search={componentSearch}
-        onSearchChange={setComponentSearch}
-        grouping={componentGrouping}
-        onGroupingChange={setComponentGrouping}
-        visibleEntryIds={items
-          .filter(({ item }) => item.type === "entry")
-          .map(({ item }) => item.id)}
-        expandedEntryIds={componentExpandedIds}
-        onExpandedEntryIdsChange={setComponentExpandedIds}
-        issueCount={selectedComponentIssues.length}
-        onReviewIssues={() => reviewComponentIssue(1)}
-        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
-        onReviewNextIssue={() => reviewComponentIssue(1)}
-        source={{
-          fileName: `${selected?.id || "news"}.mdx`,
-          label: `${selected?.title || "News"} MDX source`,
-          value: collectionSource,
-          onChange: applyCollectionSource,
-          disabled: blockingMutation,
-        }}
-      >
-        {items.length === 0 ? (
-          <StructuredCollectionEmpty noun="updates" searching={searching} />
-        ) : null}
-        {items.map(({ item, index }, visibleIndex) => {
-          const previousItem = items[visibleIndex - 1]?.item;
-          const groupLabel =
-            item.type === "entry" ? item.date.slice(0, 4) || "Undated" : "";
-          const previousGroup =
-            previousItem?.type === "entry"
-              ? previousItem.date.slice(0, 4) || "Undated"
-              : "";
-          const clearDragState = () => {
-            setComponentDragId("");
-            setComponentDropId("");
-          };
-          if (item.type === "divider") {
-            return (
-              <StructuredCollectionDivider
-                key={item.id}
-                dragging={componentDragId === item.id}
-                dropTarget={componentDropId === item.id}
-                dragDisabled={searching}
-                index={index}
-                count={draft.items.length}
-                onMove={(direction) => moveSelectedNewsItem(item.id, direction)}
-                onDelete={() => deleteNewsItem(item.id)}
-                onDragStart={(event) => handleComponentDragStart(event, item.id)}
-                onDragEnd={clearDragState}
-                onDragOver={(event) => handleComponentDragOver(event, item.id)}
-                onDrop={(event) => handleComponentDrop(event, item.id)}
-              />
-            );
-          }
-          const issues = issuesForComponentEntry(item.id);
-          return (
-            <StructuredCollectionEntry
-              key={item.id}
-              id={item.id}
-              groupLabel={groupLabel}
-              previousGroupLabel={previousGroup}
-              grouping={componentGrouping}
-              title={collectionPlainText(item.body) || "Untitled update"}
-              detail={item.date || "No date"}
-              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
-              issues={issues}
-              expanded={componentExpandedIds.includes(item.id)}
-              dragging={componentDragId === item.id}
-              dropTarget={componentDropId === item.id}
-              dragDisabled={searching}
-              index={index}
-              count={draft.items.length}
-              onToggle={() => toggleComponentEntry(item.id)}
-              onMove={(direction) => moveSelectedNewsItem(item.id, direction)}
-              onDuplicate={() => duplicateNewsItem(item.id)}
-              onDelete={() => deleteNewsItem(item.id)}
-              onDragStart={(event) => handleComponentDragStart(event, item.id)}
-              onDragEnd={clearDragState}
-              onDragOver={(event) => handleComponentDragOver(event, item.id)}
-              onDrop={(event) => handleComponentDrop(event, item.id)}
-            >
-              <StructuredCollectionEntryForm
-                item={item}
-                fields={NEWS_ENTRY_FIELDS}
-                issues={issues}
-                disabled={blockingMutation}
-                onChange={updateNewsItem}
-              />
-            </StructuredCollectionEntry>
-          );
-        })}
-      </StructuredCollectionEditor>
-    );
-  }
-
-  function renderTeachingEditor(draft: TeachingComponentDraft) {
-    const searching = Boolean(componentSearch.trim());
-    const ordered = componentGrouping === "auto"
-      ? groupCollectionItems(draft.items, (item) => item.term) : draft.items;
-    const items = ordered
-      .map((item) => ({ item, index: draft.items.findIndex((entry) => entry.id === item.id) }))
-      .filter(({ item }) =>
-        matchesComponentItem(
-          componentSearch,
-          structuredCollectionSearchValues(item, TEACHING_ENTRY_FIELDS),
-        ),
-      );
-    return (
-      <StructuredCollectionEditor
-        key="teaching"
-        {...collectionEditorActions}
-        title="Teaching rows"
-        description="Edit course rows directly. The MDX source remains available under Advanced."
-        count={draft.items.length}
-        entryLabel="courses"
-        addLabel="Add course"
-        onAdd={() => addCourseToTerm(draft.items.find((item) => componentExpandedIds.includes(item.id))?.term || draft.items[0]?.term || "")}
-        secondaryLabel="New term"
-        onSecondary={() => setGroupEdit({ kind: "teaching", term: null, role: "", period: "", count: 0 })}
-        search={componentSearch}
-        onSearchChange={setComponentSearch}
-        grouping={componentGrouping}
-        onGroupingChange={setComponentGrouping}
-        visibleEntryIds={items.map(({ item }) => item.id)}
-        expandedEntryIds={componentExpandedIds}
-        onExpandedEntryIdsChange={setComponentExpandedIds}
-        issueCount={selectedComponentIssues.length}
-        onReviewIssues={() => reviewComponentIssue(1)}
-        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
-        onReviewNextIssue={() => reviewComponentIssue(1)}
-        source={{
-          fileName: `${selected?.id || "teaching"}.mdx`,
-          label: `${selected?.title || "Teaching"} MDX source`,
-          value: collectionSource,
-          onChange: applyCollectionSource,
-          disabled: blockingMutation,
-        }}
-      >
-        {items.length === 0 ? (
-          <StructuredCollectionEmpty noun="courses" searching={searching} />
-        ) : null}
-        {items.map(({ item, index }, visibleIndex) => {
-          const issues = issuesForComponentEntry(item.id);
-          const groupLabel = item.term || "No term";
-          const previousTerm = items[visibleIndex - 1]?.item.term || "";
-          const previousGroup = previousTerm;
-          return (
-            <StructuredCollectionEntry
-              key={item.id}
-              id={item.id}
-              groupLabel={groupLabel}
-              previousGroupLabel={previousGroup}
-              grouping={componentGrouping}
-              title={item.courseCode || item.courseName || item.term || "Untitled course"}
-              detail={item.term || item.period || "Course"}
-              description={[item.courseName, item.role].filter(Boolean).join(" · ")}
-              onAddToGroup={() => addCourseToTerm(item.term)}
-              groupCount={draft.items.filter((entry) => entry.term === item.term).length}
-              onEditGroup={() => setGroupEdit({ kind: "teaching", term: item.term, ...(teachingDefaultsRef.current.get(item.term) || { role: item.role, period: item.period }), count: draft.items.filter((entry) => entry.term === item.term).length })}
-              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
-              issues={issues}
-              expanded={componentExpandedIds.includes(item.id)}
-              dragging={componentDragId === item.id}
-              dropTarget={componentDropId === item.id}
-              dragDisabled={searching}
-              index={index}
-              count={draft.items.length}
-              onToggle={() => toggleComponentEntry(item.id)}
-              onMove={(direction) => moveSelectedTeachingItem(item.id, direction)}
-              onDuplicate={() => duplicateTeachingItem(item.id)}
-              onDelete={() => deleteTeachingItem(item.id)}
-              onDragStart={(event) => handleComponentDragStart(event, item.id)}
-              onDragEnd={() => {
-                setComponentDragId("");
-                setComponentDropId("");
-              }}
-              onDragOver={(event) => handleComponentDragOver(event, item.id)}
-              onDrop={(event) => handleComponentDrop(event, item.id)}
-            >
-              <StructuredCollectionEntryForm
-                item={item}
-                fields={TEACHING_ENTRY_FIELDS}
-                issues={issues}
-                disabled={blockingMutation}
-                onChange={updateTeachingItem}
-              />
-            </StructuredCollectionEntry>
-          );
-        })}
-      </StructuredCollectionEditor>
-    );
-  }
-
-  function renderWorksEditor(draft: WorksComponentDraft) {
-    const searching = Boolean(componentSearch.trim());
-    const ordered = componentGrouping === "auto"
-      ? groupCollectionItems(draft.items, (item) => item.category) : draft.items;
-    const items = ordered
-      .map((item) => ({ item, index: draft.items.findIndex((entry) => entry.id === item.id) }))
-      .filter(({ item }) =>
-        matchesComponentItem(
-          componentSearch,
-          structuredCollectionSearchValues(item, WORKS_ENTRY_FIELDS),
-        ),
-      );
-    return (
-      <StructuredCollectionEditor
-        key="works"
-        {...collectionEditorActions}
-        title="Work rows"
-        description="Edit roles, affiliations, periods, and body text without touching MDX tags."
-        count={draft.items.length}
-        entryLabel="roles"
-        addLabel="Add role"
-        onAdd={() => addWorksEntry()}
-        search={componentSearch}
-        onSearchChange={setComponentSearch}
-        grouping={componentGrouping}
-        onGroupingChange={setComponentGrouping}
-        visibleEntryIds={items.map(({ item }) => item.id)}
-        expandedEntryIds={componentExpandedIds}
-        onExpandedEntryIdsChange={setComponentExpandedIds}
-        issueCount={selectedComponentIssues.length}
-        onReviewIssues={() => reviewComponentIssue(1)}
-        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
-        onReviewNextIssue={() => reviewComponentIssue(1)}
-        source={{
-          fileName: `${selected?.id || "works"}.mdx`,
-          label: `${selected?.title || "Works"} MDX source`,
-          value: collectionSource,
-          onChange: applyCollectionSource,
-          disabled: blockingMutation,
-        }}
-      >
-        {items.length === 0 ? (
-          <StructuredCollectionEmpty noun="roles" searching={searching} />
-        ) : null}
-        {items.map(({ item, index }, visibleIndex) => {
-          const issues = issuesForComponentEntry(item.id);
-          const groupLabel = item.category === "passed" ? "Past" : "Recent";
-          const previousItem = items[visibleIndex - 1]?.item;
-          const previousGroup = previousItem
-            ? previousItem.category === "passed"
-              ? "Past"
-              : "Recent"
-            : "";
-          return (
-            <StructuredCollectionEntry
-              key={item.id}
-              id={item.id}
-              groupLabel={groupLabel}
-              previousGroupLabel={previousGroup}
-              grouping={componentGrouping}
-              title={item.role || item.affiliation || "Untitled work"}
-              detail={item.period || item.category}
-              description={[item.affiliation, item.location].filter(Boolean).join(" · ")}
-              onAddToGroup={() => addWorksEntry(item.category)}
-              groupCount={draft.items.filter((entry) => entry.category === item.category).length}
-              onEditGroup={() => setGroupEdit({ kind: "works", category: item.category, count: draft.items.filter((entry) => entry.category === item.category).length })}
-              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
-              issues={issues}
-              expanded={componentExpandedIds.includes(item.id)}
-              dragging={componentDragId === item.id}
-              dropTarget={componentDropId === item.id}
-              dragDisabled={searching}
-              index={index}
-              count={draft.items.length}
-              onToggle={() => toggleComponentEntry(item.id)}
-              onMove={(direction) => moveSelectedWorksItem(item.id, direction)}
-              onDuplicate={() => duplicateWorksItem(item.id)}
-              onDelete={() => deleteWorksItem(item.id)}
-              onDragStart={(event) => handleComponentDragStart(event, item.id)}
-              onDragEnd={() => {
-                setComponentDragId("");
-                setComponentDropId("");
-              }}
-              onDragOver={(event) => handleComponentDragOver(event, item.id)}
-              onDrop={(event) => handleComponentDrop(event, item.id)}
-            >
-              <StructuredCollectionEntryForm
-                item={item}
-                fields={WORKS_ENTRY_FIELDS}
-                issues={issues}
-                disabled={blockingMutation}
-                onChange={updateWorksItem}
-              />
-            </StructuredCollectionEntry>
-          );
-        })}
-      </StructuredCollectionEditor>
-    );
-  }
-
-  function renderPublicationsEditor(draft: PublicationsComponentDraft) {
-    const searching = Boolean(componentSearch.trim());
-    const ordered = componentGrouping === "auto"
-      ? groupCollectionItems(draft.items, (item) => item.year) : draft.items;
-    const items = ordered
-      .map((item) => ({ item, index: draft.items.findIndex((entry) => entry.id === item.id) }))
-      .filter(({ item }) =>
-        matchesComponentItem(
-          componentSearch,
-          structuredCollectionSearchValues(item, PUBLICATION_ENTRY_FIELDS),
-        ),
-      );
-    return (
-      <StructuredCollectionEditor
-        key="publications"
-        {...collectionEditorActions}
-        title="Publication rows"
-        description="Edit titles, authors, venue, links, and labels directly. Advanced JSON remains preserved."
-        count={draft.items.length}
-        entryLabel="publications"
-        addLabel="Add publication"
-        onAdd={() => addPublicationEntry(draft.items.find((item) => componentExpandedIds.includes(item.id))?.year || undefined)}
-        search={componentSearch}
-        onSearchChange={setComponentSearch}
-        grouping={componentGrouping}
-        onGroupingChange={setComponentGrouping}
-        visibleEntryIds={items.map(({ item }) => item.id)}
-        expandedEntryIds={componentExpandedIds}
-        onExpandedEntryIdsChange={setComponentExpandedIds}
-        issueCount={selectedComponentIssues.length}
-        onReviewIssues={() => reviewComponentIssue(1)}
-        onReviewPreviousIssue={() => reviewComponentIssue(-1)}
-        onReviewNextIssue={() => reviewComponentIssue(1)}
-        source={{
-          fileName: `${selected?.id || "publications"}.mdx`,
-          label: `${selected?.title || "Publications"} MDX source`,
-          value: collectionSource,
-          onChange: applyCollectionSource,
-          disabled: blockingMutation,
-        }}
-      >
-        {items.length === 0 ? (
-          <StructuredCollectionEmpty noun="publications" searching={searching} />
-        ) : null}
-        {items.map(({ item, index }, visibleIndex) => {
-          const issues = issuesForComponentEntry(item.id);
-          const previousGroup = items[visibleIndex - 1]?.item.year || "";
-          return (
-            <StructuredCollectionEntry
-              key={item.id}
-              id={item.id}
-              groupLabel={item.year || "No year"}
-              previousGroupLabel={previousGroup}
-              grouping={componentGrouping}
-              title={item.title || "Untitled publication"}
-              detail={item.year || "Publication"}
-              description={(item.authors || item.authorsRich?.map((author) => author.name) || []).join(", ")}
-              onAddToGroup={() => addPublicationEntry(item.year)}
-              groupCount={draft.items.filter((entry) => entry.year === item.year).length}
-              onEditGroup={() => setGroupEdit({ kind: "publications", year: item.year, count: draft.items.filter((entry) => entry.year === item.year).length })}
-              state={deriveComponentEntryState(componentBaselineFingerprints, item)}
-              issues={issues}
-              expanded={componentExpandedIds.includes(item.id)}
-              dragging={componentDragId === item.id}
-              dropTarget={componentDropId === item.id}
-              dragDisabled={searching}
-              index={index}
-              count={draft.items.length}
-              onToggle={() => toggleComponentEntry(item.id)}
-              onMove={(direction) => moveSelectedPublicationItem(item.id, direction)}
-              onDuplicate={() => duplicatePublicationItem(item.id)}
-              onDelete={() => deletePublicationItem(item.id)}
-              onDragStart={(event) => handleComponentDragStart(event, item.id)}
-              onDragEnd={() => {
-                setComponentDragId("");
-                setComponentDropId("");
-              }}
-              onDragOver={(event) => handleComponentDragOver(event, item.id)}
-              onDrop={(event) => handleComponentDrop(event, item.id)}
-            >
-              <StructuredCollectionEntryForm
-                item={item}
-                fields={PUBLICATION_ENTRY_FIELDS}
-                issues={issues}
-                disabled={blockingMutation}
-                onChange={updatePublicationItem}
-              />
-            </StructuredCollectionEntry>
-          );
-        })}
-      </StructuredCollectionEditor>
-    );
-  }
 
   async function selectManagedComponent(
     definition: ComponentDefinition,
@@ -2609,8 +2106,8 @@ export function SiteAdminWebConsole({
     if (opened) setComponentReturnTarget(null);
   }
 
-  function openDocumentKind(nextKind: "posts" | "pages") {
-    if (!confirmDiscardChanges()) return;
+  async function openDocumentKind(nextKind: "posts" | "pages") {
+    if (!await navigation.authorize()) return;
     rememberCollectionView();
     if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, task: contentTask, scroll: window.scrollY });
     setArea("content");
@@ -2642,8 +2139,8 @@ export function SiteAdminWebConsole({
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top: scroll })));
   }
 
-  function closeSelectedContent() {
-    if (!confirmDiscardChanges()) return false;
+  async function closeSelectedContent() {
+    if (!await navigation.authorize()) return false;
     rememberCollectionView();
     selectionGateRef.current.open();
     selectionLoadingRef.current = "";
@@ -2673,9 +2170,9 @@ export function SiteAdminWebConsole({
     return true;
   }
 
-  function openCollectionIndex() {
+  async function openCollectionIndex() {
     if (!selected) documentViewsRef.current.set(showCollectionIndex ? "collections" : documentKind, { search: contentSearch, task: contentTask, scroll: window.scrollY });
-    if (!closeSelectedContent()) return;
+    if (!await closeSelectedContent()) return;
     setArea("content");
     setShowCollectionIndex(true);
     setContentSearch("");
@@ -3068,7 +2565,7 @@ export function SiteAdminWebConsole({
             <h1 className={styles.title}>{areaTitle}</h1>
           </div>
           <div className={styles.heroActions}>
-            <Button onClick={() => { if (confirmDiscardChanges()) { if (hasUnsavedChanges) discardEditorDrafts(); void refreshAll(); } }} variant="subtle" size="sm" disabled={loading || saving}>
+            <Button onClick={async () => { if (await navigation.authorize()) { discardEditorDraftsRef.current(); void refreshAll(); } }} variant="subtle" size="sm" disabled={loading || saving}>
               {loading ? "Refreshing" : "Refresh"}
             </Button>
             <Button href="/" external variant="ghost" size="sm">
@@ -3273,12 +2770,7 @@ export function SiteAdminWebConsole({
                           aria-invalid={documentIssues.some((issue) => issue.field === "title")}
                           aria-describedby={documentIssues.some((issue) => issue.field === "title") ? "document-title-problem" : undefined}
                           value={contentForm.title}
-                          onChange={(event) =>
-                            setContentForm((current) => ({
-                              ...current,
-                              title: event.target.value,
-                            }))
-                          }
+                          onChange={(event) => updateContentField("title", event.target.value)}
                         />
                         {documentIssues.find((issue) => issue.field === "title") ? <small id="document-title-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "title")?.message}</small> : null}
                       </label>
@@ -3369,14 +2861,20 @@ export function SiteAdminWebConsole({
                   </>
                 ) : (
                   <>
-                    {selectedIsNewsComponent && selectedNewsDraft ? (
-                      renderNewsEditor(selectedNewsDraft)
-                    ) : selectedTeachingDraft ? (
-                      renderTeachingEditor(selectedTeachingDraft)
-                    ) : selectedWorksDraft ? (
-                      renderWorksEditor(selectedWorksDraft)
-                    ) : selectedPublicationsDraft ? (
-                      renderPublicationsEditor(selectedPublicationsDraft)
+                    {collectionDraft ? (
+                      <SiteAdminCollectionEditors
+                        draft={collectionDraft} actions={collectionActions} collectionEditorActions={collectionEditorActions}
+                        componentSearch={componentSearch} setComponentSearch={setComponentSearch}
+                        componentGrouping={componentGrouping} setComponentGrouping={setComponentGrouping}
+                        componentExpandedIds={componentExpandedIds} setComponentExpandedIds={setComponentExpandedIds}
+                        selectedComponentIssues={selectedComponentIssues} reviewComponentIssue={reviewComponentIssue}
+                        selected={selected} collectionSource={collectionSource} applyCollectionSource={applyCollectionSource}
+                        blockingMutation={blockingMutation} componentDragId={componentDragId} componentDropId={componentDropId}
+                        setComponentDragId={setComponentDragId} setComponentDropId={setComponentDropId}
+                        handleComponentDragStart={handleComponentDragStart} handleComponentDragOver={handleComponentDragOver} handleComponentDrop={handleComponentDrop}
+                        issuesForComponentEntry={issuesForComponentEntry} componentBaselineFingerprints={componentBaselineFingerprints}
+                        toggleComponentEntry={toggleComponentEntry} addCourseToTerm={addCourseToTerm} setGroupEdit={setGroupEdit} teachingDefaultsRef={teachingDefaultsRef}
+                      />
                     ) : (
                       <div className={styles.editorBodyShell} data-document-field="body">
                         <SiteAdminMarkdownEditor
@@ -3497,12 +2995,7 @@ export function SiteAdminWebConsole({
                           aria-invalid={documentIssues.some((issue) => issue.field === "date")}
                           aria-describedby={documentIssues.some((issue) => issue.field === "date") ? "document-date-problem" : undefined}
                           value={contentForm.date}
-                          onChange={(event) =>
-                            setContentForm((current) => ({
-                              ...current,
-                              date: event.target.value,
-                            }))
-                          }
+                          onChange={(event) => updateContentField("date", event.target.value)}
                         />
                         {documentIssues.find((issue) => issue.field === "date") ? <small id="document-date-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "date")?.message}</small> : null}
                       </label>
@@ -3516,12 +3009,7 @@ export function SiteAdminWebConsole({
                           aria-invalid={documentIssues.some((issue) => issue.field === "updated")}
                           aria-describedby={documentIssues.some((issue) => issue.field === "updated") ? "document-updated-problem" : undefined}
                           value={contentForm.updated}
-                          onChange={(event) =>
-                            setContentForm((current) => ({
-                              ...current,
-                              updated: event.target.value,
-                            }))
-                          }
+                          onChange={(event) => updateContentField("updated", event.target.value)}
                         />
                         {documentIssues.find((issue) => issue.field === "updated") ? <small id="document-updated-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "updated")?.message}</small> : null}
                       </label>
@@ -3530,12 +3018,7 @@ export function SiteAdminWebConsole({
                       <input
                         type="checkbox"
                         checked={!contentForm.draft}
-                        onChange={(event) =>
-                          setContentForm((current) => ({
-                            ...current,
-                            draft: !event.target.checked,
-                          }))
-                        }
+                        onChange={(event) => updateContentField("draft", !event.target.checked)}
                       />
                       Visible on the public site
                     </label>
@@ -3544,12 +3027,7 @@ export function SiteAdminWebConsole({
                       <textarea
                         className={styles.inspectorTextarea}
                         value={contentForm.description}
-                        onChange={(event) =>
-                          setContentForm((current) => ({
-                            ...current,
-                            description: event.target.value,
-                          }))
-                        }
+                        onChange={(event) => updateContentField("description", event.target.value)}
                         placeholder="Optional"
                       />
                     </label>
@@ -3560,12 +3038,7 @@ export function SiteAdminWebConsole({
                           <input
                             className={styles.textField}
                             value={contentForm.tags}
-                            onChange={(event) =>
-                              setContentForm((current) => ({
-                                ...current,
-                                tags: event.target.value,
-                              }))
-                            }
+                            onChange={(event) => updateContentField("tags", event.target.value)}
                             placeholder="Comma separated"
                           />
                         </label>
@@ -3579,12 +3052,7 @@ export function SiteAdminWebConsole({
                               aria-invalid={documentIssues.some((issue) => issue.field === "cover")}
                               aria-describedby={documentIssues.some((issue) => issue.field === "cover") ? "document-cover-problem" : undefined}
                               value={contentForm.cover}
-                              onChange={(event) =>
-                                setContentForm((current) => ({
-                                  ...current,
-                                  cover: event.target.value,
-                                }))
-                              }
+                              onChange={(event) => updateContentField("cover", event.target.value)}
                               placeholder="Optional"
                             />
                             {documentIssues.find((issue) => issue.field === "cover") ? <small id="document-cover-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "cover")?.message}</small> : null}
@@ -3607,12 +3075,7 @@ export function SiteAdminWebConsole({
                               aria-invalid={documentIssues.some((issue) => issue.field === "ogImage")}
                               aria-describedby={documentIssues.some((issue) => issue.field === "ogImage") ? "document-ogImage-problem" : undefined}
                               value={contentForm.ogImage}
-                              onChange={(event) =>
-                                setContentForm((current) => ({
-                                  ...current,
-                                  ogImage: event.target.value,
-                                }))
-                              }
+                              onChange={(event) => updateContentField("ogImage", event.target.value)}
                               placeholder="Optional"
                             />
                             {documentIssues.find((issue) => issue.field === "ogImage") ? <small id="document-ogImage-problem" className={styles.fieldError}>{documentIssues.find((issue) => issue.field === "ogImage")?.message}</small> : null}
@@ -3657,6 +3120,8 @@ export function SiteAdminWebConsole({
                     path={versionPathFor(selected.kind, selected.id)}
                     currentSource={selectedSourceDraft}
                     currentVersion={selected.version}
+                    beforeRestore={navigation.authorize}
+                    onRestoringChange={setVersionRestoring}
                     onRestored={async () => {
                       setBlockingMutation(true);
                       const token = selectionGateRef.current.current();
@@ -3833,7 +3298,7 @@ export function SiteAdminWebConsole({
       ) : null}
 
       {area === "settings" ? (
-        <SiteAdminSettingsPanel onDirtyChange={setSettingsDirty} />
+        <SiteAdminSettingsPanel onDirtyChange={setSettingsDirty} onSavingChange={setSettingsSaving} navigationActions={settingsNavigationRef} />
       ) : null}
 
       {area === "release" ? (
@@ -4033,67 +3498,14 @@ export function SiteAdminWebConsole({
       {area === "home" ? (
         <section className={`${styles.workspaceGrid} ${styles.contentWorkspaceSimple}`}>
           {renderContentLibrary()}
-          <Card className={styles.formPanel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.cardLabel}>Home</p>
-              <h2 className={styles.panelTitle}>Landing page MDX</h2>
-            </div>
-            <Button
-              onClick={() => void homePersistence.save()}
-              tone="accent"
-              disabled={!home || saving || !homeDirty}
-            >
-              {saving ? "Saving draft" : "Save draft"}
-            </Button>
-          </div>
-          <SiteAdminDraftStatus {...homePersistence} {...publicationState("home.json")} dirty={homeDirty} saving={saving} onRetry={() => void homePersistence.save()} onRestore={homePersistence.restore} onDismiss={homePersistence.dismiss} onReview={() => setPublishReviewOpen(true)} />
-          <label className={styles.fieldLabel}>
-            Title
-            <input
-              className={styles.textField}
-              value={homeTitle}
-              onChange={(event) => setHomeTitle(event.target.value)}
-            />
-          </label>
-          <label className={styles.fieldLabel}>
-            Body MDX
-            <SiteAdminMarkdownEditor
-              label="Home body MDX"
-              persistenceKey={`${actor}:home`}
-              pagePreview={{ title: homeTitle, home: true, routePath: "/" }}
-              value={homeBody}
-              onChange={setHomeBody}
-              minHeight={620}
-              size="large"
-              blocking={blockingMutation}
-            />
-          </label>
-          <p className={styles.editorHint}>
-            Source version {shortSha(home?.sourceVersion.fileSha)}. Empty body MDX
-            renders the public home shell only.
-          </p>
-          {home ? (
-            <details className={styles.editorDetails}>
-              <summary>
-                <span>Version history</span>
-                <small>{shortSha(home.sourceVersion.fileSha)}</small>
-              </summary>
-              <div className={styles.editorDetailsBody}>
-                <SiteAdminVersionHistory
-                  path="content/home.json"
-                  currentSource={JSON.stringify(home.data, null, 2)}
-                  currentVersion={home.sourceVersion.fileSha}
-                  onRestored={async () => {
-                    await refreshAll();
-                    recordSavedContent();
-                    setNotice("Earlier Home draft restored. Review publication when ready.");
-                  }}
-                />
-              </div>
-            </details>
-          ) : null}
-          </Card>
+          <SiteAdminHomeEditor home={home} homePersistence={homePersistence}
+            homeTitle={homeTitle} setHomeTitle={setHomeTitle} homeBody={homeBody} setHomeBody={setHomeBody}
+            homeDirty={homeDirty} saving={saving} publicationState={publicationState} shortSha={shortSha}
+            onReview={() => setPublishReviewOpen(true)} beforeRestore={navigation.authorize}
+            onRestored={async () => { await refreshAll(); recordSavedContent(); setNotice("Earlier Home draft restored. Review publication when ready."); }}
+            onRestoringChange={setVersionRestoring}
+            actor={actor} blockingMutation={blockingMutation}
+          />
         </section>
       ) : null}
 
@@ -4106,6 +3518,9 @@ export function SiteAdminWebConsole({
             onReview={() => setPublishReviewOpen(true)}
             onDirtyChange={setAnnouncementDirty}
             onSavingChange={setAnnouncementSaving}
+            beforeNavigate={navigation.authorize}
+            navigationPending={navigation.pending}
+            navigationActions={announcementNavigationRef}
             onSaved={(action) => {
               recordSavedContent();
               void (async () => {
@@ -4120,143 +3535,14 @@ export function SiteAdminWebConsole({
       {area === "now" ? (
         <section className={`${styles.workspaceGrid} ${styles.contentWorkspaceSimple}`}>
           {renderContentLibrary()}
-          <div className={styles.nowEditorStack}>
-            <Card className={styles.formPanel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <p className={styles.cardLabel}>Now</p>
-                <h2 className={styles.panelTitle}>Current status</h2>
-              </div>
-              <Button onClick={() => void nowPersistence.save()} tone="accent" disabled={!now || saving || !nowDirty}>
-                {saving ? "Saving draft" : "Save draft"}
-              </Button>
-            </div>
-            <SiteAdminDraftStatus {...nowPersistence} {...publicationState("now.json")} dirty={nowDirty} saving={saving} onRetry={() => void nowPersistence.save()} onRestore={nowPersistence.restore} onDismiss={nowPersistence.dismiss} onReview={() => setPublishReviewOpen(true)} />
-            <label className={styles.fieldLabel}>
-              Status
-              <textarea
-                className={styles.nowEditor}
-                value={nowText}
-                onChange={(event) => setNowText(event.target.value)}
-              />
-            </label>
-            <div className={styles.fieldGrid}>
-              <label className={styles.fieldLabel}>
-                Date
-                <input
-                  className={styles.textField}
-                  type="date"
-                  value={nowDate}
-                  onChange={(event) => setNowDate(event.target.value)}
-                />
-              </label>
-              <label className={styles.fieldLabel}>
-                Context
-                <input
-                  className={styles.textField}
-                  value={nowContext}
-                  onChange={(event) => setNowContext(event.target.value)}
-                />
-              </label>
-              <label className={styles.fieldLabel}>
-                Location
-                <input
-                  className={styles.textField}
-                  value={nowLocation}
-                  onChange={(event) => setNowLocation(event.target.value)}
-                />
-              </label>
-            </div>
-            <p className={styles.editorHint}>
-              Saved content can be published from the Publish tab.
-            </p>
-            {now ? (
-              <details className={styles.editorDetails}>
-                <summary>
-                  <span>Version history</span>
-                  <small>{shortSha(now.sourceVersion.fileSha)}</small>
-                </summary>
-                <div className={styles.editorDetailsBody}>
-                  <SiteAdminVersionHistory
-                    path="content/now.json"
-                    currentSource={JSON.stringify(now.data, null, 2)}
-                    currentVersion={now.sourceVersion.fileSha}
-                    onRestored={async () => {
-                      await refreshAll();
-                      recordSavedContent();
-                      setNotice("Earlier Now draft restored. Review publication when ready.");
-                    }}
-                  />
-                </div>
-              </details>
-            ) : null}
-            </Card>
-
-            <Card className={styles.historyPanel}>
-            <p className={styles.cardLabel}>History</p>
-            <div className={styles.historyList}>
-              {(now?.data.updates || []).map((item) => (
-                <div key={item.id} className={styles.historyItem}>
-                  {editingHistoryId === item.id ? (
-                    <>
-                      <textarea
-                        className={styles.historyEditor}
-                        value={historyText}
-                        onChange={(event) => setHistoryText(event.target.value)}
-                      />
-                      <div className={styles.historyActions}>
-                        <input
-                          className={styles.textField}
-                          type="date"
-                          value={historyDate}
-                          onChange={(event) => setHistoryDate(event.target.value)}
-                        />
-                        <Button
-                          onClick={() => void saveHistoryEdit()}
-                          tone="accent"
-                          size="sm"
-                          disabled={saving}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          onClick={() => setEditingHistoryId("")}
-                          variant="ghost"
-                          size="sm"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p>{item.text}</p>
-                      <small>{formatWhen(item.at)}</small>
-                      <div className={styles.historyActions}>
-                        <Button
-                          onClick={() => startHistoryEdit(item)}
-                          variant="subtle"
-                          size="sm"
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          onClick={() => void deleteHistory(item.id)}
-                          variant="ghost"
-                          tone="danger"
-                          size="sm"
-                          disabled={saving}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-            </Card>
-          </div>
+          <SiteAdminNowEditor now={now} nowPersistence={nowPersistence}
+            nowText={nowText} setNowText={setNowText} nowDate={nowDate} setNowDate={setNowDate} nowContext={nowContext} setNowContext={setNowContext} nowLocation={nowLocation} setNowLocation={setNowLocation} editingHistoryId={editingHistoryId} setEditingHistoryId={setEditingHistoryId} historyText={historyText} setHistoryText={setHistoryText} historyDate={historyDate} setHistoryDate={setHistoryDate}
+            nowDirty={nowDirty} saving={saving} publicationState={publicationState} shortSha={shortSha}
+            onReview={() => setPublishReviewOpen(true)} beforeRestore={navigation.authorize}
+            onRestored={async () => { await refreshAll(); recordSavedContent(); setNotice("Earlier Now draft restored. Review publication when ready."); }}
+            onRestoringChange={setVersionRestoring}
+             formatWhen={formatWhen} saveHistoryEdit={saveHistoryEdit} startHistoryEdit={startHistoryEdit} deleteHistory={deleteHistory}
+          />
         </section>
       ) : null}
 
@@ -4300,6 +3586,7 @@ export function SiteAdminWebConsole({
         }}
       /> : null}
 
+      <SiteAdminNavigationDialog guard={navigation} />
       {conflict ? (
         <SiteAdminConflictDialog
           conflict={conflict}

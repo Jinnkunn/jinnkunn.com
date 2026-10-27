@@ -179,6 +179,7 @@ export function handleSearchResultsClick(deps: SharedDeps, e: MouseEvent): void 
   const emptyAction = t.closest<HTMLButtonElement>("button.notion-search__empty-action");
   if (emptyAction) {
     e.preventDefault();
+    deps.input.focus();
     const id = emptyAction.id;
     if (id === SEARCH_RETRY_ACTION_ID) {
       // Re-run the query exactly as typed; the input is the single source of truth here.

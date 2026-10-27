@@ -47,6 +47,9 @@ async function main() {
       announcements: { version: 1, items: [{ id: "notice-one", title: "Original notice", status: "draft", scope: "home", routes: [], layout: "prose", initialState: "collapsed", collapsible: true, compactMdx: "Summary", bodyMdx: "Notice body", startsAt: "", endsAt: "", updatedAt: "2026-10-24T12:00:00Z" }] },
     };
     const versions = { home: 1, now: 1, announcements: 1 };
+    let configVersion = 1;
+    const settings = { ...Object.fromEntries(["lang", "seoTitle", "seoDescription", "favicon", "ogImage", "seoPageOverrides", "googleAnalyticsId", "contentGithubUsers", "monochromeStartsAt", "monochromeEndsAt", "sitemapExcludes", "sitemapAutoExcludeSections", "sitemapAutoExcludeDepthPages", "sitemapAutoExcludeDepthBlog", "sitemapAutoExcludeDepthPublications", "sitemapAutoExcludeDepthTeaching", "rootPageId", "homePageId"].map((key) => [key, ""])), rowId: "settings-one", siteName: "Original site", lang: "en", monochromeEnabled: false, monochromeScope: "all-public", monochromeDesaturateMedia: true, sitemapAutoExcludeEnabled: false };
+    const nav = [{ rowId: "nav-one", label: "Home", href: "/", group: "top", order: 0, enabled: true }];
     const failures = {};
     const writes = [];
     let homeDelay = 0;
@@ -57,6 +60,18 @@ async function main() {
       const req = route.request(), url = new URL(req.url());
       if (url.origin !== origin) return route.abort("blockedbyclient");
       const json = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
+      if (url.pathname === "/api/site-admin/config") {
+        if (req.method() === "POST") {
+          const body = req.postDataJSON();
+          assert.equal(body.expectedSiteConfigSha, `config-${configVersion}`, "Combined settings/navigation save uses the latest version");
+          if (body.kind === "settings") Object.assign(settings, body.patch);
+          else if (body.kind === "nav-update") Object.assign(nav.find((row) => row.rowId === body.rowId), body.patch);
+          else throw new Error("Unexpected config mutation");
+          configVersion++; writes.push({ name: "config", body });
+          return json({ ok: true, sourceVersion: { siteConfigSha: `config-${configVersion}`, branchSha: "config-branch" } });
+        }
+        return json({ ok: true, settings, nav, sourceVersion: { siteConfigSha: `config-${configVersion}`, branchSha: "config-branch" } });
+      }
       const name = Object.keys(paths).find((key) => url.pathname === `/api/site-admin/${key}`);
       if (name) {
         const payload = () => ({ data: state[name], sourceVersion: { fileSha: `${name}-${versions[name]}` } });
@@ -146,6 +161,24 @@ async function main() {
     assert.equal(state.now.updates.length, historyCount, "Now history contains no autosave spam");
     assert.equal(await page.getByRole("textbox", { name: "Status", exact: true }).inputValue(), "Current status two ");
 
+    console.log("[priority-workflow] Settings: save combined drafts and guard navigation-only edits");
+    await open("settings");
+    await page.getByRole("textbox", { name: "Site name", exact: true }).fill("Saved site");
+    await page.getByRole("button", { name: /^Navigation.*links/ }).click();
+    await page.getByRole("textbox", { name: "Navigation label", exact: true }).fill("Saved home link");
+    await page.getByRole("button", { name: "Content", exact: true }).click();
+    const unsaved = () => page.getByRole("dialog", { name: "Unsaved changes", exact: true });
+    await unsaved().getByRole("button", { name: "Save and continue", exact: true }).click();
+    await page.getByRole("heading", { name: "Content", level: 1, exact: true }).waitFor();
+    assert.equal(settings.siteName, "Saved site"); assert.equal(nav[0].label, "Saved home link");
+    await open("settings");
+    await page.getByRole("button", { name: /^Navigation.*links/ }).click();
+    await page.getByRole("textbox", { name: "Navigation label", exact: true }).fill("Discard this navigation edit");
+    await page.getByRole("button", { name: "Content", exact: true }).click();
+    await unsaved().getByRole("button", { name: "Discard changes", exact: true }).click();
+    await page.getByRole("heading", { name: "Content", level: 1, exact: true }).waitFor();
+    assert.equal(nav[0].label, "Saved home link");
+
     console.log("[priority-workflow] Announcements: autosave and new draft recovery");
     await open("announcements");
     await title().fill("Edited notice ");
@@ -161,6 +194,17 @@ async function main() {
     await page.getByRole("button", { name: "Restore local edits", exact: true }).click();
     await eventually(() => assert.ok(state.announcements.items.some((item) => item.title === "Recovered new announcement")), "New unsaved announcement survives reload");
     await eventually(async () => assert.equal(await page.getByRole("button", { name: "Save draft", exact: true }).isDisabled(), true), "All content saved");
+    await title().fill("Saved before switching announcements");
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await unsaved().getByRole("button", { name: "Save and continue", exact: true }).click();
+    await eventually(async () => assert.equal(await title().inputValue(), "Untitled announcement"), "Internal announcement selection waits for saving");
+    assert.ok(state.announcements.items.some((item) => item.title === "Saved before switching announcements"));
+    await page.getByRole("button", { name: /^Now Current status$/ }).click();
+    await unsaved().getByRole("button", { name: "Discard changes", exact: true }).click();
+    await page.getByRole("textbox", { name: "Status", exact: true }).waitFor();
+    await page.waitForTimeout(1800);
+    assert.equal(state.announcements.items.some((item) => item.title === "Untitled announcement"), false, "Discard cancels announcement autosave");
+    await open("announcements");
     await page.getByRole("button", { name: "Review publication", exact: true }).click();
     const review = page.getByRole("dialog", { name: "Review publication", exact: true });
     await review.getByText("Advanced source comparison", { exact: true }).first().waitFor();

@@ -13,6 +13,7 @@ export function tokenizeQuery(
 ): string[] {
   const maxTerms = Number.isFinite(opts?.maxTerms) ? Number(opts?.maxTerms) : 6;
   return String(q || "")
+    .normalize("NFKC")
     .trim()
     .toLowerCase()
     .split(/\s+/g)

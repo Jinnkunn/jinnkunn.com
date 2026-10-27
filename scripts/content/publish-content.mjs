@@ -652,6 +652,9 @@ async function stagingCookieIfNeeded(env) {
     maxAge: 5 * 60,
     subjectPrefix: "content-publish",
   });
+  if (!auth.ok) {
+    throw new Error(`STAGING_AUTH_UNAVAILABLE: ${auth.reason} Configure the runner's staging session secret and allowed administrator identity; staging protection remains enabled.`);
+  }
   return auth.cookie;
 }
 
@@ -690,7 +693,7 @@ async function fetchLiveBuildId(env, workerCodeSha) {
   const text = await response.text().catch(() => "");
   if (response.status !== 200) {
     throw new Error(
-      `Could not read live ${env} build id from ${origin}/ (status ${response.status}).`,
+      `Could not read live ${env} build id from ${origin}/ (status ${response.status}).${env === "staging" && [302, 401, 403].includes(response.status) ? " Check the runner's NEXTAUTH_SECRET and allowed administrator identity against staging; do not disable authentication." : ""}`,
     );
   }
   const refs = extractNextStaticRefs(text);

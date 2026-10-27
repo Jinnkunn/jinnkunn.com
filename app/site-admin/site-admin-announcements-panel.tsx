@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
+import type { SiteAdminNavigationActions } from "./use-site-admin-navigation-guard";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -85,6 +87,9 @@ export function SiteAdminAnnouncementsPanel({
   onDirtyChange,
   onSavingChange,
   onSaved,
+  beforeNavigate,
+  navigationPending = false,
+  navigationActions,
 }: {
   actor: string;
   pending: boolean;
@@ -93,6 +98,9 @@ export function SiteAdminAnnouncementsPanel({
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
   onSaved?: (action: "save" | "delete") => void;
+  beforeNavigate?: () => Promise<boolean>;
+  navigationPending?: boolean;
+  navigationActions?: MutableRefObject<SiteAdminNavigationActions | null>;
 }) {
   const [payload, setPayload] = useState<AnnouncementsPayload | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -109,16 +117,32 @@ export function SiteAdminAnnouncementsPanel({
   const dirty = Boolean(draft && fingerprint(draft) !== baseline);
   const routesText = useMemo(() => (draft?.routes || []).join("\n"), [draft?.routes]);
   const draftRef = useRef(draft); draftRef.current = draft;
+  const payloadRef = useRef(payload); payloadRef.current = payload;
   const persistence = useSiteAdminSingletonDraft({
     kind: `${actor}:announcements`, id: "active", ready: Boolean(payload) && !loading,
     dirty, source: fingerprint(draft), form: draft, baseVersion: payload?.sourceVersion.fileSha || "",
     enabled: !loading && !saving && Boolean(draft) && !conflict,
+    pauseAutosave: navigationPending,
     onSave: () => save(),
     onRestore: (restored) => {
       if (!restored) return;
       setDraft(restored); setSelectedId(restored.id);
       setBaseline(fingerprint(payload?.data.items.find((item) => item.id === restored.id) || null));
     },
+  });
+  useLayoutEffect(() => {
+    if (!navigationActions) return;
+    navigationActions.current = {
+      save: persistence.save,
+      discard: () => {
+        persistence.dismiss(); persistence.resume();
+        const saved = payloadRef.current?.data.items.find((item) => item.id === draftRef.current?.id) || null;
+        setDraft(saved ? structuredClone(saved) : null);
+        setSelectedId(saved?.id || "");
+        setBaseline(fingerprint(saved));
+      },
+    };
+    return () => { navigationActions.current = null; };
   });
 
   async function load(preferredId?: string) {
@@ -155,7 +179,7 @@ export function SiteAdminAnnouncementsPanel({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
-      if (!dirty || saving) return;
+      if (!dirty || saving || navigationPending) return;
       event.preventDefault();
       void persistence.save();
     };
@@ -168,12 +192,12 @@ export function SiteAdminAnnouncementsPanel({
     setNotice("");
   }
 
-  function select(id: string) {
-    if (saving) return;
+  async function select(id: string) {
     if (id === selectedId) return;
-    if (dirty && !window.confirm("Discard unsaved announcement edits?")) return;
+    if (beforeNavigate && !await beforeNavigate()) return;
+    if (!beforeNavigate && (dirty || saving)) return;
     persistence.dismiss(); persistence.resume();
-    const selected = payload?.data.items.find((item) => item.id === id) || null;
+    const selected = payloadRef.current?.data.items.find((item) => item.id === id) || null;
     setSelectedId(selected?.id || "");
     setDraft(selected ? structuredClone(selected) : null);
     setBaseline(fingerprint(selected));
@@ -181,9 +205,9 @@ export function SiteAdminAnnouncementsPanel({
     setNotice("");
   }
 
-  function createAnnouncement() {
-    if (saving) return;
-    if (dirty && !window.confirm("Discard unsaved announcement edits?")) return;
+  async function createAnnouncement() {
+    if (beforeNavigate && !await beforeNavigate()) return;
+    if (!beforeNavigate && (dirty || saving)) return;
     persistence.dismiss(); persistence.resume();
     const next = freshAnnouncement();
     setSelectedId(next.id);

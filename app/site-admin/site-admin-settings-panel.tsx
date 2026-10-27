@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
+import type { MutableRefObject } from "react";
+import type { SiteAdminNavigationActions } from "./use-site-admin-navigation-guard";
 
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -13,9 +15,13 @@ import styles from "./site-admin-dashboard.module.css";
 
 export function SiteAdminSettingsPanel({
   onDirtyChange,
+  onSavingChange,
+  navigationActions,
 }: {
   /** Lets the console include the settings draft in its unsaved-changes guard. */
   onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
+  navigationActions?: MutableRefObject<SiteAdminNavigationActions | null>;
 } = {}) {
   const {
     busy,
@@ -31,14 +37,25 @@ export function SiteAdminSettingsPanel({
     updateNavDraftField,
     saveAllNavRows,
     addNavRow,
+    saveDrafts,
+    discardDrafts,
   } = useSiteAdminConfigData();
   const [section, setSection] = useState<"site" | "appearance" | "navigation">("site");
   const pendingNavCount = Object.keys(navDraft).length;
 
   useEffect(() => {
-    onDirtyChange?.(settingsDirty);
+    onDirtyChange?.(settingsDirty || pendingNavCount > 0);
     return () => onDirtyChange?.(false);
-  }, [onDirtyChange, settingsDirty]);
+  }, [onDirtyChange, settingsDirty, pendingNavCount]);
+  useEffect(() => {
+    onSavingChange?.(busy);
+    return () => onSavingChange?.(false);
+  }, [busy, onSavingChange]);
+  useLayoutEffect(() => {
+    if (!navigationActions) return;
+    navigationActions.current = { save: saveDrafts, discard: discardDrafts };
+    return () => { navigationActions.current = null; };
+  });
 
   function navValue<K extends keyof NavItemRow>(row: NavItemRow, key: K): NavItemRow[K] {
     return (navDraft[row.rowId]?.[key] as NavItemRow[K] | undefined) ?? row[key];

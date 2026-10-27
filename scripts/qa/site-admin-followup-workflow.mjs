@@ -29,6 +29,9 @@ async function main() {
     const auth = await createNextAuthSessionCookie(); assert.equal(auth.ok, true);
     browser = await launchBrowser({ args: ["--host-resolver-rules=MAP staging.jinkunchen.com 127.0.0.1", "--no-proxy-server"] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text) => { window.__qaClipboard = text; } } });
+    });
     await context.addCookies(auth.cookie.split("; ").filter((part) => !part.startsWith("__Secure-")).map((part) => ({ name: part.slice(0, part.indexOf("=")), value: part.slice(part.indexOf("=") + 1), url: origin, secure: false })));
     const fixture = createCollectionsFixture();
     const docs = new Map(Object.entries({
@@ -42,8 +45,15 @@ async function main() {
     const modified = Object.fromEntries([...docs.keys()].map((path) => [path, path === "posts/old.mdx" ? Date.parse("2000-01-01") : Date.now()]));
     const versions = new Map([...docs.keys()].map((path) => [path, 1]));
     let notice = { id: "qa-notice", title: "Draft notice", status: "draft", scope: "all-public", routes: [], layout: "columns", initialState: "route-aware", collapsible: true, compactMdx: "Short notice", bodyMdx: "## English notice\n\nHello from the draft.\n\n---\n\n## 中文公告\n\n这是一条草稿。", startsAt: "", endsAt: "", updatedAt: "" };
-    let noticeVersion = 1, previewFailure = false;
+    let noticeVersion = 1, previewFailure = false, documentFailure = false, documentDelay = 0;
+    const historySource = '---\ntitle: Earlier post\ndate: 2026-10-24\ndescription: ""\n---\nEarlier body.';
     const writes = [], previews = [], blocked = [], errors = [], consoleWarnings = [];
+    let staleAssetReference = true;
+    const media = [
+      { key: "used", filename: "Used portrait.png", usageVerified: true, references: [{ path: "home.json", environment: "production", state: "published" }] },
+      { key: "unused", filename: "Reusable diagram.png", usageVerified: true, references: [] },
+      { key: "unknown", filename: "Unverified image.png", usageVerified: false, references: [] },
+    ].map((asset) => ({ ...asset, size: 500, contentType: "image/png", version: "fixture", uploadedAt: "2026-10-26T12:00:00Z", url: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100"><rect width="160" height="100" fill="#ddd"/><circle cx="80" cy="50" r="30" fill="#555"/></svg>') }));
     const sources = () => ({ ...Object.fromEntries(docs), ...Object.fromEntries([...fixture.saved].map(([name, source]) => [`components/${name}.mdx`, source])), "filesystem/announcements.json": JSON.stringify({ version: 1, items: [notice] }) });
     const baseline = publicationSnapshot({ ...sources(), "posts/pending.mdx": docs.get("posts/pending.mdx").replace("Changed", "Original") });
     function detail(path) {
@@ -54,11 +64,31 @@ async function main() {
       const req = route.request(), url = new URL(req.url());
       if (url.origin !== origin) { blocked.push(req.url()); return route.abort("blockedbyclient"); }
       const json = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
+      if (url.pathname === "/api/site-admin/assets") {
+        if (req.method() === "GET") return json({ assets: media });
+        assert.equal(req.method(), "DELETE");
+        const { key } = req.postDataJSON();
+        assert.equal(key, "unused", "Used/unverified assets cannot be deleted from the UI");
+        if (staleAssetReference) return json({ error: "This image is still used by a published document.", code: "ASSET_IN_USE" }, 409);
+        media.splice(media.findIndex((asset) => asset.key === key), 1);
+        return json({ deleted: true });
+      }
       if (["/api/site-admin/preview/page", "/api/site-admin/preview/mdx"].includes(url.pathname)) {
         previews.push(req.postDataJSON());
         if (previewFailure) return json({ error: "Isolated preview failure" }, 503);
         const response = await route.fetch({ url: `${local}${url.pathname}`, headers: { ...req.headers(), cookie: auth.cookie }, maxRedirects: 0 });
         return route.fulfill({ response });
+      }
+      if (url.pathname === "/api/site-admin/versions" && (url.searchParams.get("path") === "content/posts/old.mdx" || req.method() === "POST")) {
+        if (req.method() === "POST") {
+          const body = req.postDataJSON();
+          assert.equal(body.path, "content/posts/old.mdx");
+          assert.equal(body.expectedFileSha, String(versions.get("posts/old.mdx")));
+          writes.push({ restore: true, ...body });
+          docs.set("posts/old.mdx", historySource); versions.set("posts/old.mdx", versions.get("posts/old.mdx") + 1);
+          return json({ path: body.path, history: [], sourceVersion: { fileSha: String(versions.get("posts/old.mdx")) } });
+        }
+        return json({ path: "content/posts/old.mdx", history: [{ commitSha: "earlier-commit", commitShort: "earlier", committedAt: "2026-10-24T12:00:00Z", authorName: "QA", message: "Earlier draft" }], ...(url.searchParams.has("commitSha") ? { version: { content: historySource, sha: "earlier-source", commitSha: "earlier-commit" } } : {}) });
       }
       if (url.pathname === "/api/site-admin/publication-review") {
         const current = publicationSnapshot(sources()), review = publicationReview(current, baseline);
@@ -77,7 +107,7 @@ async function main() {
       if (match && match[2] !== "tree") {
         const path = `${match[1]}/${decodeURIComponent(match[2])}.mdx`;
         if (docs.has(path)) {
-          if (req.method() === "PATCH") { const body = req.postDataJSON(); assert.equal(body.version, String(versions.get(path))); writes.push({ path, ...body }); docs.set(path, body.source); versions.set(path, versions.get(path) + 1); modified[path] = Date.now(); return json({ version: String(versions.get(path)) }); }
+          if (req.method() === "PATCH") { const body = req.postDataJSON(); assert.equal(body.version, String(versions.get(path))); writes.push({ path, ...body }); if (documentFailure) return json({ error: "Isolated document save failure" }, 503); await new Promise((resolve) => setTimeout(resolve, documentDelay)); docs.set(path, body.source); versions.set(path, versions.get(path) + 1); modified[path] = Date.now(); return json({ version: String(versions.get(path)) }); }
           if (url.searchParams.get("raw") === "1") return json({ title: match[2], slug: match[2], version: String(versions.get(path)), source: docs.get(path), raw: true });
           return json(detail(path));
         }
@@ -117,6 +147,67 @@ async function main() {
     await page.goto(`${origin}/site-admin`);
     assert.match(await page.title(), /Site Admin/);
     await page.getByRole("heading", { name: "Content", level: 1, exact: true }).waitFor();
+    log("Navigation guard: stay, discard, save, failed save and in-flight typing");
+    await page.getByRole("button", { name: /^Older saved post/ }).click();
+    const titleField = () => page.getByRole("textbox", { name: "Title", exact: true });
+    const unsaved = () => page.getByRole("dialog", { name: "Unsaved changes", exact: true });
+    const back = () => page.getByRole("button", { name: "Back to posts", exact: true }).click();
+    await titleField().fill("Keep this edit"); await back();
+    await page.screenshot({ path: "/tmp/next-four-navigation-desktop.png" });
+    await unsaved().getByRole("button", { name: "Stay here", exact: true }).click();
+    assert.equal(await titleField().inputValue(), "Keep this edit");
+    await back(); await unsaved().getByRole("button", { name: "Discard changes", exact: true }).click();
+    await page.getByRole("button", { name: /^Older saved post/ }).click();
+    assert.equal(await titleField().inputValue(), "Older saved post");
+    await titleField().fill("Save before leaving"); await back();
+    await unsaved().getByRole("button", { name: "Save and continue", exact: true }).click();
+    await page.getByRole("button", { name: /^Save before leaving/ }).click();
+    assert.equal(await titleField().inputValue(), "Save before leaving");
+    documentFailure = true;
+    await titleField().fill("Do not lose failed edits"); await back();
+    await unsaved().getByRole("button", { name: "Save and continue", exact: true }).click();
+    await unsaved().getByRole("alert").waitFor();
+    await unsaved().getByRole("button", { name: "Stay here", exact: true }).click();
+    assert.equal(await titleField().inputValue(), "Do not lose failed edits");
+    documentFailure = false; documentDelay = 700;
+    await titleField().fill("First request");
+    await page.getByRole("button", { name: "Save draft", exact: true }).first().click();
+    await eventually(() => assert.ok(writes.some((write) => write.source?.includes("First request"))), "Slow document save starts");
+    await titleField().fill("Newer request"); await back();
+    await unsaved().getByText("Save this draft before leaving?", { exact: true }).waitFor();
+    assert.ok(!docs.get("posts/old.mdx").includes("Newer request"), "The old response does not save newer typing");
+    await unsaved().getByRole("button", { name: "Save and continue", exact: true }).click();
+    await page.getByRole("button", { name: /^Newer request/ }).click();
+    await eventually(async () => assert.equal(await titleField().inputValue(), "Newer request"), "Document opens before reload");
+    documentDelay = 0;
+    log("Round trip: unknown frontmatter, comments and empty description survive body edits");
+    const originalHeader = '---\n# Keep this annotation\ntitle: Newer request\ndate: 2026-10-24\ndescription: ""\ncustom:\n  nested: [one, two]\n---\n';
+    docs.set("posts/old.mdx", originalHeader + "Old saved body.");
+    await page.reload(); await titleField().waitFor();
+    await page.getByRole("tab", { name: "Source", exact: true }).click();
+    await page.locator(".cm-content").fill("Body edit with preserved metadata.\n");
+    await eventually(() => assert.equal(docs.get("posts/old.mdx"), originalHeader + "Body edit with preserved metadata.\n"), "Byte-preserving body autosave");
+    await page.reload(); await titleField().waitFor();
+    await page.getByRole("button", { name: "Inspector", exact: true }).click();
+    assert.equal(await page.getByLabel("Description", { exact: true }).inputValue(), "");
+    log("Version restore: semantic comparison, explicit confirmation and no publication");
+    await page.getByRole("button", { name: "Restore", exact: true }).click();
+    const restore = page.getByRole("dialog", { name: "Restore earlier draft?", exact: true });
+    await restore.getByText("Restored draft", { exact: true }).first().waitFor();
+    assert.equal(writes.some((write) => write.restore), false);
+    await restore.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("button", { name: "Restore", exact: true }).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const restoreBox = await restore.boundingBox();
+    assert.ok(restoreBox && restoreBox.x >= 0 && restoreBox.x + restoreBox.width <= 391 && restoreBox.y >= 0 && restoreBox.y + restoreBox.height <= 845, "Mobile restore confirmation fits the viewport");
+    await page.screenshot({ path: "/tmp/next-four-restore-mobile.png" });
+    await restore.getByRole("button", { name: "Restore draft", exact: true }).click();
+    await eventually(async () => assert.equal(await titleField().inputValue(), "Earlier post"), "Restore refreshes the current draft");
+    assert.equal(fixture.jobs.length, 0, "Restoring never publishes");
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    docs.set("posts/old.mdx", "---\ntitle: Older saved post\ndate: 2026-10-24\n---\nOld saved body.");
+    modified["posts/old.mdx"] = Date.parse("2000-01-01");
+    await page.goto(`${origin}/site-admin?area=content&view=posts`);
     const task = () => page.getByRole("combobox", { name: "Content task filter", exact: true });
     log("Task lists: pending, hidden, issues, modified time and retained page hierarchy");
     await task().selectOption("pending");
@@ -212,15 +303,16 @@ async function main() {
     await page.screenshot({ path: "/tmp/followup-page-preview-mobile.png" });
     await page.keyboard.press("Escape");
     await page.getByRole("combobox", { name: "Browse content", exact: true }).selectOption("pin:posts:pending");
-    await page.getByRole("textbox", { name: "Title", exact: true }).waitFor();
-    assert.equal(await page.getByRole("textbox", { name: "Title", exact: true }).inputValue(), "Pending post", "Pinned content remains reachable on mobile");
+    await eventually(async () => assert.equal(await page.getByRole("textbox", { name: "Title", exact: true }).inputValue(), "Pending post"), "Pinned content remains reachable on mobile");
     await page.getByRole("button", { name: "Page preview", exact: true }).click();
     await preview.getByRole("status").filter({ hasText: /^Draft in/ }).waitFor();
     await preview.getByRole("checkbox", { name: "Include announcement" }).uncheck();
     await preview.getByRole("status").filter({ hasText: /^Draft in/ }).waitFor();
     await preview.locator("iframe").contentFrame().getByRole("heading", { name: "Pending post", exact: true }).waitFor();
-    await preview.locator("iframe").contentFrame().locator('[aria-label="Post metadata"]').scrollIntoViewIfNeeded();
-    await preview.locator("iframe").contentFrame().getByText("January 1, 2000", { exact: true }).waitFor();
+    await eventually(async () => {
+      await preview.locator("iframe").contentFrame().locator('[aria-label="Post metadata"]').scrollIntoViewIfNeeded();
+      await preview.locator("iframe").contentFrame().getByText("January 1, 2000", { exact: true }).waitFor();
+    }, "Mobile preview metadata remains attached after iframe refresh");
     await page.screenshot({ path: "/tmp/four-items-page-preview-mobile.png" });
     await page.keyboard.press("Escape");
     log("Public article: accessible outline, active section, deep link, focus and mobile geometry");
@@ -241,10 +333,36 @@ async function main() {
     await page.waitForTimeout(500);
     await eventually(async () => assert.equal(await outline.locator('a[aria-current="true"]').getAttribute("href"), `#${encodeURIComponent(target)}`), "Opening the outline does not move the article or change the current section");
     await page.screenshot({ path: "/tmp/followup-article-outline-mobile.png" });
+    log("Media: draft/published usage, safe deletion, image descriptions and mobile reuse");
+    await page.goto(`${origin}/site-admin?area=media`);
+    const library = page.getByRole("region", { name: "Media library", exact: true });
+    const item = (name) => library.getByRole("article").filter({ hasText: name });
+    await item("Used portrait.png").waitFor();
+    assert.equal(await item("Used portrait.png").getByRole("button", { name: "Delete", exact: true }).isDisabled(), true);
+    assert.equal(await item("Unverified image.png").getByRole("button", { name: "Delete", exact: true }).isDisabled(), true);
+    await item("Used portrait.png").locator("summary").click();
+    await item("Used portrait.png").getByText("production / published", { exact: true }).waitFor();
+    await library.getByRole("combobox", { name: "Media usage" }).selectOption("unused");
+    assert.equal(await library.getByRole("article").count(), 1);
+    await item("Reusable diagram.png").locator("summary").click();
+    await item("Reusable diagram.png").getByRole("textbox", { name: "Image description (alt text)" }).fill("A useful diagram ");
+    await item("Reusable diagram.png").getByRole("button", { name: "Copy image Markdown", exact: true }).click();
+    assert.match(await page.evaluate(() => window.__qaClipboard), /^!\[A useful diagram \]\(/);
+    await item("Reusable diagram.png").getByRole("button", { name: "Delete", exact: true }).click();
+    await library.getByText("This image is still used by a published document.", { exact: true }).waitFor();
+    assert.equal(await item("Reusable diagram.png").count(), 1, "A fresh server reference check overrides stale unused UI state");
+    staleAssetReference = false;
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.screenshot({ path: "/tmp/followup-media-desktop.png" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: "/tmp/followup-media-mobile.png" });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await item("Reusable diagram.png").getByRole("button", { name: "Delete", exact: true }).click();
+    await item("Reusable diagram.png").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
     assert.deepEqual(fixture.unexpected, []);
     assert.equal(fixture.jobs.length, 0, "These flows never publish");
-    const unexpectedConsole = consoleWarnings.filter((message) => !message.startsWith("Failed to load resource: net::ERR_BLOCKED_BY_CLIENT") && !/^Failed to load resource: the server responded with a status of 503/.test(message));
+    const unexpectedConsole = consoleWarnings.filter((message) => !message.startsWith("Failed to load resource: net::ERR_BLOCKED_BY_CLIENT") && !/^Failed to load resource: the server responded with a status of (503|409)/.test(message));
     assert.deepEqual(unexpectedConsole, []);
     log(`PASS: ${writes.length} isolated draft writes, ${previews.length} read-only previews, no live changes; ${blocked.length} external resources intentionally blocked`);
     await context.close();
