@@ -20,10 +20,14 @@ const ROOT = process.cwd();
 
 test("ci: isolated admin regressions run serially without mutating a remote environment", () => {
   const yaml = read(".github/workflows/ci.yml");
-  const step = readStepBlocks(yaml).get("Admin Browser Regression").lines.join("\n");
-  assert.match(step, /npm run smoke:site-admin:collections\s+npm run smoke:site-admin:drafts\s+npm run smoke:site-admin:followup/);
-  assert.doesNotMatch(step, /--execute|--publisher|--env=production|secrets\./);
-  assert.equal(stepGate(yaml, "Admin Browser Regression"), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'");
+  const steps = readStepBlocks(yaml);
+  for (const [name, command] of [["Admin Browser Regression", "npm run smoke:site-admin:collections"], ["Admin Draft Regression", "npm run smoke:site-admin:drafts"], ["Admin Followup Regression", "npm run smoke:site-admin:followup"], ["Public Acceptance", "node scripts/qa/public-acceptance-workflow.mjs"]]) {
+    const step = steps.get(name).lines.join("\n");
+    assert.ok(step.includes(command));
+    assert.doesNotMatch(step, /--execute|--publisher|--env=production|secrets\./);
+    assert.equal(stepGate(yaml, name), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'");
+    assert.match(step, /timeout-minutes: \d+/);
+  }
   assert.match(yaml, /playwright-core install --with-deps chromium/);
 });
 

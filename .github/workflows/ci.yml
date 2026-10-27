@@ -103,11 +103,23 @@ jobs:
       # run serially. No staging/production mutations or credentials are needed.
       - name: Admin Browser Regression
         if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
-        run: |
-          npm run smoke:site-admin:collections
-          npm run smoke:site-admin:drafts
-          npm run smoke:site-admin:followup
-          node scripts/qa/public-acceptance-workflow.mjs
+        timeout-minutes: 8
+        run: npm run smoke:site-admin:collections
+
+      - name: Admin Draft Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 5
+        run: npm run smoke:site-admin:drafts
+
+      - name: Admin Followup Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 6
+        run: npm run smoke:site-admin:followup
+
+      - name: Public Acceptance
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 3
+        run: node scripts/qa/public-acceptance-workflow.mjs
 
       - name: Site Admin Write Smoke (Staging)
         # `secrets.X != ''` is not reliable inside `if:` (the secrets

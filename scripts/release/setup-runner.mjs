@@ -166,6 +166,21 @@ function agentLoaded(uid, label) {
   return spawnSync("launchctl", ["print", `gui/${uid}/${label}`], { stdio: "ignore" }).status === 0;
 }
 
+export function reloadLaunchAgent({ uid, label, plistPath }, run = launchctl, pause = () => spawnSync("sleep", ["1"], { stdio: "ignore" })) {
+  run(["bootout", `gui/${uid}/${label}`], { allowFailure: true });
+  run(["enable", `gui/${uid}/${label}`], { allowFailure: true });
+  // launchd can still be unloading after bootout returns (bootstrap error 5).
+  // Retry that bounded transition without force-killing a newly started job.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (run(["bootstrap", `gui/${uid}`, plistPath], { allowFailure: true })) {
+      run(["kickstart", `gui/${uid}/${label}`], { allowFailure: true });
+      return;
+    }
+    if (attempt < 2) pause();
+  }
+  throw new Error(`${label}: bootstrap failed after three attempts; inspect launchctl before retrying.`);
+}
+
 function installAgent({ uid, label, plistPath, rendered, check }) {
   const current = fs.existsSync(plistPath) ? fs.readFileSync(plistPath, "utf8") : "";
   const upToDate = current === rendered;
@@ -185,10 +200,7 @@ function installAgent({ uid, label, plistPath, rendered, check }) {
   }
   // Reload so a changed plist takes effect; bootout is expected to fail when
   // the agent was never loaded.
-  launchctl(["bootout", `gui/${uid}/${label}`], { allowFailure: true });
-  launchctl(["bootstrap", `gui/${uid}`, plistPath]);
-  launchctl(["enable", `gui/${uid}/${label}`], { allowFailure: true });
-  launchctl(["kickstart", "-k", `gui/${uid}/${label}`], { allowFailure: true });
+  reloadLaunchAgent({ uid, label, plistPath });
   if (!agentLoaded(uid, label)) {
     throw new Error(`${label}: bootstrap reported success but the agent is not loaded`);
   }
@@ -268,9 +280,11 @@ function main() {
   );
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`[setup-runner] ${error?.message || error}`);
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`[setup-runner] ${error?.message || error}`);
+    process.exit(1);
+  }
 }
