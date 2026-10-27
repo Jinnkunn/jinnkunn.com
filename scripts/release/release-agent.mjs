@@ -787,11 +787,11 @@ function startWakeServer({ controller, port, wakeToken }) {
 export function loadRunnerEnvironment(argv = process.argv.slice(2)) {
   const { envFile } = parseArgs(argv);
   if (envFile) loadProjectEnv({ cwd: ROOT, override: false, files: [envFile] });
-  loadProjectEnv({ cwd: ROOT, override: false, files: [".env.local", ".env"] });
+  loadProjectEnv({ cwd: ROOT, override: false, files: [".env", ".env.local"] });
   // The immutable control checkout has no secrets. Jobs inherit credentials
   // from the persistent repo, while explicitly supplied runner settings win.
   const { repo } = parseArgs(argv);
-  loadProjectEnv({ cwd: repo, override: false, files: [".env.local", ".env"] });
+  loadProjectEnv({ cwd: repo, override: false, files: [".env", ".env.local"] });
   return parseArgs(argv);
 }
 

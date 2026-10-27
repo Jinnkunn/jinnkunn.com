@@ -214,7 +214,7 @@ function main() {
     warn(`${args.repo}/node_modules is missing — run \`npm ci\` there before the first job`);
   }
   loadProjectEnv({ files: [args.envFile], override: false });
-  loadProjectEnv({ cwd: args.repo, files: [".env.local", ".env"], override: false });
+  loadProjectEnv({ cwd: args.repo, files: [".env", ".env.local"], override: false });
   checkEnvKeys(args.repo);
   checkSleepSettings();
   if (!args.check) fs.mkdirSync(logDir, { recursive: true });

@@ -18,7 +18,10 @@ test("runner loads persistent repo credentials without overriding its launch env
     assert.equal(loadRunnerEnvironment([`--repo=${dir}`, `--env-file=${path.join(dir, "runner.env")}`, "--once"]).repo, dir);
     assert.equal(process.env.RUNNER_ENV_TEST_SECRET, "runner");
     assert.equal(process.env.RUNNER_ENV_TEST_OVERRIDE, "launch");
-    assert.equal(process.env.RUNNER_ENV_TEST_LOCAL, "local");
+    assert.equal(process.env.RUNNER_ENV_TEST_LOCAL, "base");
+    delete process.env.RUNNER_ENV_TEST_SECRET;
+    loadRunnerEnvironment([`--repo=${dir}`, "--once"]);
+    assert.equal(process.env.RUNNER_ENV_TEST_SECRET, "fixture");
   } finally {
     for (const name of Object.keys(process.env)) if (!(name in before)) delete process.env[name];
     Object.assign(process.env, before);
