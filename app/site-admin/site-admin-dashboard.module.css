@@ -4013,8 +4013,9 @@ button.statusPill:disabled {
 
   .collectionEntryDrawer {
     top: 8px;
+    left: 8px;
     right: 8px;
-    width: calc(100vw - 16px);
+    width: auto;
     height: calc(100dvh - 16px);
   }
 
