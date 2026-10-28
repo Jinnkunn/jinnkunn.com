@@ -64,7 +64,8 @@ export function maskMiddlewareManifestForLocalNext(root = process.cwd()) {
   };
 }
 
-export function startNextServer({ root = process.cwd(), port, disableMiddleware } = {}) {
+export function startNextServer({ root = process.cwd(), port, disableMiddleware, env = {} } = {}) {
+  const serverEnv = { ...process.env, ...env };
   const shouldDisableMiddleware =
     disableMiddleware ?? process.env.NEXT_LOCAL_QA_DISABLE_MIDDLEWARE !== "0";
   const restoreMiddlewareManifest = shouldDisableMiddleware
@@ -76,10 +77,10 @@ export function startNextServer({ root = process.cwd(), port, disableMiddleware 
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
     env: {
-      ...process.env,
+      ...serverEnv,
       PORT: String(port),
-      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || DEFAULT_NEXTAUTH_SECRET,
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+      NEXTAUTH_SECRET: serverEnv.NEXTAUTH_SECRET || DEFAULT_NEXTAUTH_SECRET,
+      NEXTAUTH_URL: serverEnv.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
     },
   });
 

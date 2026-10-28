@@ -6,8 +6,10 @@ import { ensureOutputDir, envFlag, isoStampForPath } from "../_lib/fs.mjs";
 import { maskMiddlewareManifestForLocalNext } from "../_lib/local-next.mjs";
 import { launchBrowser } from "../_lib/playwright.mjs";
 import { stopProcessTree } from "../_lib/process-tree.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
+import { normalizePublicCalendarData, filterStalePublicCalendarEvents } from "@jinnkunn/calendar-core/public";
 
-const OUT_ROOT = path.join(process.cwd(), "output", "ui-smoke");
+const OUT_ROOT = process.env.SMOKE_UI_OUTPUT_DIR || path.join(process.cwd(), "output", "ui-smoke");
 const DEFAULT_SCRIPT_TIMEOUT_MS = envFlag("SMOKE_UI_QUICK") ? 120_000 : 300_000;
 const SCRIPT_TIMEOUT_MS = Number.parseInt(
   String(process.env.SMOKE_UI_TIMEOUT_MS || DEFAULT_SCRIPT_TIMEOUT_MS),
@@ -20,18 +22,19 @@ const EMBED_POST =
   "/blog/list/do-language-model-embeddings-form-an-approximate-abelian-group";
 const REFERENCES_POST =
   "/blog/list/the-effect-of-chunk-retrieval-sequence-in-rag-on-multi-step-inference-performance-of-large-language-models";
-const SCRIPT_NEXTAUTH_SECRET =
-  process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
+const SCRIPT_NEXTAUTH_SECRET = "isolated-ui-smoke-secret";
+const SCRIPT_ADMIN_EMAIL = "ui-smoke@example.test";
 
 async function loadStalePartialCalendarPayload() {
   const raw = await readFile(
     path.join(process.cwd(), "content", "calendar-public.json"),
     "utf8",
   );
-  const data = JSON.parse(raw);
+  const data = normalizePublicCalendarData(JSON.parse(raw));
+  const full = filterStalePublicCalendarEvents(data);
   return {
-    ...data,
-    events: Array.isArray(data.events) ? data.events.slice(0, 1) : [],
+    full,
+    partial: { ...data, generatedAt: new Date(Date.parse(data.generatedAt) - 1000).toISOString(), events: full.events.slice(0, 1) },
   };
 }
 
@@ -102,7 +105,14 @@ function startServer(port) {
       ...process.env,
       PORT: String(port),
       NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+      SITE_ADMIN_STORAGE: "local",
+      SITE_ADMIN_EMAILS: SCRIPT_ADMIN_EMAIL,
+      CLOUDFLARE_API_TOKEN: "",
+      CF_API_TOKEN: "",
+      CLOUDFLARE_ACCOUNT_ID: "",
+      CF_ACCOUNT_ID: "",
+      DEPLOY_HOOK_URL: "",
+      NEXTAUTH_URL: `http://127.0.0.1:${port}`,
     },
   });
   return child;
@@ -243,6 +253,11 @@ async function main() {
 
       // Site Admin shell should still load with dark theme applied.
       try {
+        // Check the authenticated console with a loopback-only fixture identity,
+        // not NextAuth's unauthenticated provider page or production credentials.
+        const auth = await createNextAuthSessionCookie({ secret: SCRIPT_NEXTAUTH_SECRET, env: { SITE_ADMIN_EMAILS: SCRIPT_ADMIN_EMAIL } });
+        if (!auth.ok) throw new Error(auth.reason);
+        await context.addCookies(auth.cookie.split("; ").filter((part) => !part.startsWith("__Secure-")).map((part) => ({ name: part.slice(0, part.indexOf("=")), value: part.slice(part.indexOf("=") + 1), url: baseURL })));
         await gotoPath(page, baseURL, "/site-admin");
         await page.waitForTimeout(220);
         const theme = await readTheme(page);
@@ -274,14 +289,16 @@ async function main() {
         colorScheme: "light",
       });
       const page = await context.newPage();
-      const partialCalendar = await loadStalePartialCalendarPayload();
+      const { full, partial: partialCalendar } = await loadStalePartialCalendarPayload();
+      let releaseRefresh;
+      const refreshGate = new Promise((resolve) => { releaseRefresh = resolve; });
       await page.route("**/api/public/calendar", async (route) => {
-        await sleep(800);
+        await refreshGate;
         await route.fulfill({
           status: 200,
           headers: {
             "content-type": "application/json; charset=utf-8",
-            "x-calendar-served-at": "2026-05-15T18:10:00.000Z",
+            "x-calendar-served-at": new Date().toISOString(),
           },
           body: JSON.stringify(partialCalendar),
         });
@@ -290,24 +307,33 @@ async function main() {
       try {
         const url = buildThemedUrl(baseURL, "/calendar?tz=America/Halifax", "light");
         await page.goto(url, { waitUntil: "domcontentloaded" });
-        await page.waitForSelector(".public-calendar__event-pill", { timeout: 5000 });
+        if (full.events.length) await page.locator(".public-calendar__today-button").click();
+        const month = new Intl.DateTimeFormat("en", { timeZone: "America/Halifax", year: "numeric", month: "2-digit" });
+        const expectedMinimum = Math.min(2, full.events.filter((event) => month.format(new Date(event.startsAt)) === month.format(new Date())).length);
+        if (expectedMinimum) await page.waitForFunction((minimum) => document.querySelectorAll(".public-calendar__event-pill").length >= minimum, expectedMinimum);
+        else await page.locator(".public-calendar").waitFor();
         const before = await page.locator(".public-calendar__event-pill").count();
+        const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/public/calendar");
+        releaseRefresh();
+        await refreshed;
         await page.waitForTimeout(1600);
         const after = await page.locator(".public-calendar__event-pill").count();
         const emptyState = await page
           .getByText("No public calendar events are currently listed.")
           .isVisible()
           .catch(() => false);
-        record("calendar:hydration-keeps-complete-events", before > 1 && after >= before && !emptyState, {
+        record("calendar:hydration-keeps-complete-events", before >= expectedMinimum && after >= before && (before === 0 || !emptyState), {
           before,
           after,
           emptyState,
           partialEvents: partialCalendar.events.length,
+          expectedMinimum,
         });
-        if (after < before || emptyState) {
+        if (after < before || (before > 0 && emptyState)) {
           await captureFailure(page, outDir, "fail-calendar-hydration");
         }
       } catch (e) {
+        releaseRefresh();
         record("calendar:hydration-keeps-complete-events", false, { error: String(e) });
         await captureFailure(page, outDir, "fail-calendar-hydration");
       }

@@ -1,23 +1,23 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { chromium } from "playwright-core";
 
-import { stopProcessTree } from "../_lib/process-tree.mjs";
-import { maskMiddlewareManifestForLocalNext } from "../_lib/local-next.mjs";
+import { startNextServer } from "../_lib/local-next.mjs";
+import { launchBrowser } from "../_lib/playwright.mjs";
+import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const require = createRequire(import.meta.url);
 
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
-const OUT_ROOT = path.join(process.cwd(), "output", "a11y");
+const OUT_ROOT = process.env.A11Y_OUTPUT_DIR || path.join(process.cwd(), "output", "a11y");
 const AXE_SCRIPT_PATH = require.resolve("axe-core/axe.min.js");
 const DEFAULT_PRIORITY_PATHS = ["/", "/blog", "/publications", "/site-admin"];
 const DEFAULT_THEMES = ["light", "dark"];
 const DEFAULT_MAX_PAGES = 12;
 const FAILING_IMPACTS = new Set(["serious", "critical"]);
-const SCRIPT_NEXTAUTH_SECRET =
-  process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
+const SCRIPT_NEXTAUTH_SECRET = "isolated-a11y-secret";
+const SCRIPT_ADMIN_EMAIL = "a11y@example.test";
 
 function envFlag(name) {
   return TRUE_VALUES.has(String(process.env[name] || "").trim().toLowerCase());
@@ -191,14 +191,19 @@ function ensureBuild() {
 }
 
 function startServer(port) {
-  return spawn("npm", ["run", "start", "--", "-p", String(port)], {
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: process.platform !== "win32",
+  return startNextServer({
+    port,
     env: {
-      ...process.env,
-      PORT: String(port),
       NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
+      NEXTAUTH_URL: `http://127.0.0.1:${port}`,
+      SITE_ADMIN_EMAILS: SCRIPT_ADMIN_EMAIL,
+      SITE_ADMIN_GITHUB_USERS: "",
+      SITE_ADMIN_STORAGE: "local",
+      CLOUDFLARE_API_TOKEN: "",
+      CF_API_TOKEN: "",
+      CLOUDFLARE_ACCOUNT_ID: "",
+      CF_ACCOUNT_ID: "",
+      DEPLOY_HOOK_URL: "",
     },
   });
 }
@@ -221,14 +226,6 @@ async function waitForServer(url, timeoutMs = 45_000) {
   throw new Error(`Server not ready: ${url}`);
 }
 
-async function launchBrowser() {
-  try {
-    return await chromium.launch({ channel: "chrome", headless: true });
-  } catch {
-    return await chromium.launch({ headless: true });
-  }
-}
-
 function compactViolation(v, pathname) {
   const nodes = Array.isArray(v.nodes) ? v.nodes : [];
   const first = nodes[0];
@@ -247,7 +244,11 @@ function compactViolation(v, pathname) {
 }
 
 async function runPageA11y(page, url) {
-  await page.goto(url, { waitUntil: "networkidle" });
+  const response = await page.goto(url, { waitUntil: "networkidle" });
+  await page.locator("main").waitFor({ state: "visible" });
+  if (!response?.ok() || new URL(page.url()).pathname !== new URL(url).pathname || !(await page.locator("main").innerText()).trim()) {
+    throw new Error(`Unexpected or blank accessibility target: ${page.url()}`);
+  }
   await page.addScriptTag({ path: AXE_SCRIPT_PATH });
   const out = await page.evaluate(async () => {
     return await globalThis.axe.run(document, {
@@ -274,7 +275,7 @@ async function main() {
   const failAllEffective = failAll || fullSiteMode;
   const portRaw = Number.parseInt(String(process.env.A11Y_PORT || "3012"), 10);
   const port = Number.isFinite(portRaw) && portRaw > 0 ? portRaw : 3012;
-  const baseURL = `http://localhost:${port}`;
+  const baseURL = `http://127.0.0.1:${port}`;
   const maxPagesRaw = Number.parseInt(String(process.env.A11Y_MAX_PAGES || DEFAULT_MAX_PAGES), 10);
   const maxPages = Number.isFinite(maxPagesRaw) && maxPagesRaw > 0 ? maxPagesRaw : DEFAULT_MAX_PAGES;
   const priorityPaths = parsePathList(process.env.A11Y_PRIORITY_PATHS || DEFAULT_PRIORITY_PATHS.join(","));
@@ -310,20 +311,18 @@ async function main() {
     },
   };
 
-  // `next start` cannot run this app's middleware locally — it answers every
-  // request with an empty 200, so axe audited a blank document and every page
-  // reported the same two violations (document-title, html-has-lang) no matter
-  // what the markup said. scripts/_lib/local-next.mjs has always masked the
-  // middleware manifest for exactly this reason; this script span its own
-  // server and skipped it.
-  let restoreMiddlewareManifest = () => {};
-
   try {
     if (!skipBuild) ensureBuild();
-    restoreMiddlewareManifest = maskMiddlewareManifestForLocalNext(process.cwd());
     server = startServer(port);
     await waitForServer(`${baseURL}/`);
     browser = await launchBrowser();
+    const auth = await createNextAuthSessionCookie({
+      secret: SCRIPT_NEXTAUTH_SECRET,
+      env: { SITE_ADMIN_EMAILS: SCRIPT_ADMIN_EMAIL },
+    });
+    if (!auth.ok) throw new Error(auth.reason);
+    const token = auth.cookie.match(/(?:^|; )next-auth\.session-token=([^;]+)/)?.[1];
+    if (!token) throw new Error("Could not mint isolated accessibility session.");
 
     let targetPaths = explicitPaths;
     if (targetPaths.length === 0) {
@@ -351,6 +350,7 @@ async function main() {
     for (const pathname of targetPaths) {
       for (const theme of themes) {
         const page = await browser.newPage();
+        await page.context().addCookies([{ name: "next-auth.session-token", value: token, url: baseURL, httpOnly: true, sameSite: "Lax" }]);
         const url = buildAuditUrl(baseURL, pathname, theme);
         const result = await runPageA11y(page, url);
 
@@ -396,8 +396,7 @@ async function main() {
     }
   } finally {
     if (browser) await browser.close().catch(() => {});
-    if (server) await stopProcessTree(server);
-    restoreMiddlewareManifest();
+    if (server) await server.stop();
   }
 }
 

@@ -46,11 +46,14 @@ test("local Next QA bounds server cleanup even when graceful shutdown is ignored
     await writeFile(path.join(bin, "next"), `const http = require("node:http");
 process.on("SIGTERM", () => {});
 const port = Number(process.argv[process.argv.indexOf("-p") + 1]);
-http.createServer((_req, res) => res.end("fixture")).listen(port, "127.0.0.1");`);
+http.createServer((_req, res) => res.end(process.env.LOCAL_NEXT_FIXTURE)).listen(port, "127.0.0.1");`);
     const port = await findAvailablePort();
-    server = startNextServer({ root, port });
+    const original = process.env.LOCAL_NEXT_FIXTURE;
+    server = startNextServer({ root, port, env: { LOCAL_NEXT_FIXTURE: "isolated" } });
     const url = `http://127.0.0.1:${port}`;
     await waitForHttp(url);
+    assert.equal(await (await fetch(url)).text(), "isolated");
+    assert.equal(process.env.LOCAL_NEXT_FIXTURE, original);
     await server.stop(); stopped = true;
     await assert.rejects(fetch(url, { signal: AbortSignal.timeout(1000) }));
   } finally {

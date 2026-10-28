@@ -66,6 +66,8 @@ jobs:
               - "scripts/qa/smoke-ui.mjs"
               - "scripts/qa/a11y-check.mjs"
               - "scripts/qa/perf-budget.mjs"
+              - "scripts/qa/ui-snapshots.mjs"
+              - "scripts/_lib/**"
               - "package.json"
               - "package-lock.json"
             admin_quality:
@@ -96,8 +98,8 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Install Chromium for Admin Regression
-        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+      - name: Install Chromium for Browser Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' || steps.changes.outputs.ui_quality == 'true'
         run: npx --no-install playwright-core install --with-deps chromium
 
       # These isolated suites share the local Next middleware manifest and must

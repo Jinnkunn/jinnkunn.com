@@ -30,6 +30,7 @@ test("ci: isolated admin regressions run serially without mutating a remote envi
   }
   assert.match(yaml, /playwright-core install --with-deps chromium/);
   assert.match(yaml, /PLAYWRIGHT_CHANNEL: chromium/);
+  assert.equal(stepGate(yaml, "Install Chromium for Browser Regression"), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' || steps.changes.outputs.ui_quality == 'true'");
 });
 
 // The four steps the dead `event_name == 'push'` gate silently disabled.

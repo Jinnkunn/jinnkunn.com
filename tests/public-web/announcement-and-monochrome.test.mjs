@@ -200,3 +200,22 @@ test("monochrome appearance uses neutral surfaces and remaps semantic content hu
   assert.match(monochromeCss, /filter:\s*grayscale\(1\) saturate\(0\)/);
   assert.doesNotMatch(monochromeCss, /:is\(a, button, img, video, svg, canvas/);
 });
+
+test("light monochrome metadata meets AA contrast on public surfaces", async () => {
+  const css = await fs.readFile("app/design-system.css", "utf8");
+  const linear = (channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  for (const tone of ["secondary", "muted", "faint", "subtle"]) {
+    const match = css.match(new RegExp(`--ds-monochrome-text-${tone}: rgba\\((\\d+), (\\d+), (\\d+), ([\\d.]+)\\)`));
+    assert.ok(match, `light ${tone} token exists`);
+    const [, r, g, b, alpha] = match.map(Number);
+    for (const background of [244, 228, 231]) {
+      const foreground = [r, g, b].map((channel) => channel * alpha + background * (1 - alpha));
+      const luminance = foreground.map(linear).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+      const contrast = (linear(background) + 0.05) / (luminance + 0.05);
+      assert.ok(contrast >= 4.5, `${tone} on ${background}: ${contrast.toFixed(2)}:1`);
+    }
+  }
+});

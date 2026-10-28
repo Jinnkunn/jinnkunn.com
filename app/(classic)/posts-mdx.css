@@ -3,6 +3,11 @@
    existing `.notion-*` classes wherever possible (Toggle, Embed, Figure).
    The only truly new widget is <Callout/>, styled with design-system tokens. */
 
+.mdx-post__body .katex-error {
+  /* KaTeX emits an inline red that cannot adapt to dark or monochrome mode. */
+  color: var(--ds-danger-text) !important;
+}
+
 .mdx-callout {
   display: flex;
   flex-direction: column;
