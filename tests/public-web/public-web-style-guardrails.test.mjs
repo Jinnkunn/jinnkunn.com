@@ -130,6 +130,15 @@ test("public-web-style-guardrails: static public navigation uses document reques
   }
 });
 
+test("public-web-style-guardrails: monochrome text contract follows the accessible design token", async () => {
+  const css = await read("app/design-system.css");
+  const script = await read("scripts/qa/production-style-regression.mjs");
+  const token = css.match(/--ds-monochrome-text-muted:\s*([^;]+);/)?.[1];
+  const expected = script.match(/const MONOCHROME_NOTION_GRAY_TEXT_COLOR = "([^"]+)"/)?.[1];
+  assert.ok(token);
+  assert.equal(expected, token);
+});
+
 test("public-web-style-guardrails: visual contracts cover the public route matrix", async () => {
   const classicContract = await read("scripts/qa/classic-style-contract.mjs");
   const productionContract = await read("scripts/qa/production-style-regression.mjs");
