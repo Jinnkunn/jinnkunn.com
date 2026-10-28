@@ -18,6 +18,21 @@ import { test } from "node:test";
 
 const ROOT = process.cwd();
 
+test("ci: isolated admin regressions run serially without mutating a remote environment", () => {
+  const yaml = read(".github/workflows/ci.yml");
+  const steps = readStepBlocks(yaml);
+  for (const [name, command] of [["Admin Browser Regression", "npm run smoke:site-admin:collections"], ["Admin Draft Regression", "npm run smoke:site-admin:drafts"], ["Admin Followup Regression", "npm run smoke:site-admin:followup"], ["Public Acceptance", "node scripts/qa/public-acceptance-workflow.mjs"]]) {
+    const step = steps.get(name).lines.join("\n");
+    assert.ok(step.includes(command));
+    assert.doesNotMatch(step, /--execute|--publisher|--env=production|secrets\./);
+    assert.equal(stepGate(yaml, name), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'");
+    assert.match(step, /timeout-minutes: \d+/);
+  }
+  assert.match(yaml, /playwright-core install --with-deps chromium/);
+  assert.match(yaml, /PLAYWRIGHT_CHANNEL: chromium/);
+  assert.equal(stepGate(yaml, "Install Chromium for Browser Regression"), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' || steps.changes.outputs.ui_quality == 'true'");
+});
+
 // The four steps the dead `event_name == 'push'` gate silently disabled.
 const UI_QUALITY_STEPS = [
   "UI Smoke (Quick)",
@@ -125,6 +140,9 @@ test("ci: workspace-quality job still runs tsc, vitest and cargo", () => {
   assert.match(yaml, /working-directory: apps\/workspace\s*\n\s*run: npm run typecheck/);
   assert.match(yaml, /working-directory: apps\/workspace\s*\n\s*run: npm test/);
   assert.match(yaml, /cargo test --lib/);
+  const workspace = yaml.slice(yaml.indexOf("  workspace-quality:"));
+  assert.match(workspace, /name: Install \(shared packages\)\s+run: npm ci/);
+  assert.ok(workspace.indexOf("Install (shared packages)") < workspace.indexOf("Type Check (workspace)"));
 });
 
 test("release gate includes the workspace typecheck and vitest run", () => {

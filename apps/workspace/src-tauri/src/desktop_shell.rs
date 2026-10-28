@@ -849,7 +849,7 @@ pub fn reapply_traffic_lights_on_window_event(
 /// Run the Tauri app loop. Intercepts macOS's "reopen" (clicking the
 /// dock icon while no window is visible) and brings the main window
 /// back instead of leaving the user staring at nothing.
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[cfg(target_os = "macos")]
 pub fn run_tauri_app(app: tauri::App<tauri::Wry>) {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Reopen {
@@ -864,7 +864,7 @@ pub fn run_tauri_app(app: tauri::App<tauri::Wry>) {
     });
 }
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
+#[cfg(not(target_os = "macos"))]
 pub fn run_tauri_app(app: tauri::App<tauri::Wry>) {
     app.run(|_app_handle, _event| {});
 }

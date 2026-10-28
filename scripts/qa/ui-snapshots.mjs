@@ -15,14 +15,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { chromium } from "playwright-core";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
-import { stopProcessTree } from "../_lib/process-tree.mjs";
+import { startNextServer } from "../_lib/local-next.mjs";
+import { launchBrowser } from "../_lib/playwright.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
 const ROOT = process.cwd();
-const OUT_DIR = path.join(ROOT, "output", "ui-snapshots");
+const OUT_DIR = process.env.SNAPSHOT_OUTPUT_DIR || path.join(ROOT, "output", "ui-snapshots");
 const DEFAULT_TARGETS = [
   "/",
   "/news",
@@ -37,9 +37,8 @@ const DEFAULT_TARGETS = [
   "/site-admin/design-system",
 ];
 const DEFAULT_THEMES = ["light", "dark"];
-const SCRIPT_NEXTAUTH_SECRET =
-  process.env.NEXTAUTH_SECRET || "codex-design-system-qa-secret";
-const FALLBACK_ADMIN_EMAIL = "i@jinkunchen.com";
+const SCRIPT_NEXTAUTH_SECRET = "isolated-ui-snapshot-secret";
+const SCRIPT_ADMIN_EMAIL = "ui-snapshot@example.test";
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -92,21 +91,21 @@ function run(cmd, args, opts = {}) {
 }
 
 function startNext(port) {
-  // Use node to execute Next directly (more stable than shell scripts).
-  const nextBin = path.join(ROOT, "node_modules", "next", "dist", "bin", "next");
-  const child = spawn(process.execPath, [nextBin, "start", "-p", String(port)], {
-    stdio: "inherit",
-    detached: process.platform !== "win32",
+  return startNextServer({
+    port,
     env: {
-      ...process.env,
-      PORT: String(port),
       NEXTAUTH_SECRET: SCRIPT_NEXTAUTH_SECRET,
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
-      SITE_ADMIN_EMAILS: process.env.SITE_ADMIN_EMAILS || FALLBACK_ADMIN_EMAIL,
-      SITE_ADMIN_GITHUB_USERS: process.env.SITE_ADMIN_GITHUB_USERS || "",
+      NEXTAUTH_URL: `http://127.0.0.1:${port}`,
+      SITE_ADMIN_EMAILS: SCRIPT_ADMIN_EMAIL,
+      SITE_ADMIN_GITHUB_USERS: "",
+      SITE_ADMIN_STORAGE: "local",
+      CLOUDFLARE_API_TOKEN: "",
+      CF_API_TOKEN: "",
+      CLOUDFLARE_ACCOUNT_ID: "",
+      CF_ACCOUNT_ID: "",
+      DEPLOY_HOOK_URL: "",
     },
   });
-  return child;
 }
 
 function safeNameFromPath(p) {
@@ -152,6 +151,10 @@ async function gotoThemedPage(page, origin, pathname, theme) {
     (expectedTheme) => document.documentElement.dataset.theme === expectedTheme,
     theme,
   );
+  await page.locator("main").waitFor({ state: "visible" });
+  if (new URL(page.url()).pathname !== pathname || !(await page.locator("main").innerText()).trim()) {
+    throw new Error(`Unexpected or blank snapshot target: ${page.url()}`);
+  }
   return url;
 }
 
@@ -180,23 +183,11 @@ function effectiveThemes() {
   return themes.length > 0 ? themes : DEFAULT_THEMES;
 }
 
-async function launchBrowser() {
-  // Prefer system Chrome when available, but fall back for CI runners.
-  try {
-    return await chromium.launch({ channel: "chrome", headless: true });
-  } catch {
-    return await chromium.launch({ headless: true });
-  }
-}
-
 async function createSnapshotAdminToken() {
   const auth = await createNextAuthSessionCookie({
     secret: SCRIPT_NEXTAUTH_SECRET,
     maxAge: 60 * 30,
-    env: {
-      ...process.env,
-      SITE_ADMIN_EMAILS: process.env.SITE_ADMIN_EMAILS || FALLBACK_ADMIN_EMAIL,
-    },
+    env: { SITE_ADMIN_EMAILS: SCRIPT_ADMIN_EMAIL },
     subjectPrefix: "ui-snapshot",
   });
   if (!auth.ok) throw new Error(`failed to mint snapshot auth token: ${auth.reason}`);
@@ -219,10 +210,11 @@ async function main() {
   ensureDir(runDir);
 
   const server = startNext(port);
+  let browser;
   try {
     await waitForHttpOk(`${origin}/`, 20_000);
 
-    const browser = await launchBrowser();
+    browser = await launchBrowser();
 
     const ctx = await browser.newContext({
       userAgent: "jinnkunn.com ui-snapshots",
@@ -266,9 +258,9 @@ async function main() {
       }
     }
 
-    await browser.close();
   } finally {
-    await stopProcessTree(server);
+    if (browser) await browser.close().catch(() => {});
+    await server.stop();
   }
 
   console.log(`Snapshots saved to: ${runDir}`);

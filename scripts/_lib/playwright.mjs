@@ -12,7 +12,7 @@ import { chromium } from "playwright-core";
  */
 
 export async function launchBrowser(options = {}) {
-  const { headless = true, channel = "chrome", ...rest } = options;
+  const { headless = true, channel = process.env.PLAYWRIGHT_CHANNEL || "chrome", ...rest } = options;
   try {
     return await chromium.launch({ channel, headless, ...rest });
   } catch {

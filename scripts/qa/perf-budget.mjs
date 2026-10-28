@@ -1,11 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
-import { chromium } from "playwright-core";
+import { spawnSync } from "node:child_process";
 
-import { stopProcessTree } from "../_lib/process-tree.mjs";
+import { startNextServer } from "../_lib/local-next.mjs";
+import { launchBrowser } from "../_lib/playwright.mjs";
 
-const OUT_ROOT = path.join(process.cwd(), "output", "perf");
+const OUT_ROOT = process.env.PERF_OUTPUT_DIR || path.join(process.cwd(), "output", "perf");
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 
 function envFlag(name, defaultValue = false) {
@@ -68,22 +68,6 @@ function ensureBuild() {
   }
 }
 
-function startServer(port) {
-  return spawn("npm", ["run", "start", "--", "-p", String(port)], {
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: process.platform !== "win32",
-    env: { ...process.env, PORT: String(port) },
-  });
-}
-
-async function launchBrowser() {
-  try {
-    return await chromium.launch({ channel: "chrome", headless: true });
-  } catch {
-    return await chromium.launch({ headless: true });
-  }
-}
-
 function round(n, digits = 2) {
   const m = Math.pow(10, digits);
   return Math.round(Number(n || 0) * m) / m;
@@ -130,7 +114,14 @@ async function collectRouteVitals(page, baseURL, routePath) {
     }
   });
 
-  await page.goto(`${baseURL}${routePath}`, { waitUntil: "networkidle" });
+  const response = await page.goto(`${baseURL}${routePath}`, { waitUntil: "networkidle" });
+  if (!response?.ok() || new URL(page.url()).pathname !== routePath) {
+    throw new Error(`Unexpected performance target: ${page.url()} (${response?.status()})`);
+  }
+  await page.locator("main").waitFor({ state: "visible" });
+  if (!(await page.title()) || !(await page.locator("main").innerText()).trim()) {
+    throw new Error(`Performance target is blank: ${routePath}`);
+  }
   await page.waitForTimeout(1200);
 
   const vp = page.viewportSize() || { width: 1280, height: 800 };
@@ -168,7 +159,7 @@ async function main() {
   const strict = envFlag("PERF_STRICT", true);
   const portRaw = Number.parseInt(String(process.env.PERF_PORT || "3014"), 10);
   const port = Number.isFinite(portRaw) && portRaw > 0 ? portRaw : 3014;
-  const baseURL = `http://localhost:${port}`;
+  const baseURL = `http://127.0.0.1:${port}`;
 
   const budget = {
     lcpMs: Math.max(1, envNumber("PERF_BUDGET_LCP_MS", 4500)),
@@ -204,7 +195,7 @@ async function main() {
 
   try {
     if (!skipBuild) ensureBuild();
-    server = startServer(port);
+    server = startNextServer({ port });
     await waitForServer(`${baseURL}/`);
     browser = await launchBrowser();
 
@@ -252,7 +243,7 @@ async function main() {
     if (browser) {
       await browser.close().catch(() => {});
     }
-    if (server) await stopProcessTree(server);
+    if (server) await server.stop();
   }
 }
 

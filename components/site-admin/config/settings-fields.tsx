@@ -1,6 +1,7 @@
 "use client";
 
 import type { HTMLInputTypeAttribute, ReactNode } from "react";
+import { useId } from "react";
 
 import { CheckboxRow, Field, Textarea } from "@/components/ui/field";
 import { asString } from "./utils";
@@ -8,13 +9,15 @@ import { asString } from "./utils";
 export function SiteAdminFormRow({
   label,
   children,
+  fieldId,
 }: {
   label: string;
   children: ReactNode;
+  fieldId?: string;
 }) {
   return (
     <div className="site-admin-form__row">
-      <label className="site-admin-form__label">{label}</label>
+      {fieldId ? <label className="site-admin-form__label" htmlFor={fieldId}>{label}</label> : <span className="site-admin-form__label">{label}</span>}
       {children}
     </div>
   );
@@ -37,9 +40,11 @@ export function SiteAdminTextFieldRow({
   mono = false,
   type = "text",
 }: TextFieldRowProps) {
+  const id = useId();
   return (
-    <SiteAdminFormRow label={label}>
+    <SiteAdminFormRow label={label} fieldId={id}>
       <Field
+        id={id}
         className={`site-admin-form__input${mono ? " site-admin-form__input--mono" : ""}`}
         mono={mono}
         type={type}
@@ -62,9 +67,11 @@ export function SiteAdminSelectFieldRow({
   onChange: (next: string) => void;
   options: readonly { value: string; label: string }[];
 }) {
+  const id = useId();
   return (
-    <SiteAdminFormRow label={label}>
+    <SiteAdminFormRow label={label} fieldId={id}>
       <select
+        id={id}
         className="site-admin-form__select ds-field"
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -94,9 +101,11 @@ export function SiteAdminTextAreaRow({
   placeholder,
   mono = false,
 }: TextAreaRowProps) {
+  const id = useId();
   return (
-    <SiteAdminFormRow label={label}>
+    <SiteAdminFormRow label={label} fieldId={id}>
       <Textarea
+        id={id}
         className={`site-admin-form__textarea${mono ? " site-admin-form__textarea--mono" : ""}`}
         mono={mono}
         value={asString(value)}

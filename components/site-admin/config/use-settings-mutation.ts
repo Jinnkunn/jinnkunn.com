@@ -23,11 +23,11 @@ export function useSiteAdminSettingsMutation({
   setSourceVersion,
   onSaved,
 }: UseSiteAdminSettingsMutationArgs) {
-  return async () => {
-    if (!draftSettings?.rowId) return;
-    if (!sourceVersion?.siteConfigSha) {
+  return async (expectedVersion = sourceVersion) => {
+    if (!draftSettings?.rowId) return false;
+    if (!expectedVersion?.siteConfigSha) {
       setErr("Missing sourceVersion. Reload latest and try again.");
-      return;
+      return false;
     }
     setBusy(true);
     setErr("");
@@ -61,12 +61,14 @@ export function useSiteAdminSettingsMutation({
         kind: "settings",
         rowId: draftSettings.rowId,
         patch,
-        expectedSiteConfigSha: sourceVersion.siteConfigSha,
+        expectedSiteConfigSha: expectedVersion.siteConfigSha,
       });
       setSourceVersion(data.sourceVersion);
       onSaved?.({ ...draftSettings });
+      return true;
     } catch (e: unknown) {
       setErr(errorFromUnknown(e));
+      return false;
     } finally {
       setBusy(false);
     }

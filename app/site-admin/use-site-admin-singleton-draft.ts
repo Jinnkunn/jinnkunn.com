@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { clearLocalDraft, readLocalDraft, requiresRecoveryReview, type LocalDraftSnapshot } from "./site-admin-draft-storage";
 import { useSiteAdminDraftPersistence } from "./use-site-admin-draft-persistence";
 
-export function useSiteAdminSingletonDraft<Form>({ kind, id, ready, dirty, source, form, baseVersion, enabled, onSave, onRestore }: {
+export function useSiteAdminSingletonDraft<Form>({ kind, id, ready, dirty, source, form, baseVersion, enabled, pauseAutosave = false, onSave, onRestore }: {
   kind: string; id: string; ready: boolean; dirty: boolean; source: string; form: Form; baseVersion: string;
-  enabled: boolean; onSave: () => Promise<boolean>; onRestore: (form: Form) => void;
+  enabled: boolean; pauseAutosave?: boolean; onSave: () => Promise<boolean>; onRestore: (form: Form) => void;
 }) {
   const [recovery, setRecovery] = useState<LocalDraftSnapshot<Form> | null>(null);
   const [localSavedAt, setLocalSavedAt] = useState("");
@@ -45,7 +45,7 @@ export function useSiteAdminSingletonDraft<Form>({ kind, id, ready, dirty, sourc
   }
   useSiteAdminDraftPersistence({
     kind, id: ready && !recovery ? id : "", dirty, snapshot,
-    autosaveEnabled: enabled && !failed && !needsReview,
+    autosaveEnabled: enabled && !pauseAutosave && !failed && !needsReview,
     onSave: save,
     onRecoverySaved: (at) => { setLocalSavedAt(at); setStorageFailed(false); },
     onRecoveryFailure: () => setStorageFailed(true),

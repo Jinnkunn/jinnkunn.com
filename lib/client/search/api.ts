@@ -13,13 +13,24 @@ export async function fetchSearchResults(
   if (opts.offset > 0) url.searchParams.set("offset", String(opts.offset));
   if (opts.limit && opts.limit !== 20) url.searchParams.set("limit", String(opts.limit));
 
-  const res = await fetch(url, { signal, headers: { "cache-control": "no-store" } });
-  // Reject instead of returning an empty payload: swallowing the status made a 500 from
-  // /api/search indistinguishable from a query that genuinely matched nothing, and the
-  // overlay then told the user "No results". The only 4xx this route emits is an invalid
-  // `type`, which the client can never send (the pills are a fixed whitelist).
-  if (!res.ok) throw new Error(`Search request failed (${res.status})`);
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal.reason);
+  signal.addEventListener("abort", abort, { once: true });
+  if (signal.aborted) abort();
+  const timeout = window.setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, cache: "no-store" });
+    // Release failed responses before a retry; never turn an outage into an
+    // apparently successful empty result.
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error(`Search request failed (${res.status})`);
+    }
 
-  const data = (await res.json().catch(() => null)) as unknown;
-  return parseSearchResponse(data);
+    const data = (await res.json().catch(() => null)) as unknown;
+    return parseSearchResponse(data);
+  } finally {
+    window.clearTimeout(timeout);
+    signal.removeEventListener("abort", abort);
+  }
 }

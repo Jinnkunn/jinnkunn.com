@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { settingsDraftDirty } from "@/app/site-admin/site-admin-console-model";
 import type { NavItemRow, SiteSettings } from "@/components/site-admin/config/types";
@@ -17,7 +17,12 @@ export function useSiteAdminConfigData() {
   const [draftSettings, setDraftSettings] = useState<SiteSettings | null>(null);
   const [savedSettings, setSavedSettings] = useState<SiteSettings | null>(null);
   const [savedAt, setSavedAt] = useState("");
-  const [sourceVersion, setSourceVersion] = useState<SiteAdminConfigSourceVersion | null>(null);
+  const [sourceVersion, setVersion] = useState<SiteAdminConfigSourceVersion | null>(null);
+  const versionRef = useRef(sourceVersion);
+  const setSourceVersion = (version: SiteAdminConfigSourceVersion) => {
+    versionRef.current = version;
+    setVersion(version);
+  };
   const {
     openNav,
     navDraft,
@@ -81,6 +86,17 @@ export function useSiteAdminConfigData() {
     [draftSettings, savedSettings],
   );
 
+  async function saveDrafts() {
+    if (busy) return false;
+    if (settingsDirty && !await saveSettings(versionRef.current)) return false;
+    return saveAllNavRows(versionRef.current);
+  }
+
+  function discardDrafts() {
+    setDraftSettings(savedSettings ? structuredClone(savedSettings) : null);
+    resetNavEditorState();
+  }
+
   return {
     busy,
     err,
@@ -100,5 +116,7 @@ export function useSiteAdminConfigData() {
     saveAllNavRows,
     addNavRow,
     sourceVersion,
+    saveDrafts,
+    discardDrafts,
   };
 }

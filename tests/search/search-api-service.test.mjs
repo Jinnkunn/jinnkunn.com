@@ -15,6 +15,20 @@ function manifestRow(row) {
   };
 }
 
+test("search-api-service: Chinese, full-width English and exact navigational titles rank correctly", () => {
+  const index = [
+    { title: "Works", routePath: "/works", kind: "page", text: "Teaching AI 2026", headings: [] },
+    { title: "Teaching", routePath: "/teaching", kind: "page", text: "AI 2026", headings: [] },
+    { title: "日喀则与吉隆", routePath: "/pages/gyirong", kind: "page", text: "救援相关信息。日喀则地区消息。", headings: [] },
+  ];
+  const search = (q) => buildSearchResponse({ q, index, manifest: [], type: "all", offset: 0, limit: 20, scope: "" });
+  assert.equal(search("Teaching").items[0].routePath, "/teaching");
+  assert.equal(search("Teaching").meta.groups[0].label, "Pages / Teaching");
+  assert.equal(search("ＡＩ ２０２６").items.length, 2);
+  assert.equal(search("日喀则").items[0].routePath, "/pages/gyirong");
+  assert.equal(search("no-such-page-qa").items.length, 0);
+});
+
 test("search-api-service: index path wins and canonical blog/list routes are deduped", () => {
   const manifest = [
     manifestRow({ id: "home", title: "Hi there!", routePath: "/" }),

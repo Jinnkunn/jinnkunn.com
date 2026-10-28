@@ -14,11 +14,13 @@
   <key>ProgramArguments</key>
   <array>
     <string>{{NODE_BIN}}</string>
-    <string>{{REPO_ROOT}}/scripts/release/release-agent.mjs</string>
+    <string>{{CONTROL_ROOT}}/scripts/release/release-agent.mjs</string>
     <string>--serve</string>
+    <string>--repo={{REPO_ROOT}}</string>
+    <string>--env-file={{ENV_FILE}}</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>{{REPO_ROOT}}</string>
+  <string>{{CONTROL_ROOT}}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

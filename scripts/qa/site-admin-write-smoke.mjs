@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { spawn } from "node:child_process";
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 
@@ -14,7 +15,9 @@ export function writeSmokeTarget(args, environment = {}) {
   assert.equal(origin.port, "");
   assert.equal(origin.username + origin.password + origin.search + origin.hash, "");
   assert.equal(origin.pathname, "/");
-  return { origin: origin.origin, execute: args.includes("--execute") };
+  const publisher = args.find((arg) => arg.startsWith("--publisher="))?.slice(12) || "runner";
+  assert.ok(["runner", "local"].includes(publisher), "Use publisher=runner or publisher=local.");
+  return { origin: origin.origin, execute: args.includes("--execute"), publisher };
 }
 
 export function assertIsolatedReview(review, ownedPath) {
@@ -66,6 +69,18 @@ async function main() {
     const review = await read("/api/site-admin/publication-review");
     assertIsolatedReview(review, path);
     if (!review.changes.length) return;
+    if (target.publisher === "local") {
+      // The normal publisher checks out the live Worker's immutable source and
+      // guards this D1 snapshot; uncommitted UI changes are never deployed.
+      const exitCode = await new Promise((resolve, reject) => {
+        const child = spawn("npm", ["run", "publish:content:staging"], {
+          stdio: "inherit", env: { ...process.env, CONTENT_PUBLICATION_EXPECT_SNAPSHOT: review.snapshotSha },
+        });
+        child.once("error", reject); child.once("exit", resolve);
+      });
+      assert.equal(exitCode, 0, "Local staging content publisher failed.");
+      return;
+    }
     const result = await request("/api/site-admin/release-jobs", "POST", { action: "publish-content-staging", request: { reviewSnapshotSha: review.snapshotSha, origin: "isolated-d1-write-smoke" } });
     assert.equal(result.status, 202, `Publication rejected (${result.status}, ${result.code || "unknown"}).`);
     activeJob = result.data.job.id;

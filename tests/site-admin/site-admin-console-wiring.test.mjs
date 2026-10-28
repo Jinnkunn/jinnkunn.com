@@ -27,6 +27,15 @@ const SELECT_PATH = CONSOLE.slice(
   CONSOLE.indexOf("async function saveSelectedContent"),
 );
 
+test("document fields capture values before a deferred state updater runs", () => {
+  const session = readFileSync(new URL("../../app/site-admin/use-site-admin-document-session.ts", import.meta.url), "utf8");
+  assert.match(session, /function updateContentField[\s\S]*\[key\]: value/);
+  for (const field of ["title", "date", "updated", "description", "tags", "cover", "ogImage"]) {
+    assert.ok(CONSOLE.includes(`updateContentField("${field}", event.target.value)`));
+  }
+  assert.ok(CONSOLE.includes('updateContentField("draft", !event.target.checked)'));
+});
+
 test("a save that outlives its document cannot write the response back", () => {
   assert.match(SAVE_PATH, /const token = selectionGateRef\.current\.current\(\);/);
 

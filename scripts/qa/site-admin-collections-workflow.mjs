@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { once } from "node:events";
-import { chromium } from "playwright-core";
+import { launchBrowser } from "../_lib/playwright.mjs";
 import { PNG } from "pngjs";
 import { createCollectionsFixture } from "../_lib/site-admin-collections-fixture.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
@@ -41,8 +39,7 @@ async function main() {
     await waitForHttp(localOrigin);
     const auth = await createNextAuthSessionCookie();
     assert.equal(auth.ok, true, auth.reason);
-    const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-    browser = await chromium.launch({ headless: true, args: ["--host-resolver-rules=MAP staging.jinkunchen.com 127.0.0.1", "--no-proxy-server"], ...(existsSync(chrome) ? { executablePath: chrome } : {}) });
+    browser = await launchBrowser({ args: ["--host-resolver-rules=MAP staging.jinkunchen.com 127.0.0.1", "--no-proxy-server"] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
     await context.addCookies(auth.cookie.split("; ").filter((part) => !part.startsWith("__Secure-")).map((part) => {
       const index = part.indexOf("=");
@@ -67,7 +64,7 @@ async function main() {
       if (req.method() === "GET" && url.pathname === "/api/site-admin/posts") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ count: qaPosts.length, posts: qaPosts }) });
       if (req.method() === "GET" && url.pathname.startsWith("/api/site-admin/posts/")) {
         const post = qaPosts.find((item) => item.slug === url.pathname.split("/").at(-1));
-        if (post) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...post, source: `---\ntitle: ${post.title}\n---\nFixture post body.`, body: "Fixture post body.", frontmatter: { title: post.title, date: post.dateIso, draft: false }, frontmatterKeys: ["title", "date", "draft"] }) });
+        if (post) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...post, source: `---\ntitle: ${JSON.stringify(post.title)}\ndate: ${post.dateIso}\ndraft: false\n---\nFixture post body.`, body: "Fixture post body.", frontmatter: { title: post.title, date: post.dateIso, draft: false }, frontmatterKeys: ["title", "date", "draft"] }) });
       }
       if (url.pathname.startsWith("/api/site-admin/")) return fixture.handle(route);
       if (req.method() !== "GET") throw new Error(`Unexpected write outside fixture: ${req.url()}`);
@@ -168,7 +165,7 @@ async function main() {
     await eventually(async () => assert.equal(await page.getByRole("tab", { name: "Source", exact: true }).getAttribute("aria-selected"), "true"), "editor mode restores after reload");
     await page.goBack();
     await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).waitFor();
-    assert.equal(await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).inputValue(), "Long title");
+    await eventually(async () => assert.equal(await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).inputValue(), "Long title"), "Back restores the filtered list query");
     await page.goForward();
     await page.getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
     log("Workspace: canceling Back keeps the unsaved document and its URL");
@@ -176,9 +173,11 @@ async function main() {
     page.on("dialog", (dialog) => void dialog.dismiss());
     await page.getByLabel("Title", { exact: true }).fill("Unsaved title");
     await page.goBack();
+    await page.getByRole("dialog", { name: "Unsaved changes", exact: true }).getByRole("button", { name: "Stay here", exact: true }).click();
     await eventually(() => assert.equal(new URL(page.url()).searchParams.get("id"), qaPosts[0].slug), "canceled Back returns to the document URL");
     assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Unsaved title");
     await page.getByLabel("Title", { exact: true }).fill(qaPosts[0].title);
+    await eventually(async () => assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), qaPosts[0].title), "Reverting the title restores the exact input");
     page.removeAllListeners("dialog");
     page.on("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Back to posts", exact: true }).click();
@@ -390,7 +389,8 @@ async function main() {
     await dialog.waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     const box = await dialog.boundingBox();
-    assert.ok(box && box.x >= 0 && box.x + box.width <= 391 && box.y >= 0 && box.y + box.height <= 845, "Mobile panel must fit the viewport");
+    assert.equal(await dialog.evaluate((el) => el.parentElement === document.body), true, "Mobile overlays escape container-query containing blocks");
+    assert.ok(box && box.x >= 0 && box.x + box.width <= 391 && box.y >= 0 && box.y + box.height <= 845, `Mobile panel must fit the viewport: ${JSON.stringify(box)}`);
     const focusSelector = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
     await dialog.locator(focusSelector).filter({ visible: true }).last().focus();
     await page.keyboard.press("Tab");
@@ -430,8 +430,7 @@ async function main() {
     throw error;
   } finally {
     if (browser) await browser.close();
-    server.kill("SIGTERM");
-    if (server.exitCode === null && server.signalCode === null) await once(server, "exit");
+    await server.stop();
   }
 }
 main().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

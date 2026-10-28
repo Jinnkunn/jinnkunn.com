@@ -107,6 +107,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     httpPort: Math.max(1, Number(valueAfter("--http-port") || process.env.RELEASE_AGENT_HTTP_PORT || 0)),
     pollMs: Math.max(1000, Number(valueAfter("--poll-ms") || process.env.RELEASE_AGENT_POLL_MS || pollDefault)),
     repo: path.resolve(valueAfter("--repo") || process.env.RELEASE_AGENT_REPO || ROOT),
+    envFile: valueAfter("--env-file") || process.env.RELEASE_AGENT_ENV_FILE || "",
   };
 }
 
@@ -783,9 +784,19 @@ function startWakeServer({ controller, port, wakeToken }) {
   return server;
 }
 
+export function loadRunnerEnvironment(argv = process.argv.slice(2)) {
+  const { envFile } = parseArgs(argv);
+  if (envFile) loadProjectEnv({ cwd: ROOT, override: false, files: [envFile] });
+  loadProjectEnv({ cwd: ROOT, override: false, files: [".env", ".env.local"] });
+  // The immutable control checkout has no secrets. Jobs inherit credentials
+  // from the persistent repo, while explicitly supplied runner settings win.
+  const { repo } = parseArgs(argv);
+  loadProjectEnv({ cwd: repo, override: false, files: [".env", ".env.local"] });
+  return parseArgs(argv);
+}
+
 async function main() {
-  loadProjectEnv({ cwd: ROOT, override: false, files: [".env.local", ".env"] });
-  const args = parseArgs();
+  const args = loadRunnerEnvironment();
   const baseUrl = normalizeBaseUrl(
     readEnv("RELEASE_AGENT_BASE_URL") || "https://staging.jinkunchen.com",
   );

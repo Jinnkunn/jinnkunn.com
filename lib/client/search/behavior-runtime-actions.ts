@@ -36,9 +36,9 @@ export function createSearchActionHandlers({
   };
 
   const onWrapperClick = (e: MouseEvent) => {
-    const t = e.target instanceof Element ? e.target : null;
-    if (!t) return;
-    if (t.closest(".notion-search__box")) return;
+    // Result actions can replace their target before this event bubbles.
+    // Only a direct backdrop click should dismiss the dialog.
+    if (e.target !== e.currentTarget) return;
     close();
   };
 

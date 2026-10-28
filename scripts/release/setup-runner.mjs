@@ -26,6 +26,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -57,7 +58,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3) || "";
   return {
     check: argv.includes("--check"),
+    agentOnly: argv.includes("--agent-only"),
     repo: path.resolve(value("repo") || process.env.RELEASE_AGENT_REPO || ROOT),
+    control: path.resolve(value("control") || ROOT),
+    envFile: path.resolve(value("env-file") || path.join(path.dirname(value("repo") || process.env.RELEASE_AGENT_REPO || ROOT), "release-agent.env")),
     nodeBin: value("node") || process.execPath,
     cloudflaredBin: value("cloudflared") || which("cloudflared"),
     tunnelName: value("tunnel") || "jinnkunn-release-runner",
@@ -81,7 +85,7 @@ function renderTemplate(name, substitutions) {
   const raw = fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8");
   return raw.replace(/\{\{([A-Z_]+)\}\}/g, (match, key) => {
     if (!(key in substitutions)) throw new Error(`template ${name} uses unknown key ${key}`);
-    return substitutions[key];
+    return String(substitutions[key]).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   });
 }
 
@@ -104,6 +108,7 @@ function envKeysPresent(repo) {
 
 function checkEnvKeys(repo) {
   const present = envKeysPresent(repo);
+  for (const key of [...REQUIRED_ENV_KEYS, ...RECOMMENDED_ENV_KEYS]) if (process.env[key]) present.add(key);
   const missingRequired = REQUIRED_ENV_KEYS.filter((key) => !present.has(key));
   const missingRecommended = RECOMMENDED_ENV_KEYS.filter((key) => !present.has(key));
   for (const key of REQUIRED_ENV_KEYS.filter((k) => present.has(k))) {
@@ -161,6 +166,21 @@ function agentLoaded(uid, label) {
   return spawnSync("launchctl", ["print", `gui/${uid}/${label}`], { stdio: "ignore" }).status === 0;
 }
 
+export function reloadLaunchAgent({ uid, label, plistPath }, run = launchctl, pause = () => spawnSync("sleep", ["1"], { stdio: "ignore" })) {
+  run(["bootout", `gui/${uid}/${label}`], { allowFailure: true });
+  run(["enable", `gui/${uid}/${label}`], { allowFailure: true });
+  // launchd can still be unloading after bootout returns (bootstrap error 5).
+  // Retry that bounded transition without force-killing a newly started job.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (run(["bootstrap", `gui/${uid}`, plistPath], { allowFailure: true })) {
+      run(["kickstart", `gui/${uid}/${label}`], { allowFailure: true });
+      return;
+    }
+    if (attempt < 2) pause();
+  }
+  throw new Error(`${label}: bootstrap failed after three attempts; inspect launchctl before retrying.`);
+}
+
 function installAgent({ uid, label, plistPath, rendered, check }) {
   const current = fs.existsSync(plistPath) ? fs.readFileSync(plistPath, "utf8") : "";
   const upToDate = current === rendered;
@@ -180,10 +200,7 @@ function installAgent({ uid, label, plistPath, rendered, check }) {
   }
   // Reload so a changed plist takes effect; bootout is expected to fail when
   // the agent was never loaded.
-  launchctl(["bootout", `gui/${uid}/${label}`], { allowFailure: true });
-  launchctl(["bootstrap", `gui/${uid}`, plistPath]);
-  launchctl(["enable", `gui/${uid}/${label}`], { allowFailure: true });
-  launchctl(["kickstart", "-k", `gui/${uid}/${label}`], { allowFailure: true });
+  reloadLaunchAgent({ uid, label, plistPath });
   if (!agentLoaded(uid, label)) {
     throw new Error(`${label}: bootstrap reported success but the agent is not loaded`);
   }
@@ -204,9 +221,12 @@ function main() {
   if (!fs.existsSync(path.join(args.repo, "scripts", "release", "release-agent.mjs"))) {
     throw new Error(`${args.repo} does not look like the runner repo (missing scripts/release/release-agent.mjs)`);
   }
+  if (!fs.existsSync(path.join(args.control, "scripts", "release", "release-agent.mjs"))) throw new Error("Control checkout is missing release-agent.mjs");
   if (!fs.existsSync(path.join(args.repo, "node_modules"))) {
     warn(`${args.repo}/node_modules is missing — run \`npm ci\` there before the first job`);
   }
+  loadProjectEnv({ files: [args.envFile], override: false });
+  loadProjectEnv({ cwd: args.repo, files: [".env", ".env.local"], override: false });
   checkEnvKeys(args.repo);
   checkSleepSettings();
   if (!args.check) fs.mkdirSync(logDir, { recursive: true });
@@ -223,6 +243,8 @@ function main() {
     rendered: renderTemplate(`${AGENT_LABEL}.plist.template`, {
       NODE_BIN: args.nodeBin,
       REPO_ROOT: args.repo,
+      CONTROL_ROOT: args.control,
+      ENV_FILE: args.envFile,
       LOG_DIR: logDir,
       PATH_LINE: pathLine,
       HOME: home,
@@ -230,7 +252,9 @@ function main() {
     check: args.check,
   });
 
-  if (!args.cloudflaredBin) {
+  if (args.agentOnly) {
+    log("tunnel unchanged (--agent-only)");
+  } else if (!args.cloudflaredBin) {
     warn(
       "cloudflared not found — the wake tunnel LaunchAgent was skipped. Install cloudflared (brew install cloudflared), authenticate the tunnel, then re-run. The agent still claims jobs via its poll loop.",
     );
@@ -256,9 +280,11 @@ function main() {
   );
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`[setup-runner] ${error?.message || error}`);
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`[setup-runner] ${error?.message || error}`);
+    process.exit(1);
+  }
 }

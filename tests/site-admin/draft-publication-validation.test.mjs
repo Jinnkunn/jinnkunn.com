@@ -45,6 +45,8 @@ test("announcements preserve blank titles during draft saves but cannot publish 
 test("write QA is read-only by default and refuses production, credentials and foreign hosts", () => {
   assert.equal(writeSmokeTarget([]).execute, false);
   assert.equal(writeSmokeTarget(["--execute"]).execute, true);
+  assert.equal(writeSmokeTarget(["--execute", "--publisher=local"]).publisher, "local");
+  assert.throws(() => writeSmokeTarget(["--publisher=other"]));
   for (const args of [["--env=production"], ["--env=prod"], ["--env=other"]]) assert.throws(() => writeSmokeTarget(args));
   for (const BASE_URL of ["https://jinkunchen.com", "https://staging.jinkunchen.com.evil.test", "https://user:pass@staging.jinkunchen.com", "http://staging.jinkunchen.com", "https://staging.jinkunchen.com/admin"]) assert.throws(() => writeSmokeTarget([], { BASE_URL }));
   const review = { snapshotSha: "a".repeat(64), changes: [{ path: "posts/owned.mdx", oldPath: "" }] };
@@ -59,6 +61,8 @@ test("publication validation runs before queueing, building and replacing a prom
   assert.ok(route.indexOf("const validation = publicationValidation") < route.indexOf("const out = await createReleaseJob"));
   assert.match(route, /status: 422, code: "PUBLICATION_VALIDATION_FAILED"/);
   const publisher = read("scripts/content/publish-content.mjs");
+  assert.match(publisher, /if \(!auth.ok\)[\s\S]*STAGING_AUTH_UNAVAILABLE/);
+  assert.match(publisher, /do not disable authentication/);
   assert.match(publisher, /assertPublicationReady\(publicationBaseline\)/);
   const copy = publisher.slice(publisher.indexOf("async function copyStagingOverlayToProduction"));
   assert.ok(copy.indexOf("assertPublicationReady(JSON.parse(baseline.body))") < copy.indexOf('sql: "DELETE FROM static_shell_overlays"'));

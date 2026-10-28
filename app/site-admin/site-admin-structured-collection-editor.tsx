@@ -365,9 +365,12 @@ export function StructuredCollectionEntry({
     const trigger = document
       .getElementById(componentEntryDomId(id))
       ?.querySelector<HTMLElement>("[data-entry-trigger]");
+    let frame = 0;
     if (expanded) {
-      window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
         const drawer = document.getElementById(drawerId);
+        // Do not steal focus if the user has already chosen a field.
+        if (drawer?.contains(document.activeElement)) return;
         if (!panel?.compact) drawer?.scrollIntoView({ block: "nearest" });
         const preferred = drawer?.querySelector<HTMLElement>(
           'input:not([disabled]):not([type="checkbox"]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"]',
@@ -376,11 +379,12 @@ export function StructuredCollectionEntry({
         (preferred || fallback || drawer)?.focus({ preventScroll: true });
       });
     } else if (wasExpandedRef.current) {
-      window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
         if (!panel?.activeId) trigger?.focus({ preventScroll: true });
       });
     }
     wasExpandedRef.current = expanded;
+    return () => window.cancelAnimationFrame(frame);
   }, [drawerId, expanded, id, panel?.activeId, panel?.compact]);
 
   const handleDrawerKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -505,7 +509,7 @@ export function StructuredCollectionEntry({
                 </> : <Button onClick={onToggle} variant="subtle" size="sm">Done</Button>}
               </footer>
             </aside>
-          </>, panel.host
+          </>, panel.compact ? document.body : panel.host
         ) : null}
       </article>
     </>

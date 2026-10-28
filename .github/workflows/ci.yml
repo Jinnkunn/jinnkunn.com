@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 40
     env:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET != '' && secrets.NEXTAUTH_SECRET || format('ci-nextauth-{0}-{1}', github.run_id, github.run_attempt) }}
+      PLAYWRIGHT_CHANNEL: chromium
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,6 +66,19 @@ jobs:
               - "scripts/qa/smoke-ui.mjs"
               - "scripts/qa/a11y-check.mjs"
               - "scripts/qa/perf-budget.mjs"
+              - "scripts/qa/ui-snapshots.mjs"
+              - "scripts/_lib/**"
+              - "package.json"
+              - "package-lock.json"
+            admin_quality:
+              - "app/**"
+              - "components/**"
+              - "lib/**"
+              - "packages/**"
+              - "scripts/qa/site-admin-*"
+              - "scripts/qa/public-acceptance-workflow.mjs"
+              - "scripts/_lib/**"
+              - ".github/workflows/ci.yml"
               - "package.json"
               - "package-lock.json"
 
@@ -83,6 +97,32 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Install Chromium for Browser Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' || steps.changes.outputs.ui_quality == 'true'
+        run: npx --no-install playwright-core install --with-deps chromium
+
+      # These isolated suites share the local Next middleware manifest and must
+      # run serially. No staging/production mutations or credentials are needed.
+      - name: Admin Browser Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 8
+        run: npm run smoke:site-admin:collections
+
+      - name: Admin Draft Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 5
+        run: npm run smoke:site-admin:drafts
+
+      - name: Admin Followup Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 6
+        run: npm run smoke:site-admin:followup
+
+      - name: Public Acceptance
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 3
+        run: node scripts/qa/public-acceptance-workflow.mjs
 
       - name: Site Admin Write Smoke (Staging)
         # `secrets.X != ''` is not reliable inside `if:` (the secrets
@@ -152,6 +192,13 @@ jobs:
           path: |
             output/ui-smoke/**
             output/ui-snapshots/**
+            /tmp/*workflow*.png
+            /tmp/collections-*.png
+            /tmp/priority-*.png
+            /tmp/followup-*.png
+            /tmp/next-four-*.png
+            /tmp/four-items-*.png
+            /tmp/public-acceptance-*.png
           if-no-files-found: ignore
 
       - name: Upload A11y Artifacts
@@ -186,7 +233,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/workspace/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            apps/workspace/package-lock.json
+
+      # Shared file: packages resolve dependencies from their real repo paths,
+      # not from apps/workspace/node_modules.
+      - name: Install (shared packages)
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Install (workspace)
         working-directory: apps/workspace

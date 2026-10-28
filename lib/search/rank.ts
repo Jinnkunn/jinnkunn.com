@@ -9,7 +9,7 @@ export type SearchScoreInput = {
 };
 
 function safeLower(s: unknown): string {
-  return String(s ?? "").toLowerCase();
+  return String(s ?? "").normalize("NFKC").toLowerCase();
 }
 
 function bestPos(hay: string, terms: string[]): number {

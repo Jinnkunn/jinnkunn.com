@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { StatusNotice } from "@/components/ui/status-notice";
+import type { AssetReference } from "@/lib/shared/asset-references";
 import styles from "./site-admin-dashboard.module.css";
 
 export type SiteAdminAsset = {
@@ -14,6 +15,8 @@ export type SiteAdminAsset = {
   contentType: string;
   version: string;
   uploadedAt: string;
+  usageVerified?: boolean;
+  references?: AssetReference[];
 };
 
 type AssetsPayload = { assets: SiteAdminAsset[] };
@@ -104,6 +107,8 @@ export function SiteAdminMediaLibrary({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [assets, setAssets] = useState<SiteAdminAsset[]>([]);
   const [query, setQuery] = useState("");
+  const [usageFilter, setUsageFilter] = useState("all");
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [uploadProgress, setUploadProgress] = useState("");
@@ -131,13 +136,15 @@ export function SiteAdminMediaLibrary({
 
   const visibleAssets = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return assets;
-    return assets.filter((asset) =>
-      [asset.filename, asset.key, asset.contentType].some((value) =>
+    return assets.filter((asset) => {
+      const used = Boolean(asset.references?.length);
+      if (usageFilter === "used" && !used) return false;
+      if (usageFilter === "unused" && (!asset.usageVerified || used)) return false;
+      return [asset.filename, asset.key, asset.contentType, ...(asset.references || []).map((ref) => ref.path)].some((value) =>
         value.toLowerCase().includes(normalized),
-      ),
-    );
-  }, [assets, query]);
+      );
+    });
+  }, [assets, query, usageFilter]);
 
   async function uploadFiles(files: FileList | File[]) {
     const list = Array.from(files).filter((file) => file.size > 0);
@@ -151,7 +158,7 @@ export function SiteAdminMediaLibrary({
         setUploadProgress(`${index + 1} of ${list.length}`);
         uploaded.push(await uploadSiteAdminAsset(file));
       }
-      setAssets((current) => [...uploaded, ...current]);
+      await loadAssets();
       setNotice(`${uploaded.length} asset${uploaded.length === 1 ? "" : "s"} uploaded.`);
       if (mode === "pick" && uploaded[0] && onSelect) onSelect(uploaded[0]);
     } catch (err) {
@@ -164,6 +171,7 @@ export function SiteAdminMediaLibrary({
   }
 
   async function deleteAsset(asset: SiteAdminAsset) {
+    if (!asset.usageVerified || asset.references?.length) return;
     if (!window.confirm(`Delete ${asset.filename}?`)) return;
     setBusyKey(asset.key);
     setError("");
@@ -179,6 +187,14 @@ export function SiteAdminMediaLibrary({
     } finally {
       setBusyKey("");
     }
+  }
+
+  async function copyAsset(asset: SiteAdminAsset, markdown = false) {
+    try {
+      const alt = (descriptions[asset.key] || "").replace(/([\\[\]])/g, "\\$1").replace(/\s+/g, " ");
+      await navigator.clipboard.writeText(markdown ? `![${alt}](<${asset.url}>)` : asset.url);
+      setNotice(`${asset.filename} ${markdown ? "image Markdown" : "URL"} copied.`);
+    } catch { setError("Clipboard unavailable. Open the image to copy its URL."); }
   }
 
   function renderAssetPreview(asset: SiteAdminAsset) {
@@ -249,9 +265,14 @@ export function SiteAdminMediaLibrary({
             className={styles.textField}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search filename or type"
+            placeholder="Search files or references"
           />
         </label>
+        <select aria-label="Media usage" className={styles.textField} value={usageFilter} onChange={(event) => setUsageFilter(event.target.value)}>
+          <option value="all">All files</option>
+          <option value="used">In use</option>
+          <option value="unused">Unused</option>
+        </select>
         <div className={styles.segmented} aria-label="Media view">
           <button type="button" data-active={view === "grid"} onClick={() => setView("grid")}>
             Grid
@@ -260,6 +281,7 @@ export function SiteAdminMediaLibrary({
             List
           </button>
         </div>
+        <Button onClick={() => void loadAssets()} variant="ghost" size="sm" disabled={loading}>Refresh</Button>
       </div>
 
       <div
@@ -309,6 +331,17 @@ export function SiteAdminMediaLibrary({
               {asset.uploadedAt ? (
                 <small>{new Date(asset.uploadedAt).toLocaleDateString()}</small>
               ) : null}
+              <details className={styles.assetReferences}>
+                <summary>{!asset.usageVerified ? "Usage not verified" : asset.references?.length ? `${asset.references.length} references` : "No references"}</summary>
+                {asset.references?.length ? <ul>{asset.references.map((ref) => <li key={`${ref.environment}:${ref.state}:${ref.path}`}>
+                  <span>{ref.environment} / {ref.state}</span> <code>{ref.path}</code>
+                </li>)}</ul> : null}
+                <label className={styles.fieldLabel}>
+                  Image description (alt text)
+                  <input className={styles.textField} value={descriptions[asset.key] || ""} onChange={(event) => { const value = event.target.value; setDescriptions((current) => ({ ...current, [asset.key]: value })); }} />
+                </label>
+                <Button variant="ghost" size="sm" onClick={() => void copyAsset(asset, true)}>Copy image Markdown</Button>
+              </details>
             </div>
             <div className={styles.assetActions}>
               {onSelect ? (
@@ -317,10 +350,7 @@ export function SiteAdminMediaLibrary({
                 </Button>
               ) : (
                 <Button
-                  onClick={() => {
-                    void navigator.clipboard.writeText(asset.url);
-                    setNotice(`${asset.filename} URL copied.`);
-                  }}
+                  onClick={() => void copyAsset(asset)}
                   variant="subtle"
                   size="sm"
                 >
@@ -332,7 +362,8 @@ export function SiteAdminMediaLibrary({
                 variant="ghost"
                 tone="danger"
                 size="sm"
-                disabled={busyKey === asset.key}
+                disabled={Boolean(busyKey) || !asset.usageVerified || Boolean(asset.references?.length)}
+                title={!asset.usageVerified ? "Refresh to verify references before deletion" : asset.references?.length ? "Remove draft and published references first" : "Delete unused file"}
               >
                 Delete
               </Button>

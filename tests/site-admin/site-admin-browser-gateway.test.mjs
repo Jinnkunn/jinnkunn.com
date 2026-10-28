@@ -195,9 +195,11 @@ test("site-admin content management includes recovery, media, settings, and vers
   const storage = fs.readFileSync("app/site-admin/site-admin-draft-storage.ts", "utf8");
   assert.ok(storage.includes("window.localStorage"));
   assert.ok(storage.includes("TTL_MS"));
-  assert.ok(source.includes("duplicatePublicationItem"));
-  assert.ok(source.includes("duplicateTeachingItem"));
-  assert.ok(source.includes("duplicateWorksItem"));
+  const collectionViews = fs.readFileSync("app/site-admin/site-admin-collection-editors.tsx", "utf8");
+  assert.ok(source.includes("SiteAdminCollectionEditors"));
+  assert.ok(collectionViews.includes("duplicatePublicationItem"));
+  assert.ok(collectionViews.includes("duplicateTeachingItem"));
+  assert.ok(collectionViews.includes("duplicateWorksItem"));
   assert.ok(css.includes(".assetGrid"));
   assert.ok(css.includes(".versionCompareGrid"));
   assert.ok(css.includes(".settingsNavRow"));
@@ -220,7 +222,8 @@ test("site-admin browser console treats data pages as managed collections", () =
     "app/site-admin/site-admin-structured-collection-schema.ts",
     "utf8",
   );
-  const implementation = [source, collectionEditor, collectionModel, collectionSchema].join("\n");
+  const collectionViews = fs.readFileSync("app/site-admin/site-admin-collection-editors.tsx", "utf8");
+  const implementation = [source, collectionViews, collectionEditor, collectionModel, collectionSchema].join("\n");
   const css = fs.readFileSync("app/site-admin/site-admin-dashboard.module.css", "utf8");
 
   assert.ok(source.includes("findManagedComponentInBody"));
@@ -253,11 +256,11 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(collectionEditor.includes("Group entries"));
   assert.ok(collectionEditor.includes("StructuredCollectionEntry"));
   assert.ok(collectionEditor.includes("StructuredCollectionEntryForm"));
-  assert.ok(source.includes("<StructuredCollectionEditor"));
-  assert.ok(source.includes("fields={NEWS_ENTRY_FIELDS}"));
-  assert.ok(source.includes("fields={TEACHING_ENTRY_FIELDS}"));
-  assert.ok(source.includes("fields={WORKS_ENTRY_FIELDS}"));
-  assert.ok(source.includes("fields={PUBLICATION_ENTRY_FIELDS}"));
+  assert.ok(collectionViews.includes("<StructuredCollectionEditor"));
+  assert.ok(collectionViews.includes("fields={NEWS_ENTRY_FIELDS}"));
+  assert.ok(collectionViews.includes("fields={TEACHING_ENTRY_FIELDS}"));
+  assert.ok(collectionViews.includes("fields={WORKS_ENTRY_FIELDS}"));
+  assert.ok(collectionViews.includes("fields={PUBLICATION_ENTRY_FIELDS}"));
   assert.ok(collectionSchema.includes("writePublicationAuthors"));
   assert.ok(collectionSchema.includes("writePrimaryPublicationVenue"));
   assert.ok(collectionEditor.includes("Option + Down"));

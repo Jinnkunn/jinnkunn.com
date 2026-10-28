@@ -24,7 +24,7 @@ export type SearchIndexItem = {
 };
 
 export function safeLower(s: unknown): string {
-  return String(s ?? "").toLowerCase();
+  return String(s ?? "").normalize("NFKC").toLowerCase();
 }
 
 export function readHeadings(item: SearchIndexItem): string[] {
@@ -35,7 +35,7 @@ export function readHeadings(item: SearchIndexItem): string[] {
 
 export function normalizeQuery(q: string): string {
   // Keep queries stable and bounded to avoid expensive scans.
-  return q.trim().replace(/\s+/g, " ").slice(0, 200);
+  return q.normalize("NFKC").trim().replace(/\s+/g, " ").slice(0, 200);
 }
 
 export function buildGroupCounts(labels: string[]): Array<{ label: string; count: number }> {
@@ -98,7 +98,7 @@ export function isIgnoredPath(routePath: string): boolean {
   if (p.startsWith("/_next")) return true;
   if (p.startsWith("/api/")) return true;
   if (p === "/auth") return true;
-  if (p.startsWith("/site-admin/")) return true; // keep admin out of normal search
+  if (p === "/site-admin" || p.startsWith("/site-admin/")) return true; // keep admin out of normal search
   // Hide internal blog database helpers (they are implementation details).
   if (p === "/blog/list" || p === "/list") return true;
   return false;
@@ -174,7 +174,7 @@ export function dedupeByCanonicalRoute<T extends { canon: string; score: number 
 
 export function buildSnippetByTerms(text: string, terms: string[]): string {
   const raw0 = String(text || "");
-  const raw = raw0.replace(/\s+/g, " ").trim();
+  const raw = raw0.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (!raw) return "";
   const hay = safeLower(raw);
   const idx = bestPos(hay, terms);
@@ -195,25 +195,14 @@ export function buildSnippetByTerms(text: string, terms: string[]): string {
   const lookLeft = raw.slice(Math.max(0, idx - leftWindow), idx);
   const lookRight = raw.slice(idx, Math.min(raw.length, idx + rightWindow));
 
-  const leftBoundaryCandidates = [
-    lookLeft.lastIndexOf(". "),
-    lookLeft.lastIndexOf("! "),
-    lookLeft.lastIndexOf("? "),
-    lookLeft.lastIndexOf("; "),
-  ];
-  let leftBoundary = Math.max(...leftBoundaryCandidates);
-  if (leftBoundary < 0) leftBoundary = lookLeft.lastIndexOf(" ");
-  const start = Math.max(0, idx - lookLeft.length + (leftBoundary >= 0 ? leftBoundary + 2 : 0));
-
-  const rightBoundaryCandidates = [
-    lookRight.indexOf(". "),
-    lookRight.indexOf("! "),
-    lookRight.indexOf("? "),
-    lookRight.indexOf("; "),
-  ].filter((n) => n >= 0);
+  const boundaries = [...lookLeft.matchAll(/[.!?;]\s|[。！？；]/g)];
+  const lastBoundary = boundaries.at(-1);
+  const leftOffset = lastBoundary ? lastBoundary.index + lastBoundary[0].length : Math.max(0, lookLeft.lastIndexOf(" ") + 1);
+  const start = Math.max(0, idx - lookLeft.length + leftOffset);
+  const rightBoundary = /[.!?;](?=\s|$)|[。！？；]/.exec(lookRight);
   let end = Math.min(raw.length, idx + lookRight.length);
-  if (rightBoundaryCandidates.length) {
-    end = Math.min(end, idx + Math.min(...rightBoundaryCandidates) + 1);
+  if (rightBoundary) {
+    end = Math.min(end, idx + rightBoundary.index + rightBoundary[0].length);
   } else {
     // fallback to a word boundary
     const s = raw.slice(idx, Math.min(raw.length, idx + rightWindow));

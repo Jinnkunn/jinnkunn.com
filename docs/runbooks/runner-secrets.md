@@ -26,6 +26,14 @@ staging was last released.
 
 ## Runner `.env` / `.env.local` keys
 
+When an immutable control checkout starts the agent, pass `--repo` for the
+persistent repository and `--env-file` for its runner-specific environment.
+Loading precedence is launch environment, runner env file, then repo
+`.env` / `.env.local` (the same precedence as the publisher). Jobs inherit those credentials; no secrets are copied
+into disposable execution checkouts. Reinstall with
+`node scripts/release/setup-runner.mjs --repo=<persistent-repo> --control=<immutable-control> --env-file=<runner-env>`.
+Only reinstall while runner health reports `busy=false` and the queue is idle.
+
 Required (agent refuses to run or deploy without these):
 
 | Key | Purpose | Where to re-issue |

@@ -46,15 +46,22 @@ function countByType<T extends { typeKey: TypeKey }>(items: T[]) {
 
 function buildMeta(
   allMatches: Array<{ typeKey: TypeKey; canon: string }>,
-  filtered: Array<{ typeKey: TypeKey; canon: string }>,
+  filtered: Array<{ typeKey: TypeKey; canon: string; item: { title?: string } }>,
   offset: number,
   limit: number,
+  query: string,
 ): SearchMeta {
+  const groups = buildGroupCounts(filtered.map((m) => groupLabelForTypeAndRoute(m.typeKey, m.canon)));
+  const exact = filtered.find((m) => safeLower(m.item.title).trim() === safeLower(query).trim());
+  if (exact) {
+    const preferred = groupLabelForTypeAndRoute(exact.typeKey, exact.canon);
+    groups.sort((a, b) => Number(b.label === preferred) - Number(a.label === preferred));
+  }
   return {
     total: allMatches.length,
     filteredTotal: filtered.length,
     counts: countByType(allMatches),
-    groups: buildGroupCounts(filtered.map((m) => groupLabelForTypeAndRoute(m.typeKey, m.canon))),
+    groups,
     offset,
     limit,
     hasMore: offset + limit < filtered.length,
@@ -74,7 +81,7 @@ function buildMaps(manifest: SearchManifestItem[]) {
 
 export function buildSearchResponse(input: SearchRunInput): SearchResponse {
   const { q, type, offset, limit, scope, index, manifest, includeSnippets = true } = input;
-  const ql = q.toLowerCase();
+  const ql = safeLower(q);
   const terms = tokenizeSearchQuery(q);
   const { byRoute, byId } = buildMaps(manifest);
 
@@ -161,7 +168,7 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
 
     return {
       items,
-      meta: buildMeta(allMatches, filtered, offset, limit),
+      meta: buildMeta(allMatches, filtered, offset, limit, q),
     } satisfies SearchResponse;
   }
 
@@ -201,6 +208,6 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
 
   return {
     items,
-    meta: buildMeta(allMatches, filtered, offset, limit),
+    meta: buildMeta(allMatches, filtered, offset, limit, q),
   } satisfies SearchResponse;
 }

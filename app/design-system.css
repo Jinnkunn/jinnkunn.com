@@ -82,9 +82,10 @@
   --ds-monochrome-surface-soft-strong: rgba(47, 47, 47, 0.08);
   --ds-monochrome-text-primary: #2f2f2f;
   --ds-monochrome-text-secondary: rgba(47, 47, 47, 0.78);
-  --ds-monochrome-text-muted: rgba(47, 47, 47, 0.66);
-  --ds-monochrome-text-faint: rgba(47, 47, 47, 0.55);
-  --ds-monochrome-text-subtle: rgba(47, 47, 47, 0.42);
+  /* Small metadata must remain readable on both page and notice surfaces. */
+  --ds-monochrome-text-muted: rgba(47, 47, 47, 0.74);
+  --ds-monochrome-text-faint: rgba(47, 47, 47, 0.72);
+  --ds-monochrome-text-subtle: rgba(47, 47, 47, 0.72);
   --ds-monochrome-border-subtle: rgba(47, 47, 47, 0.13);
   --ds-monochrome-border-strong: rgba(47, 47, 47, 0.2);
   --ds-monochrome-border-emphasis: rgba(47, 47, 47, 0.28);
