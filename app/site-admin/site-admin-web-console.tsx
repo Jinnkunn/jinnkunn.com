@@ -2557,7 +2557,7 @@ export function SiteAdminWebConsole({
   const resolvedCreateSlug = createSlug.trim() || slugFromTitle(createTitle);
 
   return (
-    <main ref={shellRef} className={styles.shell} data-area={area}>
+    <main ref={shellRef} className={styles.shell} data-area={area} data-workspace-ready={workspaceRestored ? "true" : "false"}>
       <header ref={chromeRef} className={styles.adminChrome}>
         <section className={styles.hero}>
           <div className={styles.heroCopy}>
