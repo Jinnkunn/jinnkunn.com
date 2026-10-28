@@ -72,6 +72,22 @@ async function main() {
       await route.fulfill({ response });
     });
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      if (window !== window.top) return;
+      const trace = JSON.parse(sessionStorage.getItem("qa-history-trace") || "[]");
+      window.__qaHistoryTrace = trace;
+      const record = (event, url, state) => {
+        trace.push({ event, time: Math.round(performance.now()), current: location.href, url: url ?? null, index: state?.workspaceIndex ?? null, next: Boolean(state?.__NA) });
+        if (trace.length > 100) trace.shift();
+        sessionStorage.setItem("qa-history-trace", JSON.stringify(trace));
+      };
+      record("document", location.href, history.state);
+      for (const method of ["pushState", "replaceState"]) {
+        const native = History.prototype[method];
+        History.prototype[method] = function (...args) { record(method, args[2], args[0]); return native.apply(this, args); };
+      }
+      addEventListener("popstate", (event) => record("popstate", location.href, event.state), true);
+    });
     page.setDefaultTimeout(12_000);
     page.setDefaultNavigationTimeout(20_000);
     qaPage = page;
@@ -160,19 +176,30 @@ async function main() {
     assert.ok(mobileFrame.width <= 391, "Mobile preview uses a phone-width shell");
     await page.screenshot({ path: "/tmp/collections-workflow-page-preview-mobile.png", animations: "disabled" });
     await pagePreview.getByRole("button", { name: "Close dialog", exact: true }).click();
-    await page.reload();
+    await page.reload({ waitUntil: "networkidle" });
+    await page.locator('main[data-workspace-ready="true"]').waitFor();
     await page.getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
     await eventually(async () => assert.equal(await page.getByRole("tab", { name: "Source", exact: true }).getAttribute("aria-selected"), "true"), "editor mode restores after reload");
-    await page.goBack();
-    await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).waitFor();
-    await eventually(async () => assert.equal(await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).inputValue(), "Long title"), "Back restores the filtered list query");
-    await page.goForward();
-    await page.getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
+    await page.evaluate(() => {
+      const state = { ...history.state };
+      delete state.workspaceIndex;
+      history.replaceState(state, "", location.href);
+    });
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await page.evaluate(() => history.back());
+      await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).waitFor();
+      await eventually(async () => assert.equal(await page.getByRole("textbox", { name: "Search posts and pages", exact: true }).inputValue(), "Long title"), "Back restores the filtered list query");
+      await page.waitForLoadState("networkidle");
+      await page.locator('main[data-workspace-ready="true"]').waitFor();
+      await page.evaluate(() => history.forward());
+      await page.getByRole("heading", { name: qaPosts[0].title, exact: true }).waitFor();
+      await page.waitForLoadState("networkidle");
+    }
     log("Workspace: canceling Back keeps the unsaved document and its URL");
     page.removeAllListeners("dialog");
     page.on("dialog", (dialog) => void dialog.dismiss());
     await page.getByLabel("Title", { exact: true }).fill("Unsaved title");
-    await page.goBack();
+    await page.evaluate(() => history.back());
     await page.getByRole("dialog", { name: "Unsaved changes", exact: true }).getByRole("button", { name: "Stay here", exact: true }).click();
     await eventually(() => assert.equal(new URL(page.url()).searchParams.get("id"), qaPosts[0].slug), "canceled Back returns to the document URL");
     assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Unsaved title");
@@ -424,6 +451,8 @@ async function main() {
   } catch (error) {
     if (qaPage) {
       await qaPage.screenshot({ path: "/tmp/collections-workflow-failure.png", timeout: 3000 }).catch(() => {});
+      log(`History state: ${JSON.stringify(await qaPage.evaluate(() => ({ url: location.href, index: history.state?.workspaceIndex ?? null, length: history.length })).catch(() => null))}`);
+      log(`History trace: ${JSON.stringify(await qaPage.evaluate(() => window.__qaHistoryTrace).catch(() => null))}`);
       log(`Failure state: ${(await qaPage.locator("main").innerText({ timeout: 3000 }).catch(() => "unavailable")).slice(-5000)}`);
     }
     if (qaFixture) log(`Fixture requests: ${JSON.stringify({ unexpected: qaFixture.unexpected, writes: qaFixture.writes.map(({ name, version }) => ({ name, version })) })}`);
