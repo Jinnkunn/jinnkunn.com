@@ -29,6 +29,7 @@ test("ci: isolated admin regressions run serially without mutating a remote envi
     assert.match(step, /timeout-minutes: \d+/);
   }
   assert.match(yaml, /playwright-core install --with-deps chromium/);
+  assert.match(yaml, /PLAYWRIGHT_CHANNEL: chromium/);
 });
 
 // The four steps the dead `event_name == 'push'` gate silently disabled.

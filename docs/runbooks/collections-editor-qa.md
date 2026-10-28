@@ -78,6 +78,10 @@ node --test tests/release/overlay-serving-verification.test.mjs
   `node scripts/qa/public-acceptance-workflow.mjs`. All mutations use isolated
   fixtures; the public suite performs GET requests only. Failure screenshots
   are captured under `/tmp` and uploaded by CI.
+- CI pins Chromium to the Playwright lockfile version, rather than the runner's
+  system Chrome. Local reproduction can set `PLAYWRIGHT_CHANNEL=chromium`.
+  The local Next harness uses an isolated process group and bounded cleanup;
+  browser failures must fail the step, not leave an orphan server hanging.
 - Media deletion checks saved drafts and published baselines in **both** D1
   environments because staging and production share the same R2 bucket.
   An unavailable database/baseline or malformed source disables deletion.

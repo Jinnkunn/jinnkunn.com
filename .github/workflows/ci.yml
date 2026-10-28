@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 40
     env:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET != '' && secrets.NEXTAUTH_SECRET || format('ci-nextauth-{0}-{1}', github.run_id, github.run_attempt) }}
+      PLAYWRIGHT_CHANNEL: chromium
     steps:
       - name: Checkout
         uses: actions/checkout@v4

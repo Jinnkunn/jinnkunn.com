@@ -3124,8 +3124,8 @@ button.statusPill:disabled {
 .editorChrome .panelTitle { font-size: 22px; line-height: 1.25; overflow-wrap: anywhere; }
 .editorChrome .cardLabel { margin-bottom: 4px; font-size: 10px; }
 .editorChrome .cardText { margin-top: 3px; font-size: 12px; }
-.shell:has(.collectionEntryDrawer[role="dialog"]) .editorSaveButton,
-.shell:has(.collectionEntryDrawer[role="dialog"]) .editorPublishButton { display: none; }
+:global(body):has(.collectionEntryDrawer[role="dialog"]) .editorSaveButton,
+:global(body):has(.collectionEntryDrawer[role="dialog"]) .editorPublishButton { display: none; }
 
 .editorStatusBar {
   min-height: 38px;
@@ -3226,6 +3226,11 @@ button.statusPill:disabled {
   border-radius: var(--ds-radius-md);
   background: var(--ds-surface-page);
   animation: collection-panel-in 140ms ease-out;
+}
+
+.collectionEntryDrawer,
+.collectionEntryDrawer * {
+  box-sizing: border-box;
 }
 
 .collectionEntryDrawerHeader,

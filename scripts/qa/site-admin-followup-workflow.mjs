@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { once } from "node:events";
 import matter from "gray-matter";
 import { createCollectionsFixture } from "../_lib/site-admin-collections-fixture.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
@@ -372,8 +371,7 @@ async function main() {
     if (page) { await page.screenshot({ path: "/tmp/followup-workflow-failure.png" }).catch(() => {}); console.error((await page.locator("body").innerText().catch(() => "")).slice(-6500)); }
     throw error;
   } finally {
-    await browser?.close(); server.kill("SIGTERM");
-    if (server.exitCode === null && server.signalCode === null) await once(server, "exit");
+    await browser?.close(); await server.stop();
   }
 }
 main().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

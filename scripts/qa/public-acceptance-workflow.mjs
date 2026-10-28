@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { once } from "node:events";
 import { ensureNextBuild, findAvailablePort, startNextServer, waitForHttp } from "../_lib/local-next.mjs";
 import { launchBrowser } from "../_lib/playwright.mjs";
 
@@ -74,8 +73,7 @@ async function main() {
     if (page) { await page.screenshot({ path: "/tmp/public-acceptance-failure.png" }).catch(() => {}); console.error((await page.locator("body").innerText().catch(() => "")).slice(-1200)); }
     throw error;
   } finally {
-    await browser?.close(); server.kill("SIGTERM");
-    if (server.exitCode === null && server.signalCode === null) await once(server, "exit");
+    await browser?.close(); await server.stop();
   }
 }
 main().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

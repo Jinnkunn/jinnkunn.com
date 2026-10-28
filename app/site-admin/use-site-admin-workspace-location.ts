@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { parseWorkspaceLocation, workspaceUrl, type WorkspaceLocation } from "./site-admin-workspace-location";
 
 export function useSiteAdminWorkspaceLocation({ actor, ready, location, onRestore }: {
@@ -13,7 +13,7 @@ export function useSiteAdminWorkspaceLocation({ actor, ready, location, onRestor
   const [hydrated, setHydrated] = useState(false);
   const url = workspaceUrl(location);
   const key = `site-admin:workspace:${actor}`;
-  useEffect(() => { callback.current = onRestore; });
+  useLayoutEffect(() => { callback.current = onRestore; });
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;

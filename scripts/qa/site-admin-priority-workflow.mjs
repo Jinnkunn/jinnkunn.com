@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { once } from "node:events";
 import { createCollectionsFixture } from "../_lib/site-admin-collections-fixture.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 import { ensureNextBuild, findAvailablePort, startNextServer, waitForHttp } from "../_lib/local-next.mjs";
@@ -235,8 +234,7 @@ async function main() {
     }
     throw error;
   } finally {
-    await browser?.close(); server.kill("SIGTERM");
-    if (server.exitCode === null && server.signalCode === null) await once(server, "exit");
+    await browser?.close(); await server.stop();
   }
 }
 main().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
