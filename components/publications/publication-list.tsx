@@ -1,10 +1,9 @@
 import type {
   PublicationAuthor,
   PublicationStructuredEntry,
-  PublicationVenue,
 } from "@/lib/seo/publications-items";
 
-import { classifyLabel, venueSummaryText, type LabelKind } from "./labels";
+import { additionalPublicationVenues, classifyLabel, venueSummaryText, type LabelKind } from "./labels";
 import { PublicationHighlightBadge } from "./publication-highlight-badge";
 import { PublicationResourceLinks } from "./publication-resource-links";
 
@@ -81,30 +80,15 @@ function AuthorsLine({ authors }: { authors: PublicationAuthor[] }) {
   );
 }
 
-function venueLabel(venue: PublicationVenue): string {
-  return venue.type || "source";
-}
-
-function VenueLine({ venue }: { venue: PublicationVenue }) {
+function VenueLine({ venue }: { venue: { type?: string; text: string } }) {
   return (
     <>
-      <PublicationTag label={venueLabel(venue)} />
+      <PublicationTag label={venue.type || "source"} />
       <span className="pub-tag-colon">
         <strong>: </strong>
       </span>
       <span className="highlighted-color color-gray">
-        {venue.url ? (
-          <a
-            className="notion-link link"
-            href={venue.url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {venue.text}
-          </a>
-        ) : (
-          venue.text
-        )}
+        {venue.text}
       </span>
     </>
   );
@@ -114,6 +98,7 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
   const authors =
     entry.authorsRich ?? (entry.authors ?? []).map((name) => ({ name, isSelf: false }));
   const venues = entry.venues ?? [];
+  const additionalVenues = additionalPublicationVenues(venues);
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
   // Collapsed, an entry used to show only a title and a coloured tag — the
@@ -162,17 +147,17 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
         </span>
       </div>
       <div className="notion-toggle__content" hidden aria-hidden="true">
-        {(authors.length > 0 || venues.length > 1) && (
+        {(authors.length > 0 || additionalVenues.length > 0) && (
           <blockquote className="notion-quote">
             <span className="notion-semantic-string">
               <AuthorsLine authors={authors} />
-              {authors.length > 0 && venues.length > 1 && (
+              {authors.length > 0 && additionalVenues.length > 0 && (
                 <>
                   <br />
                   <br />
                 </>
               )}
-              {venues.slice(1).map((venue, index) => (
+              {additionalVenues.map((venue, index) => (
                 <span key={`${venue.type}-${index}`}>
                   {index > 0 && <br />}
                   <VenueLine venue={venue} />

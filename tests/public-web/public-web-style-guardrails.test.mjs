@@ -13,6 +13,16 @@ async function read(relPath) {
   return await fs.readFile(path.join(ROOT, relPath), "utf8");
 }
 
+test("public-web-style-guardrails: shared footer keeps logo and socials without a mascot or reserved row", async () => {
+  const footer = await read("components/site-footer.tsx");
+  const css = await read("app/(classic)/runtime-polish.css");
+  assert.doesNotMatch(footer, /super-footer__mascot|jinnkunn-footer-mascot/);
+  assert.doesNotMatch(css, /mascot/);
+  assert.match(footer, /super-footer__logo/);
+  assert.match(footer, /super-footer__icons/);
+  assert.match(css, /grid-template-areas:\s*"logo logo logo"\s*"icons icons icons";/);
+});
+
 function assertIncludes(source, expected, label) {
   assert.ok(source.includes(expected), `${label} should include ${expected}`);
 }

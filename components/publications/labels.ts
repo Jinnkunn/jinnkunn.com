@@ -36,5 +36,14 @@ export function venueSummaryText(venue: { type?: string; text?: string }): strin
   const cleaned = stripVenueBoilerplate(venue.text ?? "");
   if (cleaned) return cleaned;
   if (classifyLabel(venue.type ?? "") === "arxiv") return "arXiv preprint";
-  return (venue.text ?? "").trim();
+  return "";
+}
+
+/** Resource URLs live in the shared link row; only additional venue prose
+ * belongs in the expanded details. Keep the authored records untouched. */
+export function additionalPublicationVenues(venues: { type?: string; text?: string }[]) {
+  return venues.slice(1).flatMap((venue) => {
+    const text = stripVenueBoilerplate(venue.text ?? "");
+    return text ? [{ type: venue.type, text }] : [];
+  });
 }
