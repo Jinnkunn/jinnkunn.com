@@ -118,54 +118,37 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
               </span>
             </>
           )}
+          {additionalVenues.map((venue, index) => (
+            <span key={`${venue.type ?? "src"}-${index}`} className="pub-venue-line highlighted-color color-gray">
+              {venue.text}
+            </span>
+          ))}
           <PublicationResourceLinks entry={entry} />
         </span>
       </div>
       <div className="notion-toggle__content" hidden aria-hidden="true">
-        {(authors.length > 0 || additionalVenues.length > 0) && (
+        {authors.length > 0 && (
           <blockquote className="notion-quote">
             <span className="notion-semantic-string">
-              {authors.length > 0 && (
-                <>
-                  {authors.map((author, index) => (
-                    <span
-                      key={`${author.name}-${index}`}
-                      className={
-                        author.isSelf
-                          ? "highlighted-color color-default"
-                          : "highlighted-color color-gray"
-                      }
-                    >
-                      {author.isSelf ? (
-                        <span className="highlighted-background bg-default">
-                          <strong>
-                            <u>{author.name}</u>
-                          </strong>
-                        </span>
-                      ) : (
-                        author.name
-                      )}
-                      {index < authors.length - 1 ? ", " : ""}
+              {authors.map((author, index) => (
+                <span
+                  key={`${author.name}-${index}`}
+                  className={
+                    author.isSelf
+                      ? "highlighted-color color-default"
+                      : "highlighted-color color-gray"
+                  }
+                >
+                  {author.isSelf ? (
+                    <span className="highlighted-background bg-default">
+                      <strong>
+                        <u>{author.name}</u>
+                      </strong>
                     </span>
-                  ))}
-                </>
-              )}
-              {authors.length > 0 && additionalVenues.length > 0 && (
-                <>
-                  <br />
-                  <br />
-                </>
-              )}
-              {additionalVenues.map((venue, index) => (
-                <span key={`${venue.type ?? "src"}-${index}`}>
-                  {index > 0 && <br />}
-                  <PublicationTag label={venue.type || "source"} />
-                  <span className="pub-tag-colon">
-                    <strong>: </strong>
-                  </span>
-                  <span className="highlighted-color color-gray">
-                    {venue.text}
-                  </span>
+                  ) : (
+                    author.name
+                  )}
+                  {index < authors.length - 1 ? ", " : ""}
                 </span>
               ))}
             </span>

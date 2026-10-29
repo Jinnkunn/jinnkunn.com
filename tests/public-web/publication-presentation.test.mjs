@@ -72,7 +72,7 @@ test("publication resources: accepts optional venue fields and entries without l
   assert.deepEqual(publicationLinks({ venues: [{}, { text: "Test Conference 2026" }] }), []);
 });
 
-test("publication presentation: AISDB has authors-only details while CAB-KWS retains its additional journal", async () => {
+test("publication presentation: CAB-KWS retains its journal description for the summary, with no repeated URLs", async () => {
   const source = await readFile(new URL("../../content/components/publications.mdx", import.meta.url), "utf8");
   const entries = parsePublicationsEntries(source);
   const maritime = entries.find((entry) => entry.title.includes("AISDB"));
@@ -86,4 +86,18 @@ test("publication presentation: AISDB has authors-only details while CAB-KWS ret
   assert.equal(details[0].type, "journal");
   assert.match(details[0].text, /Lecture Notes in Computer Science/);
   assert.doesNotMatch(details[0].text, /https?:|\b(?:doi|dio):|Available at/i);
+});
+
+test("publication presentation: both rendering paths keep venue metadata in the summary and authors alone in expanded content", async () => {
+  for (const path of ["../../components/publications/publication-list.tsx", "../../components/posts-mdx/publications-entry.tsx"]) {
+    const source = await readFile(new URL(path, import.meta.url), "utf8");
+    const [summary, expanded] = source.split('<div className="notion-toggle__content"');
+    assert.ok(expanded, path);
+    assert.match(summary, /additionalVenues\.map/);
+    assert.match(summary, /pub-venue-line highlighted-color color-gray/);
+    assert.ok(summary.indexOf("additionalVenues.map") < summary.indexOf("<PublicationResourceLinks"));
+    assert.match(expanded, /authors\.length > 0/);
+    assert.match(expanded, /<AuthorsLine|authors\.map/);
+    assert.doesNotMatch(expanded, /additionalVenues|VenueLine|PublicationTag|PublicationResourceLinks|pub-tag-colon|<br/);
+  }
 });

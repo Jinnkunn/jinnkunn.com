@@ -39,8 +39,8 @@ export function venueSummaryText(venue: { type?: string; text?: string }): strin
   return "";
 }
 
-/** Resource URLs live in the shared link row; only additional venue prose
- * belongs in the expanded details. Keep the authored records untouched. */
+/** Keep additional venue prose in the summary and URLs in the shared link
+ * row, leaving the expanded content for authors only. */
 export function additionalPublicationVenues(venues: { type?: string; text?: string }[]) {
   return venues.slice(1).flatMap((venue) => {
     const text = stripVenueBoilerplate(venue.text ?? "");
