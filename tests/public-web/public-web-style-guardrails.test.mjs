@@ -312,8 +312,8 @@ test("public-web-style-guardrails: data-page entry components keep legacy Notion
   );
   assertIncludes(
     publicationsEntry,
-    'className="pub-tag-colon"',
-    "PublicationsEntry tag colon",
+    'className="pub-venue-line highlighted-color color-gray"',
+    "PublicationsEntry additional venue metadata",
   );
 
   const profileLinks = await read("components/posts-mdx/publications-profile-links.tsx");

@@ -26,6 +26,11 @@
   --ds-meta-row-margin-top: 2px;
 }
 
+.pub-venue-line {
+  display: block;
+  margin-top: 2px;
+}
+
 .pub-highlight-list {
   --ds-meta-list-gap: 5px;
 }

@@ -80,20 +80,6 @@ function AuthorsLine({ authors }: { authors: PublicationAuthor[] }) {
   );
 }
 
-function VenueLine({ venue }: { venue: { type?: string; text: string } }) {
-  return (
-    <>
-      <PublicationTag label={venue.type || "source"} />
-      <span className="pub-tag-colon">
-        <strong>: </strong>
-      </span>
-      <span className="highlighted-color color-gray">
-        {venue.text}
-      </span>
-    </>
-  );
-}
-
 function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
   const authors =
     entry.authorsRich ?? (entry.authors ?? []).map((name) => ({ name, isSelf: false }));
@@ -143,26 +129,19 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
               </span>
             </>
           )}
+          {additionalVenues.map((venue, index) => (
+            <span key={`${venue.type}-${index}`} className="pub-venue-line highlighted-color color-gray">
+              {venue.text}
+            </span>
+          ))}
           <PublicationResourceLinks entry={entry} />
         </span>
       </div>
       <div className="notion-toggle__content" hidden aria-hidden="true">
-        {(authors.length > 0 || additionalVenues.length > 0) && (
+        {authors.length > 0 && (
           <blockquote className="notion-quote">
             <span className="notion-semantic-string">
               <AuthorsLine authors={authors} />
-              {authors.length > 0 && additionalVenues.length > 0 && (
-                <>
-                  <br />
-                  <br />
-                </>
-              )}
-              {additionalVenues.map((venue, index) => (
-                <span key={`${venue.type}-${index}`}>
-                  {index > 0 && <br />}
-                  <VenueLine venue={venue} />
-                </span>
-              ))}
             </span>
           </blockquote>
         )}
