@@ -101,3 +101,19 @@ test("publication presentation: both rendering paths keep venue metadata in the 
     assert.doesNotMatch(expanded, /additionalVenues|VenueLine|PublicationTag|PublicationResourceLinks|pub-tag-colon|<br/);
   }
 });
+
+test("publication presentation: both rendering paths put the primary venue on its own row after labels and highlights", async () => {
+  for (const path of ["../../components/publications/publication-list.tsx", "../../components/posts-mdx/publications-entry.tsx"]) {
+    const source = await readFile(new URL(path, import.meta.url), "utf8");
+    assert.match(source, /const hasMetadata = labels\.length > 0 \|\| highlights\.length > 0;/);
+    const metadataStart = source.indexOf("{hasMetadata &&");
+    const venueStart = source.indexOf("{primaryVenue ?", metadataStart);
+    assert.ok(metadataStart >= 0 && venueStart > metadataStart, path);
+    const metadata = source.slice(metadataStart, venueStart);
+    assert.match(metadata, /pub-meta-line ds-meta-row/);
+    assert.match(metadata, /PublicationHighlightBadge/);
+    assert.doesNotMatch(metadata, /primaryVenue|pub-venue-line/);
+    assert.match(source.slice(venueStart), /className="pub-venue-line highlighted-color color-gray">\{primaryVenue\}<\/span>/);
+    assert.ok(venueStart < source.indexOf("additionalVenues.map"));
+  }
+});
