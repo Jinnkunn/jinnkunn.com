@@ -87,13 +87,8 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
   const additionalVenues = additionalPublicationVenues(venues);
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
-  // Collapsed, an entry used to show only a title and a coloured tag — the
-  // venue was buried in the hidden container below, so the list read as a
-  // wall of titles with no way to tell a workshop paper from an AAAI oral
-  // without opening every row. The first venue is the one that identifies the
-  // work, so it joins the existing meta row rather than adding structure.
   const primaryVenue = venues.length > 0 ? venueSummaryText(venues[0]) : "";
-  const hasMetadata = labels.length > 0 || highlights.length > 0 || Boolean(primaryVenue);
+  const hasMetadata = labels.length > 0 || highlights.length > 0;
 
   return (
     <div className="notion-toggle closed publication-toggle">
@@ -123,12 +118,12 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
                     ))}
                   </span>
                 )}
-                {primaryVenue && (
-                  <span className="highlighted-color color-gray">{primaryVenue}</span>
-                )}
               </span>
             </>
           )}
+          {primaryVenue ? (
+            <span className="pub-venue-line highlighted-color color-gray">{primaryVenue}</span>
+          ) : null}
           {additionalVenues.map((venue, index) => (
             <span key={`${venue.type}-${index}`} className="pub-venue-line highlighted-color color-gray">
               {venue.text}

@@ -83,7 +83,7 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
   const primaryVenue = venues[0] ? venueSummaryText({ type: venues[0].type || "", text: venues[0].text || "" }) : "";
-  const hasMetadata = labels.length > 0 || highlights.length > 0 || Boolean(primaryVenue);
+  const hasMetadata = labels.length > 0 || highlights.length > 0;
   const title = entry.title ?? "";
 
   return (
@@ -114,10 +114,12 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
                     ))}
                   </span>
                 )}
-                {primaryVenue ? <span className="highlighted-color color-gray">{primaryVenue}</span> : null}
               </span>
             </>
           )}
+          {primaryVenue ? (
+            <span className="pub-venue-line highlighted-color color-gray">{primaryVenue}</span>
+          ) : null}
           {additionalVenues.map((venue, index) => (
             <span key={`${venue.type ?? "src"}-${index}`} className="pub-venue-line highlighted-color color-gray">
               {venue.text}
