@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ReactElement } from "react";
 
-import { classifyLabel, venueSummaryText, type LabelKind } from "@/components/publications/labels";
+import { additionalPublicationVenues, classifyLabel, venueSummaryText, type LabelKind } from "@/components/publications/labels";
 import { PublicationHighlightBadge } from "@/components/publications/publication-highlight-badge";
 import { PublicationResourceLinks } from "@/components/publications/publication-resource-links";
 
@@ -79,6 +79,7 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
   const entry = parseData(data);
   const authors = entry.authorsRich ?? [];
   const venues = entry.venues ?? [];
+  const additionalVenues = additionalPublicationVenues(venues);
   const labels = entry.labels ?? [];
   const highlights = entry.highlights ?? [];
   const primaryVenue = venues[0] ? venueSummaryText({ type: venues[0].type || "", text: venues[0].text || "" }) : "";
@@ -121,7 +122,7 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
         </span>
       </div>
       <div className="notion-toggle__content" hidden aria-hidden="true">
-        {(authors.length > 0 || venues.length > 1) && (
+        {(authors.length > 0 || additionalVenues.length > 0) && (
           <blockquote className="notion-quote">
             <span className="notion-semantic-string">
               {authors.length > 0 && (
@@ -149,13 +150,13 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
                   ))}
                 </>
               )}
-              {authors.length > 0 && venues.length > 1 && (
+              {authors.length > 0 && additionalVenues.length > 0 && (
                 <>
                   <br />
                   <br />
                 </>
               )}
-              {venues.slice(1).map((venue, index) => (
+              {additionalVenues.map((venue, index) => (
                 <span key={`${venue.type ?? "src"}-${index}`}>
                   {index > 0 && <br />}
                   <PublicationTag label={venue.type || "source"} />
@@ -163,18 +164,7 @@ export function PublicationsEntry({ data }: PublicationsEntryProps): ReactElemen
                     <strong>: </strong>
                   </span>
                   <span className="highlighted-color color-gray">
-                    {venue.url ? (
-                      <a
-                        className="notion-link link"
-                        href={venue.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {venue.text ?? ""}
-                      </a>
-                    ) : (
-                      venue.text ?? ""
-                    )}
+                    {venue.text}
                   </span>
                 </span>
               ))}

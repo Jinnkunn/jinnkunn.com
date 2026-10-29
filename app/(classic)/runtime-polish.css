@@ -21,16 +21,12 @@
 /* Footer: a quiet close to the public surface, with the same tactile hover
  * language as the navbar rather than the raw Super defaults. */
 .super-root .super-footer {
-  /* The grid contributes an 8px row gap; this extra offset keeps the visible
-   * icon-to-hair distance around 18–22px across viewport sizes. */
-  --footer-mascot-gap: clamp(10px, 1vw, 14px);
-  --footer-mascot-width: clamp(96px, 9vw, 116px);
   box-shadow: none;
   border-top: 0;
   overflow: hidden;
   /* Separate the footer through rhythm rather than a full-width rule. This
    * keeps the public surface reading as one continuous editorial page. */
-  padding-block: var(--ds-space-8) 0;
+  padding-block: var(--ds-space-8) var(--ds-space-6);
   /* Super puts the page gutters on the footer element itself
    * (`padding: 48px var(--padding-right) 48px var(--padding-left)`), which makes
    * the footer full-bleed while body copy sits inside a 900px column. Move the
@@ -40,8 +36,7 @@
 
 @media (max-width: 768px) {
   .super-root .super-footer {
-    --footer-mascot-width: clamp(92px, 26vw, 110px);
-    padding-block: var(--ds-space-7) 0;
+    padding-block: var(--ds-space-7) var(--ds-space-5);
   }
 }
 
@@ -53,8 +48,7 @@
   gap: var(--ds-space-2);
   grid-template-areas:
     "logo logo logo"
-    "icons icons icons"
-    "mascot mascot mascot";
+    "icons icons icons";
   max-width: var(--layout-max-width);
   margin-inline: auto;
   padding-left: var(--padding-left);
@@ -88,26 +82,6 @@
    * below (5 + 5 = 10 < 12), so adjacent expanders never overlap. */
   gap: var(--ds-space-3);
   margin-bottom: 0;
-}
-
-/* The transparent mascot is a quiet visual signature at the end of every
- * classic page. Its artwork reaches the SVG's lower viewBox edge, so the
- * image itself can sit at bottom: 0 without leaving a visible baseline gap. */
-.super-root .super-footer__mascot {
-  grid-area: mascot;
-  justify-self: center;
-  align-self: end;
-  width: var(--footer-mascot-width);
-  margin-top: var(--footer-mascot-gap);
-  line-height: 0;
-  pointer-events: none;
-  user-select: none;
-}
-
-.super-root .super-footer__mascot img {
-  display: block;
-  width: 100%;
-  height: auto;
 }
 
 .super-root .super-footer__icons a {

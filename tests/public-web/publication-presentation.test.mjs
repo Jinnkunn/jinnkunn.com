@@ -1,0 +1,89 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+import { additionalPublicationVenues, venueSummaryText } from "../../components/publications/labels.ts";
+import { publicationLinks } from "../../lib/shared/publication-links.ts";
+import { parsePublicationsEntries } from "../../lib/components/parse.ts";
+
+test("publication presentation: removes resource-only additional venues without changing source records", () => {
+  const venues = [
+    { type: "journal", text: "SoftwareX, vol 28, 101952. Elsevier. dio: 10.1016/j.softx.2024.101952" },
+    { type: "arXiv.org", text: "Available at: https://arxiv.org/abs/2407.08082", url: "https://arxiv.org/abs/2407.08082" },
+    { type: "journal", text: "DOI: 10.1000/example" },
+    { type: "source", text: "https://example.com/paper" },
+    { type: "source", text: "", url: "https://example.com/supplement" },
+  ];
+  const before = structuredClone(venues);
+  assert.deepEqual(additionalPublicationVenues(venues), []);
+  assert.deepEqual(venues, before);
+});
+
+test("publication presentation: preserves meaningful additional venue descriptions, without embedded URLs", () => {
+  const venues = [
+    { type: "conference", text: "27th International Conference on Pattern Recognition (ICPR)" },
+    { type: "journal", text: "Pattern Recognition. Lecture Notes in Computer Science, vol 15303. Springer, Cham. dio: https://doi.org/10.1007/example", url: "https://doi.org/10.1007/example" },
+    { type: "arXiv.org", text: "Available at: https://arxiv.org/abs/2409.00356" },
+    { type: "workshop", text: "Extended workshop version" },
+  ];
+  assert.deepEqual(additionalPublicationVenues(venues), [
+    { type: "journal", text: "Pattern Recognition. Lecture Notes in Computer Science, vol 15303. Springer, Cham" },
+    { type: "workshop", text: "Extended workshop version" },
+  ]);
+});
+
+test("publication presentation: empty or single-venue entries have no extra details", () => {
+  assert.deepEqual(additionalPublicationVenues([]), []);
+  assert.deepEqual(additionalPublicationVenues([{ type: "conference", text: "AAAI-26" }]), []);
+});
+
+test("publication presentation: summary never falls back to displaying a raw resource URL", () => {
+  assert.equal(venueSummaryText({ type: "journal", text: "https://doi.org/10.1000/example" }), "");
+  assert.equal(venueSummaryText({ type: "arXiv.org", text: "Available at: https://arxiv.org/abs/2407.08082" }), "arXiv preprint");
+  assert.equal(venueSummaryText({ type: "journal", text: "SoftwareX. doi: 10.1000/example" }), "SoftwareX");
+});
+
+test("publication resources: promotes venue-only links and deduplicates them against the resource fields", () => {
+  const arxivUrl = "https://arxiv.org/abs/2407.08082";
+  const doiUrl = "https://doi.org/10.1016/j.softx.2024.101952";
+  assert.deepEqual(publicationLinks({
+    url: doiUrl,
+    doiUrl,
+    arxivUrl,
+    externalUrls: [doiUrl, arxivUrl],
+    venues: [
+      { type: "journal", text: `SoftwareX. doi: ${doiUrl}`, url: doiUrl },
+      { type: "arXiv.org", text: `Available at: ${arxivUrl}`, url: `https://www.arxiv.org/abs/2407.08082/` },
+      { text: "Available at: https://example.com/supplement." },
+      { url: "https://github.com/example/repo" },
+      { url: "javascript:alert(1)" },
+      { url: "https://user:password@example.com/private" },
+    ],
+  }), [
+    { href: doiUrl, label: "DOI" },
+    { href: arxivUrl, label: "arXiv" },
+    { href: "https://example.com/supplement", label: "Paper" },
+    { href: "https://github.com/example/repo", label: "Code" },
+  ]);
+});
+
+test("publication resources: accepts optional venue fields and entries without links", () => {
+  assert.deepEqual(publicationLinks({}), []);
+  assert.deepEqual(publicationLinks({ venues: [{}, { text: "Test Conference 2026" }] }), []);
+});
+
+test("publication presentation: AISDB has authors-only details while CAB-KWS retains its additional journal", async () => {
+  const source = await readFile(new URL("../../content/components/publications.mdx", import.meta.url), "utf8");
+  const entries = parsePublicationsEntries(source);
+  const maritime = entries.find((entry) => entry.title.includes("AISDB"));
+  const cab = entries.find((entry) => entry.title.startsWith("CAB-KWS"));
+  assert.ok(maritime);
+  assert.ok(cab);
+  assert.deepEqual(additionalPublicationVenues(maritime.venues), []);
+  assert.equal(publicationLinks(maritime).filter((link) => link.label === "arXiv").length, 1);
+  const details = additionalPublicationVenues(cab.venues);
+  assert.equal(details.length, 1);
+  assert.equal(details[0].type, "journal");
+  assert.match(details[0].text, /Lecture Notes in Computer Science/);
+  assert.doesNotMatch(details[0].text, /https?:|\b(?:doi|dio):|Available at/i);
+});
