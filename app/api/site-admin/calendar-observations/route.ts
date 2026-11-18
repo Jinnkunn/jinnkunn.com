@@ -1,5 +1,4 @@
 import type { NextRequest } from "next/server";
-import { revalidatePath } from "next/cache";
 
 import {
   apiError,
@@ -12,12 +11,14 @@ import {
   cleanupCalendarCollectorObservations,
   getCalendarObservationWriteDatabases,
   publishCalendarObservationsToLive,
+  readCalendarPublicationStatus,
   readCalendarSyncHealth,
   writeCalendarObservationSync,
 } from "@/lib/server/calendar-sync-store";
 import { normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
 import { parseCalendarCollectorCleanupCommand } from "@/lib/site-admin/calendar-observation-commands";
 import type { ParseResult } from "@/lib/site-admin/request-types";
+import { revalidatePublicCalendar } from "./revalidate";
 
 export const runtime = "nodejs";
 
@@ -95,16 +96,6 @@ async function publishLiveAfterObservationMutation(
   return result;
 }
 
-function revalidatePublicCalendar() {
-  try {
-    revalidatePath("/calendar");
-    revalidatePath("/api/public/calendar");
-    revalidatePath("/api/public/calendar/calendar.ics");
-  } catch {
-    // Public calendar responses also have bounded cache lifetimes.
-  }
-}
-
 function parseObservationSyncCommand(
   raw: Record<string, unknown>,
 ): ParseResult<ReturnType<typeof normalizeCalendarObservationSyncPayload>> {
@@ -115,6 +106,23 @@ export async function GET(req: NextRequest) {
   return withSiteAdminContext(
     req,
     async () => {
+      if (req.nextUrl.searchParams.get("view") === "publication") {
+        const parsed = parseCalendarCollectorCleanupCommand({
+          collectorId: req.nextUrl.searchParams.get("collectorId"),
+        });
+        if (!parsed.ok) {
+          return apiError(parsed.error, { status: 400, code: "INVALID_CALENDAR_COLLECTOR" });
+        }
+        try {
+          const publication = await readCalendarPublicationStatus(parsed.value.collectorId);
+          return publication ? apiPayloadOk({ publication }) : calendarWriteUnavailable();
+        } catch {
+          return apiError("Calendar publication status could not be read.", {
+            status: 503,
+            code: "CALENDAR_PUBLICATION_UNAVAILABLE",
+          });
+        }
+      }
       const health = await readCalendarSyncHealth();
       if (!health) {
         return apiError("Calendar sync database is not configured.", {

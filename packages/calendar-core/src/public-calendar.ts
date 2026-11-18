@@ -28,6 +28,7 @@ export type PublicCalendarData = {
     endsAt: string;
   };
   events: PublicCalendarEvent[];
+  observationSnapshot?: { revision: number; eventIds: string[] };
 };
 
 const PUBLIC_BUSY_COLOR = "#9B9A97";
@@ -138,7 +139,17 @@ export function filterStalePublicCalendarEvents(
     return endsMs >= cutoff;
   });
   if (filtered.length === data.events.length) return data;
-  return { ...data, events: filtered };
+  const retainedIds = data.observationSnapshot ? new Set(filtered.map(({ id }) => id)) : null;
+  return {
+    ...data,
+    events: filtered,
+    ...(retainedIds && data.observationSnapshot && {
+      observationSnapshot: {
+        revision: data.observationSnapshot.revision,
+        eventIds: data.observationSnapshot.eventIds.filter((id) => retainedIds.has(id)),
+      },
+    }),
+  };
 }
 
 export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
@@ -164,6 +175,23 @@ export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
       endsAt: Date.parse(endsAt) > Date.parse(startsAt) ? endsAt : startsAt,
     },
     events,
+  };
+}
+
+// Only the public runtime response carries a verified observation snapshot.
+// The general normalizer intentionally strips it from editable payloads.
+export function normalizePublicCalendarRuntimeData(raw: unknown): PublicCalendarData {
+  const data = normalizePublicCalendarData(raw);
+  const snapshot = (raw as Partial<PublicCalendarData> | null)?.observationSnapshot;
+  if (!snapshot || !Number.isSafeInteger(snapshot.revision) || snapshot.revision <= 0 ||
+      !Array.isArray(snapshot.eventIds)) return data;
+  const busyIds = new Set(data.events.filter((event) => event.visibility === "busy").map(({ id }) => id));
+  return {
+    ...data,
+    observationSnapshot: {
+      revision: snapshot.revision,
+      eventIds: [...new Set(snapshot.eventIds.filter((id) => busyIds.has(id)))],
+    },
   };
 }
 
@@ -247,6 +275,7 @@ function isCoveredByPublicEvent(
 
 function mergeBusyRuntimeEvents(
   events: readonly PublicCalendarEvent[],
+  observedIds: Set<string>,
 ): PublicCalendarEvent[] {
   const sorted = [...events].sort((a, b) =>
     a.startsAt.localeCompare(b.startsAt) ||
@@ -263,10 +292,12 @@ function mergeBusyRuntimeEvents(
       previous.isAllDay === event.isAllDay &&
       timestampMs(event.startsAt) <= timestampMs(previous.endsAt)
     ) {
+      const includesObservation = observedIds.has(previous.id) || observedIds.has(event.id);
       if (timestampMs(event.endsAt) > timestampMs(previous.endsAt)) {
         previous.endsAt = event.endsAt;
       }
       if (!previous.id.includes(event.id)) previous.id = `${previous.id}+${event.id}`;
+      if (includesObservation) observedIds.add(previous.id);
       continue;
     }
     out.push({ ...event });
@@ -281,27 +312,39 @@ export function supplementPublicCalendarWithObservedData({
   publicData: PublicCalendarData;
   observedData: PublicCalendarData | null | undefined;
 }): PublicCalendarData {
-  if (!observedData?.events.length) return publicData;
+  if (!observedData || (!observedData.events.length && !observedData.observationSnapshot)) {
+    return publicData;
+  }
 
   const events = [...publicData.events];
   const windows = events.map(eventWindow);
+  const observedIds = new Set<string>();
   for (const observed of observedData.events) {
     const busy = toBusySupplementEvent(observed);
     const window = eventWindow(busy);
     if (windows.some((event) => isCoveredByPublicEvent(event, window))) continue;
     windows.push(window);
     events.push(busy);
+    observedIds.add(busy.id);
   }
 
-  return normalizePublicCalendarData({
+  const data = normalizePublicCalendarData({
     schemaVersion: 1,
     generatedAt: laterIso(publicData.generatedAt, observedData.generatedAt),
     range: {
       startsAt: earlierIso(publicData.range.startsAt, observedData.range.startsAt),
       endsAt: laterIso(publicData.range.endsAt, observedData.range.endsAt),
     },
-    events: mergeBusyRuntimeEvents(events),
+    events: mergeBusyRuntimeEvents(events, observedIds),
   });
+  if (!observedData.observationSnapshot) return data;
+  return {
+    ...data,
+    observationSnapshot: {
+      revision: observedData.observationSnapshot.revision,
+      eventIds: data.events.filter(({ id }) => observedIds.has(id)).map(({ id }) => id),
+    },
+  };
 }
 
 export function selectPublicCalendarRuntimeData({
@@ -343,6 +386,10 @@ export function selectPublicCalendarHydrationData({
   currentData: PublicCalendarData;
   refreshedData: PublicCalendarData;
 }): PublicCalendarData {
+  const known = currentData.observationSnapshot;
+  const received = refreshedData.observationSnapshot;
+  // A cached or fallback response cannot roll back a confirmed observation view.
+  if (known && (!received || received.revision < known.revision)) return currentData;
   const refreshedGeneratedAt = timestampMs(refreshedData.generatedAt);
   const currentGeneratedAt = timestampMs(currentData.generatedAt);
   const responseIsNotNewer = refreshedGeneratedAt <= currentGeneratedAt;
@@ -351,20 +398,19 @@ export function selectPublicCalendarHydrationData({
     refreshedIds.has(event.id),
   );
 
-  if (responseIsNotNewer && !refreshedContainsCurrent) {
+  if (responseIsNotNewer && !refreshedContainsCurrent && !received) {
     return currentData;
   }
   if (refreshedContainsCurrent) {
     return refreshedData;
   }
 
-  // The live calendar endpoint can briefly return a newer but partial
-  // overlay while a desktop sync/write is still settling. Hydration
-  // should never make visible events disappear on page load; merge the
-  // refreshed rows over the static rows so new/updated events appear
-  // without dropping rows the static shell already proved renderable.
-  const carried = currentData.events.filter((event) => !refreshedIds.has(event.id));
-  return normalizePublicCalendarData({
+  // Preserve manually published fallback events. A complete snapshot may
+  // remove previously observed Busy blocks, including ones merged with a
+  // manual block whose original interval is now present in the response.
+  const replaceableIds = new Set(received ? known?.eventIds : []);
+  const carried = currentData.events.filter(({ id }) => !refreshedIds.has(id) && !replaceableIds.has(id));
+  return normalizePublicCalendarRuntimeData({
     ...refreshedData,
     events: [...refreshedData.events, ...carried],
   });

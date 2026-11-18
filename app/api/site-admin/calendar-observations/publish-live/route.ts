@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/site-admin-api";
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import { publishCalendarObservationsToLive } from "@/lib/server/calendar-sync-store";
+import { revalidatePublicCalendar } from "../revalidate";
 
 export const runtime = "nodejs";
 
@@ -20,30 +21,40 @@ export async function POST(req: NextRequest) {
   return withSiteAdminContext(
     req,
     async (ctx) => {
-      const result = await publishCalendarObservationsToLive();
+      const rawRevision = req.nextUrl.searchParams.get("revision");
+      const expectedRevision = rawRevision === null ? undefined : Number(rawRevision);
+      if (expectedRevision !== undefined && (
+        !/^[1-9]\d*$/.test(rawRevision ?? "") || !Number.isSafeInteger(expectedRevision)
+      )) {
+        return apiError("Invalid calendar revision.", {
+          status: 400,
+          code: "INVALID_CALENDAR_REVISION",
+        });
+      }
+      const result = await publishCalendarObservationsToLive(undefined, undefined, 0, expectedRevision);
       if (!result.ok || result.skipped) {
         const reason = result.ok ? result.reason : result.error;
+        const code = result.ok ? "LIVE_DB_NOT_CONFIGURED" : result.code ?? "LIVE_DB_WRITE_FAILED";
+        const status = code === "CALENDAR_REVISION_CHANGED" ? 409 : 500;
         await writeSiteAdminAuditLog({
           actor: ctx.login,
           action: "calendar.observations.publish-live",
           endpoint: "/api/site-admin/calendar-observations/publish-live",
           method: "POST",
-          status: 500,
+          status,
           result: "error",
-          code: result.ok ? "LIVE_DB_NOT_CONFIGURED" : "LIVE_DB_WRITE_FAILED",
+          code,
           message: reason,
         });
         return apiError(
           result.ok
             ? "Live calendar database binding is not configured."
             : result.error,
-          {
-            status: 500,
-            code: result.ok ? "LIVE_DB_NOT_CONFIGURED" : "LIVE_DB_WRITE_FAILED",
-          },
+          { status, code },
         );
       }
 
+      revalidatePublicCalendar();
       await writeSiteAdminAuditLog({
         actor: ctx.login,
         action: "calendar.observations.publish-live",

@@ -1,7 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
-import type { DbExecutor } from "./db-content-store.ts";
+import type { DbExecutor, TransactionalDbExecutor } from "./db-content-store.ts";
 import { logWarn } from "./error-log.ts";
 import {
   normalizePublicCalendarData,
@@ -192,26 +192,50 @@ function isoFromUpdatedAt(value: unknown): string {
   return ms > 0 ? new Date(ms).toISOString() : "";
 }
 
+const OBSERVED_STATE_QUERY = {
+  sql: `SELECT MAX(synced_at) AS generated_at,
+               MIN(range_starts_at) AS range_starts_at,
+               MAX(range_ends_at) AS range_ends_at
+        FROM calendar_sync_state`,
+};
+const OBSERVED_ENTITIES_QUERY = {
+  sql: `SELECT entity_id, starts_at, ends_at, body_json, updated_at
+        FROM calendar_event_entities
+        ORDER BY starts_at ASC`,
+};
+
+async function readObservedRows(executor: DbExecutor) {
+  if ("batch" in executor && typeof executor.batch === "function") {
+    try {
+      return await (executor as TransactionalDbExecutor).batch([
+        OBSERVED_STATE_QUERY,
+        OBSERVED_ENTITIES_QUERY,
+        { sql: "SELECT revision, updated_at FROM calendar_observation_revision WHERE id = 1" },
+      ]);
+    } catch (error) {
+      // Older local/preview databases can still provide observations, but
+      // without a receipt they cannot prove a removed event is really gone.
+      const details = error instanceof Error ? [error.message, error.cause].join(" ") : String(error);
+      if (!/no such table:\s*calendar_observation_revision/i.test(details)) throw error;
+    }
+  }
+  return Promise.all([
+    executor.execute(OBSERVED_STATE_QUERY),
+    executor.execute(OBSERVED_ENTITIES_QUERY),
+  ]);
+}
+
 export async function readObservedPublicCalendarFromDb(
   executor = tryGetD1Executor(),
 ): Promise<PublicCalendarData | null> {
   if (!executor) return null;
   try {
-    const [state, entities] = await Promise.all([
-      executor.execute({
-        sql: `SELECT MAX(synced_at) AS generated_at,
-                     MIN(range_starts_at) AS range_starts_at,
-                     MAX(range_ends_at) AS range_ends_at
-              FROM calendar_sync_state`,
-      }),
-      executor.execute({
-        sql: `SELECT entity_id, starts_at, ends_at, body_json, updated_at
-              FROM calendar_event_entities
-              ORDER BY starts_at ASC`,
-      }),
-    ]);
+    const [state, entities, receipt] = await readObservedRows(executor);
     const firstState = state.rows[0] ?? {};
-    if (!entities.rows.length && !stringField(firstState.generated_at)) return null;
+    const revision = numberField(receipt?.rows[0]?.revision);
+    const revisedAt = stringField(receipt?.rows[0]?.updated_at);
+    const verified = Number.isSafeInteger(revision) && revision > 0 && Number.isFinite(Date.parse(revisedAt));
+    if (!verified && !entities.rows.length && !stringField(firstState.generated_at)) return null;
 
     const events = entities.rows
       .map((row, index) => decodeObservedEntityRow(row, index))
@@ -223,10 +247,11 @@ export async function readObservedPublicCalendarFromDb(
       0,
     );
 
-    return normalizePublicCalendarData({
+    const data = normalizePublicCalendarData({
       schemaVersion: 1,
       generatedAt:
         stringField(firstState.generated_at) ||
+        revisedAt ||
         isoFromUpdatedAt(latestUpdatedAt) ||
         new Date().toISOString(),
       range: {
@@ -241,6 +266,11 @@ export async function readObservedPublicCalendarFromDb(
       },
       events,
     });
+    if (!verified || data.events.length !== entities.rows.length) return data;
+    return {
+      ...data,
+      observationSnapshot: { revision, eventIds: data.events.map(({ id }) => id) },
+    };
   } catch (err) {
     logWarn({
       source: "public-calendar-db",

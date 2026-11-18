@@ -10,6 +10,7 @@ export type SearchIndexItem = {
   routePath: string;
   headings?: string[];
   text: string;
+  publications?: unknown[];
 };
 
 function isObject(x: unknown): x is Record<string, unknown> {
@@ -52,11 +53,12 @@ export function getSearchIndex(): SearchIndexItem[] {
     ? parsed
         .map((x): SearchIndexItem | null => {
           if (!isObject(x)) return null;
+          const routePath = String(x.routePath || "");
           const it: SearchIndexItem = {
             id: String(x.id || ""),
             title: String(x.title || ""),
             kind: String(x.kind || ""),
-            routePath: String(x.routePath || ""),
+            routePath,
             headings: capHeadings(
               Array.isArray((x as Record<string, unknown>).headings)
                 ? ((x as Record<string, unknown>).headings as unknown[])
@@ -65,6 +67,9 @@ export function getSearchIndex(): SearchIndexItem[] {
                 : undefined,
             ),
             text: capText(String(x.text || "")),
+            ...(routePath === "/publications" && Array.isArray(x.publications)
+              ? { publications: x.publications }
+              : {}),
           };
           if (!it.routePath) return null;
           return it;
