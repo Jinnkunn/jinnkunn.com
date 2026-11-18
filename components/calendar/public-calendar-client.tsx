@@ -11,7 +11,7 @@ import {
 } from "@/components/calendar/public-calendar-view";
 import {
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
-  normalizePublicCalendarData,
+  normalizePublicCalendarRuntimeData,
   normalizePublicCalendarServedAt,
   selectPublicCalendarHydrationData,
   type PublicCalendarData,
@@ -250,7 +250,7 @@ export function PublicCalendarClient({
           }
           return;
         }
-        const next = normalizePublicCalendarData(await res.json());
+        const next = normalizePublicCalendarRuntimeData(await res.json());
         if (cancelled) return;
         setData((current) =>
           selectPublicCalendarHydrationData({

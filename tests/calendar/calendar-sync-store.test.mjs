@@ -6,10 +6,18 @@ import path from "node:path";
 import { createClient } from "@libsql/client";
 
 import { normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
+import { buildPublicCalendarIcs } from "@jinnkunn/calendar-core/ics";
+import {
+  normalizePublicCalendarData,
+  normalizePublicCalendarRuntimeData,
+  selectPublicCalendarHydrationData,
+  selectPublicCalendarRuntimeData,
+} from "@jinnkunn/calendar-core/public";
 import { readObservedPublicCalendarFromDb } from "../../lib/server/public-calendar-db.ts";
 import {
   cleanupCalendarCollectorObservations,
   publishCalendarObservationsToLive,
+  readCalendarPublicationStatus,
   readCalendarSyncHealth,
   writeCalendarObservationSync as writeNormalizedSync,
 } from "../../lib/server/calendar-sync-store.ts";
@@ -571,6 +579,80 @@ async function revision(client) {
   const { rows } = await client.execute("SELECT revision FROM calendar_observation_revision WHERE id = 1");
   return Number(rows[0].revision);
 }
+
+test("calendar-sync-store: publication receipts distinguish another collector from this Mac", async () => {
+  const staging = await makeCalendarSyncDb();
+  const live = await makeCalendarSyncDb();
+  const databases = { staging, live };
+  const first = { ...snapshot("this-mac", 1), observedAt: "2026-05-18T00:00:00Z" };
+  const result = await writeCalendarObservationSync(first, staging);
+  const pending = await readCalendarPublicationStatus("this-mac", databases);
+  assert.equal(pending.staging.revision, result.revision);
+  assert.equal(pending.staging.collectorSyncedAt, "2026-05-18T00:00:00.000Z");
+  assert.deepEqual(pending.live, { revision: 0, updatedAt: null, collectorSyncedAt: null });
+
+  assert.equal((await publishCalendarObservationsToLive(staging, live)).ok, true);
+  const second = await writeCalendarObservationSync(snapshot("other-device", 1, 5), staging);
+  const anotherCollectorPending = await readCalendarPublicationStatus("this-mac", databases);
+  assert.equal(anotherCollectorPending.staging.revision, second.revision);
+  assert.equal(anotherCollectorPending.live.revision, result.revision);
+  assert.equal(anotherCollectorPending.live.collectorSyncedAt, pending.staging.collectorSyncedAt);
+});
+
+test("calendar-sync-store: move and remove Busy in open pages and ICS without dropping manual blocks", async () => {
+  const staging = await makeCalendarSyncDb();
+  const live = await makeCalendarSyncDb();
+  const payload = snapshot("synthetic-qa", 1);
+  payload.observedAt = "2026-05-18T00:00:00Z";
+  const manual = normalizePublicCalendarData({
+    ...payload,
+    generatedAt: payload.observedAt,
+    events: [{
+      id: "manual-busy",
+      title: "Busy",
+      startsAt: "2026-05-16T23:45:00Z",
+      endsAt: "2026-05-17T00:00:00Z",
+      visibility: "busy",
+    }],
+  });
+  const projected = async () => normalizePublicCalendarRuntimeData(JSON.parse(JSON.stringify(
+    selectPublicCalendarRuntimeData({
+      dbData: null,
+      sourceData: manual,
+      observedData: await readObservedPublicCalendarFromDb(live),
+    }),
+  )));
+  const publish = async (snapshotValue) => {
+    assert.equal((await writeCalendarObservationSync(snapshotValue, staging)).ok, true);
+    assert.equal((await publishCalendarObservationsToLive(staging, live)).ok, true);
+  };
+  await publish(payload);
+  const first = await projected();
+  assert.equal(first.events.length, 1);
+  assert.ok(first.events[0].id.startsWith("manual-busy+"));
+  assert.deepEqual(first.observationSnapshot.eventIds, [first.events[0].id]);
+  assert.match(buildPublicCalendarIcs(first), /DTEND:20260517T003000Z/);
+
+  const moved = snapshot("synthetic-qa", 1, 5);
+  moved.observations[0].sourceEventId = payload.observations[0].sourceEventId;
+  moved.observedAt = "2026-05-18T00:01:00Z";
+  await publish(moved);
+  const changed = await projected();
+  const afterMove = selectPublicCalendarHydrationData({ currentData: first, refreshedData: changed });
+  assert.equal(afterMove.events.length, 2);
+  assert.ok(!afterMove.events.some(({ id }) => id === first.events[0].id));
+  assert.doesNotMatch(buildPublicCalendarIcs(changed), /DTEND:20260517T003000Z/);
+
+  await publish({ ...moved, observations: [], observedAt: "2026-05-18T00:02:00Z" });
+  const afterDeletion = await projected();
+  const openPage = selectPublicCalendarHydrationData({ currentData: afterMove, refreshedData: afterDeletion });
+  assert.deepEqual(openPage.events.map(({ id }) => id), ["manual-busy"]);
+  assert.deepEqual(openPage.observationSnapshot.eventIds, []);
+  assert.equal((buildPublicCalendarIcs(afterDeletion).match(/SUMMARY:Busy/g) ?? []).length, 1);
+  assert.equal(selectPublicCalendarHydrationData({ currentData: openPage, refreshedData: first }), openPage);
+  const unverified = normalizePublicCalendarData({ ...first, generatedAt: "2026-05-19T00:00:00Z" });
+  assert.equal(selectPublicCalendarHydrationData({ currentData: openPage, refreshedData: unverified }), openPage);
+});
 
 test("calendar-sync-store: 420 observations sync and clean up below the D1 request cap", async () => {
   const source = await makeCalendarSyncDb();

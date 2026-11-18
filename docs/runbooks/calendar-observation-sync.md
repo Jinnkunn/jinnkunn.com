@@ -27,6 +27,16 @@ The first verified mirror reconciles data left by the old publisher.
   in each. A non-null `updated_at` on Live records a verified mirror. If Live
   has a higher revision than staging, check for a staging restore or incorrect
   binding before attempting any manual repair.
+- Docs settings distinguish local sync, the last batch accepted by staging for
+  this Mac, and the verified Live receipt. The authenticated read is
+  `GET /api/site-admin/calendar-observations?view=publication&collectorId=...`.
+  It returns revisions and timestamps, not events. **Retry Live only** checks
+  the receipt again and posts with `?revision=<staging revision>`. A changed
+  revision returns `409 CALENDAR_REVISION_CHANGED`; refresh before retrying.
+  This path does not read EventKit or upload a second snapshot.
 - Verify the public JSON and ICS feeds after their cache windows. Use a
   dedicated test calendar for a device check; select only calendars meant to
   contribute busy times before enabling background sync.
+- Inventory inactive collectors read-only before cleanup. Count future
+  deduplicated entities with exclusively inactive sources separately from
+  raw observations. Inactivity alone does not authorize deleting a source.

@@ -91,6 +91,12 @@ export interface CalendarSyncHealth {
   entityCount: number;
 }
 
+type CalendarPublicationReceipt = {
+  revision: number;
+  updatedAt: string | null;
+  collectorSyncedAt: string | null;
+};
+
 function isD1Like(value: unknown): value is D1DatabaseLike {
   return (
     !!value &&
@@ -129,6 +135,35 @@ function readRevision(result: DbResult) {
     revision,
     updatedAt: typeof row?.updated_at === "string" ? row.updated_at : null,
   };
+}
+
+async function readPublicationReceipt(
+  executor: DbExecutor,
+  collectorId: string,
+): Promise<CalendarPublicationReceipt> {
+  const result = await executor.execute({
+    sql: `SELECT revision, updated_at,
+            (SELECT MAX(synced_at) FROM calendar_sync_state WHERE collector_id = ?) AS collector_synced_at
+          FROM calendar_observation_revision WHERE id = 1`,
+    args: [collectorId],
+  });
+  const lastSync = result.rows[0]?.collector_synced_at;
+  return {
+    ...readRevision(result),
+    collectorSyncedAt: typeof lastSync === "string" ? lastSync : null,
+  };
+}
+
+export async function readCalendarPublicationStatus(
+  collectorId: string,
+  databases = getCalendarObservationWriteDatabases(),
+) {
+  if (!databases) return null;
+  // Read Live first so an ordinary concurrent publish can't make it look
+  // newer than staging. Each receipt includes the collector time in the same read.
+  const live = await readPublicationReceipt(databases.live, collectorId);
+  const staging = await readPublicationReceipt(databases.staging, collectorId);
+  return { staging, live };
 }
 
 function advanceRevision(
@@ -266,7 +301,7 @@ export type CalendarObservationLivePublishResult =
       skipped: true;
       reason: "no_source_executor" | "no_target_executor";
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: "CALENDAR_REVISION_CHANGED" };
 
 function buildSourceUpsertSql(rowCount: number): string {
   const rows = Array.from(
@@ -569,6 +604,7 @@ export async function publishCalendarObservationsToLive(
   sourceExecutor = tryGetD1Executor("SITE_ADMIN_DB"),
   targetExecutor = tryGetD1Executor("SITE_ADMIN_DB_LIVE"),
   minimumRevision = 0,
+  expectedRevision?: number,
 ): Promise<CalendarObservationLivePublishResult> {
   if (!sourceExecutor) {
     return { ok: true, skipped: true, reason: "no_source_executor" };
@@ -578,7 +614,7 @@ export async function publishCalendarObservationsToLive(
   }
 
   try {
-    return await retryRevisionConflict(async () => {
+    return await retryRevisionConflict<CalendarObservationLivePublishResult>(async () => {
       const [liveRevision, ...liveRows] = await targetExecutor.batch([
         READ_REVISION,
         ...CALENDAR_OBSERVATION_MIRROR_TABLES.map(({ name, primaryKey }) => ({
@@ -593,6 +629,13 @@ export async function publishCalendarObservationsToLive(
       ]);
       const live = readRevision(liveRevision);
       const staging = readRevision(stagingRevision);
+      if (expectedRevision !== undefined && staging.revision !== expectedRevision) {
+        return {
+          ok: false,
+          code: "CALENDAR_REVISION_CHANGED",
+          error: "The staging calendar revision changed. Check the receipts before retrying.",
+        };
+      }
       if (staging.revision < minimumRevision) {
         throw new Error("The saved calendar revision is no longer available in staging.");
       }
