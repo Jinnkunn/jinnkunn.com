@@ -16,6 +16,7 @@ import {
 } from "@/lib/server/content-store";
 import { getContentStore } from "@/lib/server/content-store-resolver";
 import { assertDocumentDraftSource } from "@/lib/shared/document-draft-validation";
+import { isPublicationsJson, legacyPublicationsSource, readPublicationsDocument, writePublicationsDocument } from "../../packages/content-core/src/publications";
 import {
   SITE_COMPONENT_DEFINITIONS,
   SITE_COMPONENT_NAMES,
@@ -58,6 +59,9 @@ export async function readComponent(
   const store = await getStore();
   const file = await store.readFile(componentRelPath(name));
   if (!file) return null;
+  if (name === "publications" && isPublicationsJson(file.content)) {
+    return { name, source: legacyPublicationsSource(readPublicationsDocument(file.content)), version: file.sha };
+  }
   return { name, source: file.content, version: file.sha };
 }
 
@@ -66,12 +70,14 @@ export async function updateComponent(
   source: string,
   ifMatch: ContentVersion,
 ): Promise<ComponentDetail> {
-  assertDocumentDraftSource(source, "pages");
+  const storedSource = name === "publications" ? writePublicationsDocument(source) : source;
+  const mdx = name === "publications" ? legacyPublicationsSource(readPublicationsDocument(storedSource)) : source;
+  assertDocumentDraftSource(mdx, "pages");
   const store = await getStore();
-  const { sha } = await store.writeFile(componentRelPath(name), source, {
+  const { sha } = await store.writeFile(componentRelPath(name), storedSource, {
     ifMatch,
   });
-  return { name, source, version: sha };
+  return { name, source: mdx, version: sha };
 }
 
 export { SITE_COMPONENT_DEFINITIONS };

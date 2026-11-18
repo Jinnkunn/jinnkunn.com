@@ -1,5 +1,8 @@
 import { getPostEntries } from "@/lib/posts/index";
 import { adjacentBlogDocuments, compareBlogDocuments } from "./posts/navigation";
+import { reasoningDriftReadingOrder } from "./posts/reasoning-drift-series";
+import { getProtectedRoutes } from "./protected-routes";
+import { findProtectedMatch } from "./routes/strategy";
 
 export type BlogPostIndexItem = {
   kind: "list" | "page";
@@ -41,10 +44,12 @@ export async function getBlogIndex(): Promise<BlogPostIndexItem[]> {
   return items;
 }
 
-export async function getAdjacentBlogPosts(href: string): Promise<{
-  prev: BlogPostIndexItem | null;
-  next: BlogPostIndexItem | null;
-}> {
+export function getReasoningDriftSeries(entries: BlogPostIndexItem[]) {
+  const rules = getProtectedRoutes();
+  return reasoningDriftReadingOrder(entries.filter(({ href }) => !findProtectedMatch(href, rules)));
+}
+
+export async function getBlogPostNavigation(href: string) {
   const idx = await getBlogIndex();
-  return adjacentBlogDocuments(idx, href);
+  return { ...adjacentBlogDocuments(idx, href), series: getReasoningDriftSeries(idx) };
 }

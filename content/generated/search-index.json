@@ -220,7 +220,57 @@
     "title": "Publications",
     "kind": "page",
     "routePath": "/publications",
-    "text": "Google Scholar | ResearchGate | ORCID | Semantic Scholar\nUnified Minimax Optimization Framework for Propensity Score Estimation in Debiased Recommendation 2026 conference C. Zheng H. Yang J. Chen S. Zhang T. Xia conference The 40th Annual AAAI Conference on Artificial Intelligence (AAAI-26) oral\nStatic Sandboxes Are Inadequate: Modeling Societal Complexity Requires Open-Ended Co-Evolution in LLM-Based Multi-Agent Simulations 2025 arXiv.org J. Chen S. Badshah X. Yu S. Han arXiv.org Available at: https://arxiv.org/abs/2510.13982\nAddressing Correlated Latent Exogenous Variables in Debiased Recommender Systems 2025 conference arXiv.org S. Zhang Y. Zhang J. Chen H. Sui conference 31st SIGKDD Conference on Knowledge Discovery and Data Mining (KDD) arXiv.org Available at: https://www.arxiv.org/abs/2506.07517 oral\nCAB-KWS : Contrastive Augmentation: An Unsupervised Learning Approach for Keyword Spotting in Speech Technology 2024 conference journal arXiv.org W. Dai Y. Jiang Y. Liu J. Chen X. Sun J. Tao conference 27th International Conference on Pattern Recognition (ICPR) journal Pattern Recognition. Lecture Notes in Computer Science, vol 15303. Springer, Cham. dio: https://doi.org/10.1007/978-3-031-78122-37 arXiv.org Available at: https://arxiv.org/abs/2409.00356 oral\nMaritime tracking data analysis and integration with AISDB 2024 journal arXiv.org G. Spadon J. Kumar J. Chen M. Smith C. Hilliard S. Vela R. Gehrmann C. DiBacco S. Matwin R. Pelot journal SoftwareX, vol 28, 101952. Elsevier. dio: 10.1016/j.softx.2024.101952 arXiv.org Available at: https://arxiv.org/abs/2407.08082\nLong-form evaluation of model editing 2024 conference arXiv.org D. Rosati R. Gonzales J. Chen X. Yu Y. Kayani F. Rudzicz H. Sajjad conference 2024 Annual Conference of the North American Chapter of the Association for Computational Linguistics (NAACL), Mexico City, Mexico, 2024, dio: 10.18653/v1/2024.naacl-long.208 arXiv.org Available at: https://arxiv.org/abs/2402.09394\nAddressing Unintended Bias in Toxicity Detection: An LSTM and Attention-Based Approach 2023 and Before conference W. Dai J. Tao X. Yan Z. Feng J. Chen conference 2023 5th International Conference on Artificial Intelligence and Com"
+    "text": "Google Scholar | ResearchGate | ORCID | Semantic Scholar\nUnified Minimax Optimization Framework for Propensity Score Estimation in Debiased Recommendation 2026 conference C. Zheng H. Yang J. Chen S. Zhang T. Xia conference The 40th Annual AAAI Conference on Artificial Intelligence (AAAI-26) oral\nStatic Sandboxes Are Inadequate: Modeling Societal Complexity Requires Open-Ended Co-Evolution in LLM-Based Multi-Agent Simulations 2025 arXiv.org J. Chen S. Badshah X. Yu S. Han arXiv.org Available at: https://arxiv.org/abs/2510.13982\nAddressing Correlated Latent Exogenous Variables in Debiased Recommender Systems 2025 conference arXiv.org S. Zhang Y. Zhang J. Chen H. Sui conference 31st SIGKDD Conference on Knowledge Discovery and Data Mining (KDD) arXiv.org Available at: https://www.arxiv.org/abs/2506.07517 oral\nCAB-KWS : Contrastive Augmentation: An Unsupervised Learning Approach for Keyword Spotting in Speech Technology 2024 conference journal arXiv.org W. Dai Y. Jiang Y. Liu J. Chen X. Sun J. Tao conference 27th International Conference on Pattern Recognition (ICPR) journal Pattern Recognition. Lecture Notes in Computer Science, vol 15303. Springer, Cham. dio: https://doi.org/10.1007/978-3-031-78122-37 arXiv.org Available at: https://arxiv.org/abs/2409.00356 oral\nMaritime tracking data analysis and integration with AISDB 2024 journal arXiv.org G. Spadon J. Kumar J. Chen M. Smith C. Hilliard S. Vela R. Gehrmann C. DiBacco S. Matwin R. Pelot journal SoftwareX, vol 28, 101952. Elsevier. dio: 10.1016/j.softx.2024.101952 arXiv.org Available at: https://arxiv.org/abs/2407.08082\nLong-form evaluation of model editing 2024 conference arXiv.org D. Rosati R. Gonzales J. Chen X. Yu Y. Kayani F. Rudzicz H. Sajjad conference 2024 Annual Conference of the North American Chapter of the Association for Computational Linguistics (NAACL), Mexico City, Mexico, 2024, dio: 10.18653/v1/2024.naacl-long.208 arXiv.org Available at: https://arxiv.org/abs/2402.09394\nAddressing Unintended Bias in Toxicity Detection: An LSTM and Attention-Based Approach 2023 and Before conference W. Dai J. Tao X. Yan Z. Feng J. Chen conference 2023 5th International Conference on Artificial Intelligence and Com",
+    "publications": [
+      {
+        "anchor": "paper-legacy-unified-minimax-optimization-framework-for-propensity-score-esti-1luc35v",
+        "title": "Unified Minimax Optimization Framework for Propensity Score Estimation in Debiased Recommendation",
+        "year": "2026",
+        "text": "2026\nThe 40th Annual AAAI Conference on Artificial Intelligence (AAAI-26)\nC. Zheng\nH. Yang\nJ. Chen\nS. Zhang\nT. Xia\nconference"
+      },
+      {
+        "anchor": "paper-legacy-arxiv-org-abs-2510-13982-1wq84mw",
+        "title": "Static Sandboxes Are Inadequate: Modeling Societal Complexity Requires Open-Ended Co-Evolution in LLM-Based Multi-Agent Simulations",
+        "year": "2025",
+        "text": "2025\narXiv preprint\nJ. Chen\nS. Badshah\nX. Yu\nS. Han\narXiv.org"
+      },
+      {
+        "anchor": "paper-legacy-arxiv-org-abs-2506-07517-1k4pas2",
+        "title": "Addressing Correlated Latent Exogenous Variables in Debiased Recommender Systems",
+        "year": "2025",
+        "text": "2025\n31st SIGKDD Conference on Knowledge Discovery and Data Mining (KDD)\narXiv preprint\nS. Zhang\nY. Zhang\nJ. Chen\nH. Sui\nconference\narXiv.org"
+      },
+      {
+        "anchor": "paper-legacy-doi-org-10-1007-978-3-031-78122-3-7-1os61si",
+        "title": "CAB-KWS : Contrastive Augmentation: An Unsupervised Learning Approach for Keyword Spotting in Speech Technology",
+        "year": "2024",
+        "text": "2024\n27th International Conference on Pattern Recognition (ICPR)\nPattern Recognition. Lecture Notes in Computer Science, vol 15303. Springer, Cham\narXiv preprint\nW. Dai\nY. Jiang\nY. Liu\nJ. Chen\nX. Sun\nJ. Tao\nconference\njournal\narXiv.org"
+      },
+      {
+        "anchor": "paper-legacy-doi-org-10-1016-j-softx-2024-101952-m4j7u4",
+        "title": "Maritime tracking data analysis and integration with AISDB",
+        "year": "2024",
+        "text": "2024\nSoftwareX, vol 28, 101952. Elsevier\narXiv preprint\nG. Spadon\nJ. Kumar\nJ. Chen\nM. Smith\nC. Hilliard\nS. Vela\nR. Gehrmann\nC. DiBacco\nS. Matwin\nR. Pelot\njournal\narXiv.org"
+      },
+      {
+        "anchor": "paper-legacy-aclanthology-org-2024-naacl-long-208-1tlm8u5",
+        "title": "Long-form evaluation of model editing",
+        "year": "2024",
+        "text": "2024\n2024 Annual Conference of the North American Chapter of the Association for Computational Linguistics (NAACL), Mexico City, Mexico, 2024\narXiv preprint\nD. Rosati\nR. Gonzales\nJ. Chen\nX. Yu\nY. Kayani\nF. Rudzicz\nH. Sajjad\nconference\narXiv.org"
+      },
+      {
+        "anchor": "paper-legacy-ieeexplore-ieee-org-document-10405429-1wh6e01",
+        "title": "Addressing Unintended Bias in Toxicity Detection: An LSTM and Attention-Based Approach",
+        "year": "2023 and Before",
+        "text": "2023 and Before\n2023 5th International Conference on Artificial Intelligence and Computer Applications (ICAICA), Dalian, China, 2023, pp. 375-379\nW. Dai\nJ. Tao\nX. Yan\nZ. Feng\nJ. Chen\nconference"
+      },
+      {
+        "anchor": "paper-legacy-ieeexplore-ieee-org-document-9474872-1tx4v8v",
+        "title": "Transitive Halifax: An Activity-Based Search Engine for Bus Routes",
+        "year": "2023 and Before",
+        "text": "2023 and Before\n2021 22nd IEEE International Conference on Mobile Data Management (MDM), Toronto, ON, Canada, 2021, pp. 233-235\nJ. Chen\nV. M. de Lira\nF. V. Paulovich\nA. Soares\nconference"
+      }
+    ]
   },
   {
     "id": "50a7fa810087958f133b0dd855b9a775",

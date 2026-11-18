@@ -263,7 +263,7 @@ async function main() {
     await page.getByRole("button", { name: "Publish updates", exact: true }).first().click();
     const reviewDialog = page.getByRole("dialog", { name: "Review publication", exact: true });
     await reviewDialog.getByRole("heading", { name: "Needs attention before publishing" }).waitFor();
-    assert.equal(await reviewDialog.getByRole("button", { name: "Confirm publish", exact: true }).isDisabled(), true);
+    assert.equal(await reviewDialog.getByRole("button", { name: "Publish all changes", exact: true }).isDisabled(), true);
     await page.screenshot({ path: "/tmp/four-items-publication-validation-desktop.png" });
     await reviewDialog.getByRole("button", { name: /posts\/pending\.mdx · title: Add a title/ }).click();
     await eventually(async () => assert.equal(await titleInput.evaluate((el) => el === document.activeElement), true), "Publication issue returns to the exact field");

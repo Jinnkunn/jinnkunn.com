@@ -75,6 +75,7 @@ jobs:
       # scalar is the only safe form here.
       TARGET_ENV: ${{ (github.event_name == 'repository_dispatch' && (github.event.action == 'release-production' && 'production' || 'staging')) || inputs.env || 'staging' }}
       SITE_ADMIN_STORAGE: db
+      PLAYWRIGHT_CHANNEL: chromium
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_WORKER_NAME_STAGING: ${{ secrets.CLOUDFLARE_WORKER_NAME_STAGING }}
@@ -108,36 +109,6 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Guard — staging matches release source before production releases
-        # Defense-in-depth: the workspace's "Promote to Production" button
-        # runs locally by default. This fallback is also reachable via
-        # `gh workflow run release-from-dispatch.yml -f env=production`,
-        # which bypasses the local preflight. Re-run the same comparison
-        # here so an out-of-band trigger can't ship a code SHA that
-        # staging hasn't validated. (Uses jq instead of a multiline Python
-        # heredoc — column-0 lines inside `run: |` terminate YAML's
-        # literal block scalar and silently strip workflow triggers.)
-        if: env.TARGET_ENV == 'production'
-        run: |
-          set -euo pipefail
-          worker="${CLOUDFLARE_WORKER_NAME_STAGING:-jinnkunn-site-staging}"
-          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker"
-          version_id=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/deployments" \
-            | jq -er '.result.deployments[0].versions | sort_by(-(.percentage // 0))[0].version_id')
-          version_msg=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/versions/$version_id" \
-            | jq -r '.result.annotations["workers/message"] // .result.message // ""')
-          staging_sha=$(printf %s "$version_msg" | grep -oiE '(code|source)=[a-f0-9]{7,40}' | head -1 | cut -d= -f2 | tr 'A-Z' 'a-z')
-          if [ -z "$staging_sha" ]; then
-            echo "::error::staging deployment annotation has no code/source SHA: $version_msg"
-            exit 1
-          fi
-          main_sha=$(printf %s "$GITHUB_SHA" | tr 'A-Z' 'a-z')
-          if [ "$staging_sha" != "$main_sha" ]; then
-            echo "::error::staging is on $staging_sha but release source is on $main_sha; release:staging first"
-            exit 1
-          fi
-          echo "[guard] staging $staging_sha matches release source $main_sha"
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -145,6 +116,9 @@ jobs:
 
       - name: Install deps
         run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium for staging acceptance
+        run: npx --no-install playwright-core install --with-deps chromium
 
       - name: Open GitHub Deployment record
         # Each release leaves an audit trail under the repo's Environments
@@ -182,23 +156,7 @@ jobs:
             core.setOutput("id", id);
             core.setOutput("environment_url", url);
 
-      - name: Release (${{ env.TARGET_ENV }}) via db-mode build
-        env:
-          # Both staging AND production builds dump from STAGING D1.
-          # Rationale: staging D1 is the operator-facing source of
-          # truth — the workspace app writes every nav / page / link
-          # edit there, and "Promote to Production" semantically means
-          # "lock whatever I'm currently looking at on staging as the
-          # new production". Production D1 receives no writes through
-          # the operator path, so dumping from it for production
-          # builds means production ships whatever stale snapshot
-          # production D1 happens to hold (which is what bit us on the
-          # 2026-04-29 promote: a workspace nav addition lived in
-          # staging D1 only, production D1 had a 1.1KB stale copy, and
-          # the production build dumped that and overwrote the git-
-          # committed fallback). Pulling staging D1 here means the
-          # operator's just-verified content is what lands.
-          SITE_ADMIN_DB_ENV: staging
+      - name: Release via guarded CLI
         run: |
           export CLOUDFLARE_WORKER_NAME_STAGING="${CLOUDFLARE_WORKER_NAME_STAGING:-jinnkunn-site-staging}"
           export CLOUDFLARE_WORKER_NAME_PRODUCTION="${CLOUDFLARE_WORKER_NAME_PRODUCTION:-jinnkunn-site}"
@@ -220,6 +178,7 @@ jobs:
             npm run check:classic-css
             npm run check:design-system
             npm run lint
+            CONTENT_SYNC_MODE=stubs npm run prebuild
             npm run test
             npm run check:scripts
             # `release:staging --skip-checks` leaves the release-cloudflare
@@ -227,18 +186,8 @@ jobs:
             # ourselves above.
             npm run release:staging -- --skip-checks
           else
-            # Production guardrails (CONFIRM_PRODUCTION_DEPLOY etc) are
-            # enforced inside release-cloudflare.mjs; we set CONFIRM_* here
-            # because dispatch implies operator intent. Production keeps
-            # --skip-checks because production-style-regression compares
-            # the candidate against jinkunchen.com itself — comparing a
-            # deploying-to-prod build against the prod we're about to
-            # replace is a self-referential trap. The staging dispatch
-            # above already exercised the same checks against the same
-            # code SHA, so the safety net is in place upstream.
-            export CONFIRM_PRODUCTION_DEPLOY=1
-            export CONFIRM_PRODUCTION_SHA="$GITHUB_SHA"
-            npm run release:prod -- --skip-checks
+            # Use the verified artifact and preserve the production database.
+            npm run release:prod:from-staging
           fi
 
       - name: Smoke deployed routes

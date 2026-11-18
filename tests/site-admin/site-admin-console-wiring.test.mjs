@@ -148,7 +148,9 @@ test("publication is confirmed and conflicts no longer publish implicitly", () =
   const reviewHook = readFileSync(new URL("../../app/site-admin/use-site-admin-publication-review.ts", import.meta.url), "utf8");
   assert.match(CONSOLE, /SiteAdminPublicationReviewDialog/);
   assert.match(dialog, /title="Review publication"/);
-  assert.match(dialog, /This publishes all saved site content/);
+  assert.match(dialog, /Other drafts stay saved/);
+  assert.match(CONSOLE, /reviewBaselineSha: reviewed\.baselineSha/);
+  assert.match(CONSOLE, /reviewScope: reviewed\.scope/);
   assert.match(CONSOLE, /refreshPublicationReview\(\)\.then/);
   assert.match(reviewHook, /onCountChange\(review\.changes\.length\)/);
   assert.match(dialog, /blockers\.length > 0/);

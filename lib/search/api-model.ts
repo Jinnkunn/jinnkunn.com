@@ -21,6 +21,7 @@ export type SearchIndexItem = {
   kind: string;
   text?: string;
   headings?: unknown;
+  publications?: unknown;
 };
 
 export function safeLower(s: unknown): string {
@@ -159,12 +160,12 @@ export function bestPos(hay: string, terms: string[]): number {
   return best;
 }
 
-export function dedupeByCanonicalRoute<T extends { canon: string; score: number }>(arr: T[]): T[] {
-  // Keep the best (lowest score) match per canonical public routePath.
+export function dedupeByCanonicalRoute<T extends { canon: string; score: number; destination?: string }>(arr: T[]): T[] {
+  // Anchored publication hits are distinct destinations within one page.
   const out: T[] = [];
   const seen = new Set<string>();
   for (const it of arr) {
-    const k = String(it.canon || "").trim() || "/";
+    const k = String(it.destination || it.canon || "").trim() || "/";
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(it);

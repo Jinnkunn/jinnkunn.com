@@ -67,7 +67,8 @@ test("publication validation runs before queueing, building and replacing a prom
   const copy = publisher.slice(publisher.indexOf("async function copyStagingOverlayToProduction"));
   assert.ok(copy.indexOf("assertPublicationReady(JSON.parse(baseline.body))") < copy.indexOf('sql: "DELETE FROM static_shell_overlays"'));
   const promotion = read("scripts/release/release-from-staging.mjs");
-  assert.match(promotion, /validate-publication\.mjs", "--env=production"/);
+  assert.doesNotMatch(promotion, /validate-publication\.mjs", "--env=production"/);
+  assert.match(read("scripts/release/release-cloudflare.mjs"), /assertPublicationReady\(pinnedPublication\)/);
   const announcements = read("app/api/site-admin/announcements/route.ts");
   assert.doesNotMatch(announcements, /Published announcements need body content|Path-scoped announcements need at least one route/);
 });

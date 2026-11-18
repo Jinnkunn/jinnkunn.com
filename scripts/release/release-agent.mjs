@@ -65,7 +65,7 @@ export function releasePhaseForOutput(action, line) {
   if (!message.includes("[publish-content]")) return "";
   if (
     message.includes("verifying ") ||
-    message.includes("checking ")
+    message.includes("checking ") || message.includes("frontend verified ")
   ) {
     return "verify";
   }
@@ -477,7 +477,7 @@ export function syncRepo({
   };
 }
 
-export function runCommand({ action, repo, dryRun, onLine, abortStatus, reviewSnapshotSha, spawnImpl = spawn }) {
+export function runCommand({ action, repo, dryRun, onLine, abortStatus, reviewSnapshotSha, reviewBaselineSha, reviewScope, spawnImpl = spawn }) {
   const command = COMMANDS[action];
   if (!command) throw new Error(`Unsupported release action: ${action}`);
   if (dryRun) {
@@ -489,15 +489,24 @@ export function runCommand({ action, repo, dryRun, onLine, abortStatus, reviewSn
     let aborted = "";
     let cancelTimer;
     let finished = false;
+    let verifiedPublicationSha = "";
     const proc = spawnImpl("npm", command.args, {
       cwd: repo,
-      env: { ...process.env, CONTENT_PUBLICATION_EXPECT_SNAPSHOT: /^[a-f0-9]{64}$/.test(reviewSnapshotSha || "") ? reviewSnapshotSha : "" },
+      env: { ...process.env,
+        CONTENT_PUBLICATION_EXPECT_SNAPSHOT: /^[a-f0-9]{64}$/.test(reviewSnapshotSha || "") ? reviewSnapshotSha : "",
+        CONTENT_PUBLICATION_EXPECT_BASELINE: /^[a-f0-9]{64}$/.test(reviewBaselineSha || "") ? reviewBaselineSha : "",
+        CONTENT_PUBLICATION_SCOPE: typeof reviewScope === "string" ? reviewScope : "all",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     const read = (stream, label) => {
       const rl = readline.createInterface({ input: stream });
       rl.on("line", (line) => {
+        if (label === "stdout" && CONTENT_PUBLISH_ACTIONS.has(action)) {
+          const proven = /^\[publish-content\] frontend verified ([a-f0-9]{64})$/.exec(line)?.[1];
+          if (proven && (!reviewSnapshotSha || proven === reviewSnapshotSha)) verifiedPublicationSha = proven;
+        }
         tailPush(tail, line);
         onLine(label, line);
       });
@@ -536,7 +545,9 @@ export function runCommand({ action, repo, dryRun, onLine, abortStatus, reviewSn
     proc.on("exit", (code) => {
       finished = true;
       if (cancelTimer) clearInterval(cancelTimer);
-      resolve({ aborted, code: aborted ? 130 : code ?? 1, tail });
+      resolve({ aborted, code: aborted ? 130 : code ?? 1, tail,
+        ...(code === 0 && !aborted && verifiedPublicationSha ? { verifiedPublicationSha } : {}),
+      });
     });
   });
 }
@@ -583,6 +594,8 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
     const result = await runCommand({
       action,
       reviewSnapshotSha: job.request?.reviewSnapshotSha,
+      reviewBaselineSha: job.request?.reviewBaselineSha,
+      reviewScope: job.request?.reviewScope,
       repo: executionRepo,
       dryRun,
       abortStatus: () => jobAbortStatus(baseUrl, token, agentId, id),
@@ -603,6 +616,7 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
         command: `npm ${command.args.join(" ")}`,
         durationMs,
         exitCode: result.code,
+        ...(result.verifiedPublicationSha ? { verifiedPublicationSha: result.verifiedPublicationSha } : {}),
         stdoutTail: result.tail.slice(-80).map(redact).join("\n"),
       },
     });

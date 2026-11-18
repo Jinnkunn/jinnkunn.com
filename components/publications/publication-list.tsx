@@ -1,7 +1,7 @@
 import type {
   PublicationAuthor,
-  PublicationStructuredEntry,
 } from "@/lib/seo/publications-items";
+import { publicationAnchorId, type IdentifiedPublication } from "@/lib/shared/publication-identity";
 
 import { additionalPublicationVenues, classifyLabel, venueSummaryText, type LabelKind } from "./labels";
 import { PublicationHighlightBadge } from "./publication-highlight-badge";
@@ -12,8 +12,8 @@ function orderYearKey(year: string): number {
   return m ? Number(m[0]) : -1;
 }
 
-function groupsByYear(entries: PublicationStructuredEntry[]) {
-  const map = new Map<string, PublicationStructuredEntry[]>();
+function groupsByYear(entries: IdentifiedPublication[]) {
+  const map = new Map<string, IdentifiedPublication[]>();
   for (const entry of entries) {
     const year = entry.year || "Unknown";
     const arr = map.get(year) ?? [];
@@ -80,7 +80,7 @@ function AuthorsLine({ authors }: { authors: PublicationAuthor[] }) {
   );
 }
 
-function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
+export function PublicationRow({ entry }: { entry: IdentifiedPublication }) {
   const authors =
     entry.authorsRich ?? (entry.authors ?? []).map((name) => ({ name, isSelf: false }));
   const venues = entry.venues ?? [];
@@ -89,18 +89,24 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
   const highlights = entry.highlights ?? [];
   const primaryVenue = venues.length > 0 ? venueSummaryText(venues[0]) : "";
   const hasMetadata = labels.length > 0 || highlights.length > 0;
+  const title = entry.title || "Untitled publication";
+  const anchor = publicationAnchorId(entry.entryId);
+  const authorsId = `${anchor}-authors`;
+  const hasAuthors = authors.length > 0;
 
   return (
-    <div className="notion-toggle closed publication-toggle">
+    <div id={anchor} tabIndex={-1} className={hasAuthors ? "notion-toggle closed publication-toggle" : "publication-toggle publication-toggle--static"}>
       <div className="notion-toggle__summary">
-        <div className="notion-toggle__trigger">
-          <div className="notion-toggle__trigger_icon">
-            <span>‣</span>
-          </div>
-        </div>
+        {hasAuthors ? (
+          <button type="button" className="notion-toggle__trigger" aria-expanded="false"
+            aria-controls={authorsId} aria-label={`Authors of ${title}`}>
+            <span className="notion-toggle__trigger_icon" aria-hidden="true"><span>‣</span></span>
+          </button>
+        ) : <span className="notion-toggle__trigger" aria-hidden="true" />}
         <span className="notion-semantic-string">
           <span className="pub-title-line">
-            <strong className="pub-title-text">{entry.title}</strong>
+            <strong className="pub-title-text">{title}</strong>{" "}
+            <a className="pub-permalink" href={`#${anchor}`} aria-label={`Link to ${title}`} title="Link to this publication">#</a>
           </span>
           {hasMetadata && (
             <>
@@ -132,20 +138,20 @@ function PublicationToggle({ entry }: { entry: PublicationStructuredEntry }) {
           <PublicationResourceLinks entry={entry} />
         </span>
       </div>
-      <div className="notion-toggle__content" hidden aria-hidden="true">
-        {authors.length > 0 && (
+      {hasAuthors && (
+        <div className="notion-toggle__content" id={authorsId} hidden aria-hidden="true">
           <blockquote className="notion-quote">
             <span className="notion-semantic-string">
               <AuthorsLine authors={authors} />
             </span>
           </blockquote>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export function PublicationList({ entries }: { entries: PublicationStructuredEntry[] }) {
+export function PublicationList({ entries }: { entries: IdentifiedPublication[] }) {
   const groups = groupsByYear(entries);
 
   return (
@@ -154,8 +160,8 @@ export function PublicationList({ entries }: { entries: PublicationStructuredEnt
         <section key={year} className="publication-year">
           <span className="notion-heading__anchor" />
           <h2 className="notion-heading notion-semantic-string">{year}</h2>
-          {items.map((entry, index) => (
-            <PublicationToggle key={`${year}-${index}-${entry.title}`} entry={entry} />
+          {items.map((entry) => (
+            <PublicationRow key={entry.entryId} entry={entry} />
           ))}
         </section>
       ))}

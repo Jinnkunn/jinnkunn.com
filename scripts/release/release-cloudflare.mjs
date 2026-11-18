@@ -7,11 +7,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
-import { readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
+import { materializePublicationSnapshot, readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
 import { assertPublicationReady } from "../../lib/shared/publication-validation.ts";
-import { readActiveDeployment } from "../_lib/cloudflare-api.mjs";
-import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
 import { readMarker, writeMarker } from "../_lib/release-cache.mjs";
+import { verifyStagingRelease } from "../_lib/staging-release-verification.mjs";
+import { hashContentInput, readPublishedBaseline, readTargetWorkerDeployment, prepareCodeOverlay, waitForWorkerVersion } from "../content/publish-content.mjs";
+import { VERSIONED_OVERLAY_TAG } from "../../lib/shared/static-release.ts";
 import {
   createReleaseWorkspacePlan,
   prepareImmutableReleaseSnapshot,
@@ -24,7 +25,6 @@ import {
 } from "../_lib/release-control-plane.mjs";
 import {
   artifactStoreDisabled,
-  downloadBuildArtifact,
   uploadBuildArtifact,
 } from "../_lib/release-artifact-store.mjs";
 
@@ -38,13 +38,8 @@ const ENVIRONMENTS = new Set(["staging", "production"]);
 // upper bounds — stop trusting a green pass after this much wall time.
 const CHECKS_CACHE_BUCKET = "checks";
 const CHECKS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const STAGING_VERIFY_BUCKET = "staging-verified";
-const STAGING_VERIFY_TTL_MS = 30 * 60 * 1000;
-// Staging writes a code+content-bound build artifact after a verified
-// build. Production promotion may reuse it only when the caller provides
-// the exact content SHA from the active staging deployment.
+// Keep the verified staging artifact for audit, not production hydration.
 const BUILD_CACHE_BUCKET = "build";
-const BUILD_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const BUILD_CACHE_PATHS = [".open-next", ".next"];
 
 const RELEASE_HISTORY_PATH = path.join(
@@ -216,7 +211,7 @@ function uploadMessage(env, git, contentSha) {
   // doesn't match the deploying source. code= remains the git SHA; content=
   // is the post-D1-dump content snapshot hash so content-only edits are
   // visible to production promotion preflight.
-  return `Release upload (${env}) source=${content} branch=${git.branch} code=${git.sha} codeBranch=${git.branch} content=${content} contentBranch=${git.branch}${dirty}`;
+  return `Release upload (${env}) source=${content} branch=${git.branch} code=${git.sha} codeBranch=${git.branch} content=${content} contentBranch=${git.branch} ${VERSIONED_OVERLAY_TAG}${dirty}`;
 }
 
 function reportAndExit(report) {
@@ -262,9 +257,7 @@ function copyTreeFast(src, dst) {
 }
 
 function packBuildArtifacts({ repoRoot, artifactRoot, sha }) {
-  // Snapshot the built worker bundle to `.cache/release/build/<sha>/`
-  // so a same-SHA promotion can restore it instead of paying for a full
-  // `npm run build:cf` again.
+  // Keep the verified build available for inspection and publication diagnostics.
   const cacheDir = path.join(repoRoot, ".cache", "release", BUILD_CACHE_BUCKET, sha);
   fs.mkdirSync(cacheDir, { recursive: true });
   const captured = [];
@@ -276,20 +269,6 @@ function packBuildArtifacts({ repoRoot, artifactRoot, sha }) {
     if (copyTreeFast(src, dst)) captured.push(rel);
   }
   return captured;
-}
-
-function restoreBuildArtifacts({ repoRoot, artifactRoot, sha }) {
-  const cacheDir = path.join(repoRoot, ".cache", "release", BUILD_CACHE_BUCKET, sha);
-  if (!fs.existsSync(cacheDir)) return [];
-  const restored = [];
-  for (const rel of BUILD_CACHE_PATHS) {
-    const src = path.join(cacheDir, rel);
-    if (!fs.existsSync(src)) continue;
-    const dst = path.join(artifactRoot, rel);
-    fs.rmSync(dst, { recursive: true, force: true });
-    if (copyTreeFast(src, dst)) restored.push(rel);
-  }
-  return restored;
 }
 
 function pruneBuildCache({ repoRoot, keepSha }) {
@@ -338,12 +317,6 @@ function pruneBuildCache({ repoRoot, keepSha }) {
     );
   }
   return pruned;
-}
-
-function buildCacheContentMatches(marker, expectedContentSha) {
-  const expected = String(expectedContentSha || "").trim().toLowerCase();
-  if (!expected) return true;
-  return String(marker?.contentSnapshotSha || "").trim().toLowerCase() === expected;
 }
 
 function dumpD1Content({ targetRoot, env, label }) {
@@ -444,63 +417,6 @@ function autoCommitContentDrift({ git, env: targetEnv }) {
   }
 }
 
-function clearContentOverlayAfterCodeDeploy(env) {
-  console.log(
-    `[release-cloudflare] clearing ${env} content overlay after full code deploy`,
-  );
-  try {
-    const output = run(
-      "node",
-      [
-        "scripts/content/publish-content.mjs",
-        `--env=${env}`,
-        "--clear",
-        "--skip-verify",
-      ],
-      {
-        capture: true,
-        label: `publish-content clear ${env}`,
-        cwd: ROOT,
-      },
-    );
-    return parseDeployJson(output) || null;
-  } catch (error) {
-    const message = error?.message || String(error);
-    console.warn(
-      `[release-cloudflare] warning: could not clear ${env} content overlay after code deploy: ${message}`,
-    );
-    return { ok: false, error: message };
-  }
-}
-
-async function fetchProductionVersionForRollback({ git }) {
-  // The previous behavior required the operator to set
-  // RELEASE_EXPECT_PRODUCTION_VERSION (release-from-staging.mjs does
-  // this; direct `release:prod` invocations didn't). Without it
-  // auto-rollback was silently disabled. Self-fetch the active
-  // production version BEFORE deploying so the rollback target is
-  // always set regardless of how the script was invoked.
-  const accountId = readEnv("CLOUDFLARE_ACCOUNT_ID") || readEnv("CF_ACCOUNT_ID");
-  const apiToken = readEnv("CLOUDFLARE_API_TOKEN") || readEnv("CF_API_TOKEN");
-  const workerName =
-    readEnv("CLOUDFLARE_WORKER_NAME_PRODUCTION") || readEnv("CLOUDFLARE_WORKER_NAME");
-  if (!accountId || !apiToken || !workerName) return null;
-  try {
-    const active = await readActiveDeployment({ accountId, apiToken, workerName });
-    if (!active?.versionId) return null;
-    const codeSha = effectiveCodeSha(active.meta);
-    console.log(
-      `[release-cloudflare] auto-rollback target prefetched: versionId=${active.versionId}${codeSha ? ` code=${codeSha.slice(0, 12)}` : ""}`,
-    );
-    return { versionId: active.versionId, codeSha };
-  } catch (error) {
-    console.error(
-      `[release-cloudflare] could not pre-fetch production version (auto-rollback may not engage): ${error?.message || error}. Operator can still set RELEASE_EXPECT_PRODUCTION_VERSION manually. (HEAD=${git.sha.slice(0, 12)})`,
-    );
-    return null;
-  }
-}
-
 function evaluateStagingDirtyGuard(git) {
   const reasons = [];
   if (readEnv("ALLOW_DIRTY_STAGING") === "1") return { ok: true, reasons };
@@ -529,6 +445,7 @@ const CLI_ENV_OVERRIDES = [
 ];
 
 let heldReleaseLock = null;
+let releaseSnapshotRoot = null;
 
 async function main() {
   const args = parseArgs();
@@ -538,12 +455,10 @@ async function main() {
       cliEnv[key] = process.env[key];
     }
   }
-  loadProjectEnv({ cwd: ROOT, override: true });
+  loadProjectEnv({ cwd: ROOT, override: true, files: [".env"] });
   Object.assign(process.env, cliEnv);
 
-  // The operator-facing source of truth is staging D1 by default. Operators
-  // may pass --content-env=production when staging D1 is temporarily
-  // unreadable; keep every nested build/prebuild step on that same source.
+  // Only the explicit staging backup uses the draft D1.
   process.env.SITE_ADMIN_STORAGE = "db";
   args.contentEnv = args.contentEnv || process.env.SITE_ADMIN_DB_ENV || "staging";
   process.env.SITE_ADMIN_DB_ENV = args.contentEnv;
@@ -603,7 +518,7 @@ async function main() {
     }
   }
 
-  let git = readGitState();
+  const git = readGitState();
   const stagingDirtyGuard =
     args.env === "staging" && args.syncContentToGit
       ? evaluateStagingDirtyGuard(git)
@@ -611,12 +526,12 @@ async function main() {
         ? { ok: true, reasons: [] }
         : null;
   const productionGuard = args.env === "production" ? evaluateProductionGuard(git) : null;
+  if (args.skipBuild || args.skipUpload || args.skipVerify) {
+    throw new Error("Code releases require a fresh build, upload, and verification of the target's published snapshot.");
+  }
   const releaseWorkspace = createReleaseWorkspacePlan({
     env: args.env,
     contentEnv: args.contentEnv,
-    skipBuild: args.skipBuild,
-    syncContentToGit: args.syncContentToGit,
-    reuseStagingBuild: readEnv("RELEASE_REUSE_STAGING_BUILD") === "1",
   });
   const expectedProductionVersionFromShell =
     readEnv("RELEASE_EXPECT_PRODUCTION_VERSION") ||
@@ -637,13 +552,11 @@ async function main() {
     reportAndExit({
       ...baseReport,
       wouldRun: [
+        `pin ${args.env} published content baseline`,
         ...(args.skipChecks ? [] : CHECKS.map(([name]) => name)),
-        ...(releaseWorkspace.requiresCachedBuild
-          ? ["restore verified cached build artifacts"]
-          : ["build:cf"]),
-        ...(args.skipUpload ? [] : ["wrangler versions upload"]),
-        "deploy:cf",
-        ...(args.skipVerify ? [] : ["verify:cf"]),
+        "build:cf", "wrangler versions upload", "prepare and verify the inactive overlay generation",
+        "activate the prepared Worker", "verify served content and search",
+        ...(args.env === "staging" ? ["verify:staging:authenticated", "check:staging-visual"] : []),
       ],
     });
     return;
@@ -664,7 +577,7 @@ async function main() {
   // in-process claimGate cannot see a laptop CLI invocation of this same
   // script, and two releases racing over one Worker has happened before
   // (see TERMINAL_RELEASE_STATUSES in release-agent.mjs). Children spawned
-  // below (deploy:cf, publish-content --clear, verify) inherit the lock.
+  // below (deploy:cf, overlay restore, verify) inherit the lock.
   const lock = await acquireReleaseLock({
     root: ROOT,
     environment: args.env,
@@ -678,23 +591,34 @@ async function main() {
   }
   heldReleaseLock = lock;
 
+  const previousWorker = await readTargetWorkerDeployment(args.env, { allowMissing: true });
+  const previousBaseline = await readPublishedBaseline(args.env, previousWorker);
+  if (args.env === "production" && expectedProductionVersionFromShell && previousWorker?.versionId !== expectedProductionVersionFromShell) {
+    throw new Error("Production changed after promotion preflight.");
+  }
+  if (previousWorker && !previousBaseline) {
+    throw new Error(`${args.env} has no verified published content baseline. Recover it before releasing code; saved drafts are not a fallback.`);
+  }
+
   const releaseRoot = prepareImmutableReleaseSnapshot({
     repoRoot: ROOT,
     sha: git.sha,
     environment: args.env,
     dependencyRoots: ["", WORKSPACE_DIR],
   });
+  releaseSnapshotRoot = releaseRoot;
   console.log(
     `[release-cloudflare] using committed HEAD from immutable snapshot ${path.relative(ROOT, releaseRoot)}${git.dirty ? `; excluded ${git.dirtyFileCount} working-tree change${git.dirtyFileCount === 1 ? "" : "s"}` : ""}`,
   );
-  if (releaseWorkspace.hydrateContentFromD1) {
-    dumpD1Content({
-      targetRoot: releaseRoot,
-      env: args.contentEnv,
-      label: `dump ${args.contentEnv} D1 to release snapshot content/`,
-    });
+  const pinnedBuildEnv = { CONTENT_SYNC_MODE: "stubs", SKIP_SYNC: "0", NEXT_BUILD_ID: "" };
+  if (previousBaseline) {
+    materializePublicationSnapshot(releaseRoot, previousBaseline);
+    console.log(`[release-cloudflare] pinned ${args.env} published content ${previousBaseline.sha.slice(0, 12)}`);
   }
-  assertPublicationReady(readPublicationSnapshot(releaseRoot));
+  const pinnedPublication = readPublicationSnapshot(releaseRoot);
+  assertPublicationReady(pinnedPublication);
+  const pinnedContentInputSha = hashContentInput(releaseRoot);
+  run("npm", ["run", "prebuild"], { cwd: releaseRoot, env: pinnedBuildEnv });
 
   const checksRun = [];
   let checksCached = false;
@@ -737,7 +661,7 @@ async function main() {
           ? path.join(releaseRoot, options.cwd)
           : releaseRoot;
         console.log(`[release-cloudflare] running ${name}`);
-        run(command, commandArgs, { label: name, cwd: checkCwd });
+        run(command, commandArgs, { label: name, cwd: checkCwd, env: pinnedBuildEnv });
         checksRun.push(name);
       }
       // Only write the marker when we successfully ran the *full* CHECKS
@@ -756,396 +680,108 @@ async function main() {
     }
   }
 
-  let uploadedVersionId = null;
-  let didRunBuild = false;
-  let resolvedContentSourceMode = releaseWorkspace.contentSourceMode;
-  let buildCache = {
-    attempted: false,
-    hit: false,
-    restored: [],
-    reason: "",
-    expectedContentSha: readEnv("RELEASE_EXPECT_CONTENT_SHA"),
-    storedContentSha: "",
-  };
-
-  if (args.skipBuild) {
-    if (!buildCache.expectedContentSha) {
-      throw new Error(
-        "--skip-build requires RELEASE_EXPECT_CONTENT_SHA so cached code and content can both be verified. Re-run without --skip-build when no expected content SHA is available.",
-      );
-    }
-    const cached = args.noCache
-      ? null
-      : readMarker({
-          repoRoot: ROOT,
-          bucket: BUILD_CACHE_BUCKET,
-          sha: git.sha,
-          maxAgeMs: BUILD_CACHE_TTL_MS,
-        });
-    if (!cached) {
-      throw new Error(
-        `--skip-build requires a recent immutable build cache for ${git.sha}. Re-run without --skip-build.`,
-      );
-    }
-    if (!buildCacheContentMatches(cached, buildCache.expectedContentSha)) {
-      throw new Error(
-        `--skip-build cache content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha || "unspecified"}`,
-      );
-    }
-    const restored = restoreBuildArtifacts({
-      repoRoot: ROOT,
-      artifactRoot: releaseRoot,
-      sha: git.sha,
-    });
-    const missing = BUILD_CACHE_PATHS.filter((entry) => !restored.includes(entry));
-    if (missing.length > 0) {
-      throw new Error(
-        `--skip-build cache is incomplete for ${git.sha}; missing ${missing.join(", ")}. Re-run without --skip-build.`,
-      );
-    }
-    buildCache = {
-      ...buildCache,
-      attempted: true,
-      hit: true,
-      restored,
-      reason: "required by --skip-build",
-      storedContentSha: String(cached.contentSnapshotSha || ""),
-    };
-    resolvedContentSourceMode = `${cached.env || "unknown"}-immutable-build-cache`;
-    console.log(
-      `[release-cloudflare] restored immutable build cache for ${git.sha.slice(0, 12)} (${restored.join(", ")})`,
-    );
-  } else {
-    let restored = [];
-    const requirePromotedArtifact =
-      args.env === "production" && readEnv("RELEASE_REUSE_STAGING_BUILD") === "1";
-    if (requirePromotedArtifact && !buildCache.expectedContentSha) {
-      throw new Error(
-        "Production promotion requires RELEASE_EXPECT_CONTENT_SHA from the verified staging deployment.",
-      );
-    }
-    const allowBuildCacheRead =
-      requirePromotedArtifact || readEnv("ALLOW_D1_BUILD_CACHE") === "1";
-    let cached = args.noCache || !allowBuildCacheRead
-      ? null
-      : readMarker({
-          repoRoot: ROOT,
-          bucket: BUILD_CACHE_BUCKET,
-          sha: git.sha,
-          maxAgeMs: BUILD_CACHE_TTL_MS,
-        });
-    buildCache = {
-      ...buildCache,
-      attempted: allowBuildCacheRead && !args.noCache,
-      reason: args.noCache
-        ? "disabled by --no-cache"
-        : allowBuildCacheRead
-          ? ""
-          : "not requested",
-      storedContentSha: String(cached?.contentSnapshotSha || ""),
-    };
-    let cachedContentMatches =
-      cached && buildCacheContentMatches(cached, buildCache.expectedContentSha);
-    if (cachedContentMatches) {
-      restored = restoreBuildArtifacts({
-        repoRoot: ROOT,
-        artifactRoot: releaseRoot,
-        sha: git.sha,
-      });
-    } else if (cached) {
-      buildCache.reason = `content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha || "unspecified"}`;
-    }
-    let missingCachedArtifacts = BUILD_CACHE_PATHS.filter(
-      (entry) => !restored.includes(entry),
-    );
-    let r2ArtifactTried = false;
-    if (
-      requirePromotedArtifact &&
-      missingCachedArtifacts.length > 0 &&
-      !artifactStoreDisabled()
-    ) {
-      // The verified staging artifact used to exist only on the machine that
-      // staged it. When this machine's cache misses (staged elsewhere, cache
-      // pruned, rebuilt runner), fall back to the copy uploaded to R2 after
-      // the green staging release before refusing to promote.
-      r2ArtifactTried = true;
-      const fetched = downloadBuildArtifact({
-        root: ROOT,
-        codeSha: git.sha,
-        contentSha: buildCache.expectedContentSha,
-      });
-      if (fetched) {
-        cached = readMarker({
-          repoRoot: ROOT,
-          bucket: BUILD_CACHE_BUCKET,
-          sha: git.sha,
-          maxAgeMs: BUILD_CACHE_TTL_MS,
-        });
-        cachedContentMatches =
-          cached && buildCacheContentMatches(cached, buildCache.expectedContentSha);
-        if (cachedContentMatches) {
-          restored = restoreBuildArtifacts({
-            repoRoot: ROOT,
-            artifactRoot: releaseRoot,
-            sha: git.sha,
-          });
-          missingCachedArtifacts = BUILD_CACHE_PATHS.filter(
-            (entry) => !restored.includes(entry),
-          );
-          buildCache = {
-            ...buildCache,
-            storedContentSha: String(cached?.contentSnapshotSha || ""),
-            restoredFromR2: missingCachedArtifacts.length === 0,
-          };
-        }
-      }
-    }
-    if (requirePromotedArtifact && missingCachedArtifacts.length > 0) {
-      const detail = cached
-        ? cachedContentMatches
-          ? `cache is incomplete; missing ${missingCachedArtifacts.join(", ")}`
-          : `content mismatch: cache=${cached.contentSnapshotSha || "unknown"} expected=${buildCache.expectedContentSha}`
-        : args.noCache
-          ? "cache reads were disabled by --no-cache"
-          : "no recent staging build cache exists";
-      const r2Note = r2ArtifactTried
-        ? " The R2 artifact store had no matching object either."
-        : "";
-      throw new Error(
-        `Production promotion requires the exact verified staging artifact for code ${git.sha} and content ${buildCache.expectedContentSha}; ${detail}.${r2Note} Deploy staging (any machine with the artifact store enabled), then retry promotion.`,
-      );
-    }
-    if (missingCachedArtifacts.length === 0) {
-      const ageMin = Math.round((Date.now() - cached._writtenAtMs) / 60000);
-      buildCache = { ...buildCache, hit: true, restored, reason: "matched code and content" };
-      resolvedContentSourceMode = `${cached.env || "unknown"}-immutable-build-cache`;
-      console.log(
-        `[release-cloudflare] reusing build:cf cache for ${git.sha.slice(0, 12)} (${ageMin}m old, restored: ${restored.join(", ")}). Pass --no-cache to rebuild.`,
-      );
-    } else {
-      if (cachedContentMatches && !buildCache.reason) {
-        buildCache.reason = `cache marker matched but build artifacts were missing: ${missingCachedArtifacts.join(", ")}`;
-      }
-      console.log("[release-cloudflare] running build:cf");
-      run("npm", ["run", "build:cf"], { label: "build:cf", cwd: releaseRoot });
-      didRunBuild = true;
-    }
+  console.log("[release-cloudflare] building the pinned published release candidate");
+  run("npm", ["run", "build:cf"], { label: "build:cf", cwd: releaseRoot, env: pinnedBuildEnv });
+  if (readPublicationSnapshot(releaseRoot).sha !== pinnedPublication.sha) {
+    throw new Error("Build changed the pinned published content. Refusing to upload.");
   }
+  const contentSnapshotSha = hashReleaseContent(releaseRoot);
+  console.log(`[release-cloudflare] content snapshot ${contentSnapshotSha.slice(0, 12)}`);
 
-  const filesystemContentSnapshotSha = hashReleaseContent(releaseRoot) || git.sha;
-  const contentSnapshotSha =
-    buildCache.hit && buildCache.storedContentSha
-      ? buildCache.storedContentSha
-      : filesystemContentSnapshotSha;
-  console.log(
-    `[release-cloudflare] content snapshot ${contentSnapshotSha.slice(0, 12)}`,
-  );
-
-  if (!args.skipBuild && (args.env === "staging" || readEnv("ALLOW_D1_BUILD_CACHE") === "1")) {
-    const captured = packBuildArtifacts({
-      repoRoot: ROOT,
-      artifactRoot: releaseRoot,
-      sha: git.sha,
-    });
-    if (captured.length > 0) {
-      writeMarker({
-        repoRoot: ROOT,
-        bucket: BUILD_CACHE_BUCKET,
-        sha: git.sha,
-        payload: {
-          paths: captured,
-          branch: git.branch,
-          contentSnapshotSha,
-          env: args.env,
-        },
-      });
-      buildCache = {
-        ...buildCache,
-        storedContentSha: contentSnapshotSha,
-        reason: buildCache.hit ? buildCache.reason : `stored ${captured.join(", ")}`,
-      };
-      console.log(
-        `[release-cloudflare] stored build:cf cache for ${git.sha.slice(0, 12)} content=${contentSnapshotSha.slice(0, 12)} (${captured.join(", ")})`,
-      );
-      pruneBuildCache({ repoRoot: ROOT, keepSha: git.sha });
-    }
-  }
-
-  if (!args.skipUpload) {
-    console.log(`[release-cloudflare] uploading ${args.env} Worker version`);
-    const uploadOutput = run(
-      "npx",
-      [
-        "wrangler",
-        "versions",
-        "upload",
-        "--env",
-        args.env,
-        "--message",
-        uploadMessage(args.env, git, contentSnapshotSha),
-      ],
-      {
-        capture: true,
-        label: `wrangler versions upload --env ${args.env}`,
-        cwd: releaseRoot,
-      },
-    );
-    uploadedVersionId = parseWorkerVersionId(uploadOutput) || null;
-  }
-
-  console.log(`[release-cloudflare] deploying ${args.env}`);
-  const deployScript = args.env === "production" ? "deploy:cf:prod" : "deploy:cf:staging";
-  const deployEnv = {
-    DEPLOY_SOURCE_SHA: git.sha,
-    DEPLOY_SOURCE_BRANCH: git.branch,
-    DEPLOY_CONTENT_SHA: contentSnapshotSha,
-    DEPLOY_CONTENT_BRANCH: git.branch,
-    DEPLOY_CODE_SHA: git.sha,
-    DEPLOY_SOURCE_DIRTY: git.dirty ? "1" : "0",
-  };
-  const deployOutput = run("npm", ["run", deployScript], {
-    capture: true,
-    label: deployScript,
-    env: deployEnv,
-    cwd: releaseRoot,
+  const uploadOutput = run("npx", ["wrangler", "versions", "upload", "--env", args.env,
+    "--message", uploadMessage(args.env, git, contentSnapshotSha)], {
+    capture: true, label: `wrangler versions upload --env ${args.env}`, cwd: releaseRoot,
   });
-  const deployment = parseDeployJson(deployOutput);
-  const overlayClear = clearContentOverlayAfterCodeDeploy(args.env);
+  const uploadedVersionId = parseWorkerVersionId(uploadOutput);
+  if (!uploadedVersionId) throw new Error("Could not identify uploaded Worker candidate.");
+  const { verify, cleanup, ...codeOverlay } = await prepareCodeOverlay({
+    env: args.env, releaseRoot, git, versionId: uploadedVersionId, publicationSha: pinnedPublication.sha,
+    contentInputSha: pinnedContentInputSha,
+  });
+
+  const beforeActivation = await readTargetWorkerDeployment(args.env, { allowMissing: true });
+  if (beforeActivation?.versionId !== previousWorker?.versionId ||
+      beforeActivation?.deploymentId !== previousWorker?.deploymentId ||
+      (await readPublishedBaseline(args.env, beforeActivation))?.sha !== previousBaseline?.sha) {
+    throw new Error("The active Worker or published content changed during preparation; nothing was activated.");
+  }
 
   const verifies = [];
-  // Auto-rollback target for production. The release:prod:from-staging
-  // wrapper sets RELEASE_EXPECT_PRODUCTION_VERSION before invoking us;
-  // direct `release:prod` invocations historically didn't, leaving
-  // auto-rollback silently disabled. Self-fetch from CF as a fallback so
-  // the rollback target is always populated regardless of how the
-  // operator entered the script.
-  let rollbackTarget =
-    args.env === "production"
-      ? readEnv("RELEASE_EXPECT_PRODUCTION_VERSION") ||
-        readEnv("VERIFY_CF_EXPECT_PRODUCTION_VERSION") ||
-        null
-      : null;
-  if (args.env === "production" && !rollbackTarget) {
-    const prefetched = await fetchProductionVersionForRollback({ git });
-    if (prefetched?.versionId) rollbackTarget = prefetched.versionId;
-  }
-  let rolledBack = null;
-
-  if (!args.skipVerify) {
-    const verifyScript = args.env === "production" ? "verify:cf:prod" : "verify:cf:staging";
-    console.log(`[release-cloudflare] verifying ${args.env}`);
-    try {
-      run("npm", ["run", verifyScript], { label: verifyScript, cwd: releaseRoot });
-      verifies.push(args.env);
-      // Mark this SHA as "staging-verified" so release:prod:from-staging
-      // can skip the heavier verify:staging:authenticated +
-      // check:staging-visual gates within the TTL window. Production
-      // verifies are not cached — promotion always re-checks production
-      // independently.
-      if (args.env === "staging") {
-        writeMarker({
-          repoRoot: ROOT,
-          bucket: STAGING_VERIFY_BUCKET,
-          sha: git.sha,
-          payload: { verifyScript, ttlMs: STAGING_VERIFY_TTL_MS },
-        });
-        // Mirror the now-verified artifact to R2 so promotion is not pinned
-        // to this machine's build cache. Cache-hit releases skip the upload —
-        // the artifact was mirrored when it was first built.
-        if (didRunBuild && !artifactStoreDisabled()) {
-          uploadBuildArtifact({
-            root: ROOT,
-            codeSha: git.sha,
-            contentSha: contentSnapshotSha,
-            cacheDir: path.join(ROOT, ".cache", "release", BUILD_CACHE_BUCKET, git.sha),
-            markerPayload:
-              readMarker({ repoRoot: ROOT, bucket: BUILD_CACHE_BUCKET, sha: git.sha }) || {
-                paths: BUILD_CACHE_PATHS,
-                branch: git.branch,
-                contentSnapshotSha,
-                env: args.env,
-              },
-          });
-        }
-      }
-    } catch (verifyError) {
-      // Production verify failed — the bad worker is already live. If we
-      // know the pre-deploy version, roll it back automatically; the
-      // operator will see the failure either way, but they shouldn't
-      // have to fight a live regression while figuring out the version
-      // ID. The rollback gets re-verified with the expected (rolled-to)
-      // version so we don't claim success on a still-broken deploy.
-      const message = verifyError instanceof Error ? verifyError.message : String(verifyError);
-      if (args.env === "production" && rollbackTarget && readEnv("DISABLE_AUTO_ROLLBACK") !== "1") {
-        console.error(
-          `[release-cloudflare] verify:cf:prod FAILED — rolling back to ${rollbackTarget}`,
-        );
-        try {
-          run(
-            "npx",
-            [
-              "wrangler",
-              "rollback",
-              "--env",
-              "production",
-              rollbackTarget,
-              "--message",
-              `auto-rollback after verify failure during release ${git.sha}`,
-              "--yes",
-            ],
-            { label: "wrangler rollback --env production" },
-          );
-          run("npm", ["run", "verify:cf:prod"], {
-            label: "verify:cf:prod (post-rollback)",
-            env: { VERIFY_CF_EXPECT_PRODUCTION_VERSION: rollbackTarget },
-            cwd: releaseRoot,
-          });
-          rolledBack = {
-            target: rollbackTarget,
-            verifyFailureSummary: message.split("\n")[0]?.slice(0, 240) ?? message,
-          };
-          console.error(
-            `[release-cloudflare] auto-rolled-back to ${rollbackTarget}; original verify error above`,
-          );
-          // Record the rollback as its own audit row — the failure entry
-          // written by the top-level catch cannot see `rolledBack`.
-          appendReleaseHistory({
-            env: "production",
-            sha: git.sha,
-            branch: git.branch,
-            rolledBack,
-            deployedVersionId: rollbackTarget,
-            note: `auto-rollback to ${rollbackTarget} after production verify failure`,
-          });
-        } catch (rollbackError) {
-          const rbMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
-          console.error(
-            `[release-cloudflare] auto-rollback ALSO FAILED — production is in an unknown state. Original verify error: ${message}. Rollback error: ${rbMsg}`,
-          );
-        }
-      } else if (args.env === "production" && !rollbackTarget) {
-        console.error(
-          "[release-cloudflare] verify:cf:prod failed but no rollback target was provided (RELEASE_EXPECT_PRODUCTION_VERSION). Manual rollback required — read the previous version id live via `npx wrangler deployments status --env production` or `npm run snapshot:prod:list` (the Cloudflare API is the source of truth; local history files may be stale).",
-        );
-      } else if (args.env === "production" && readEnv("DISABLE_AUTO_ROLLBACK") === "1") {
-        console.error(
-          `[release-cloudflare] verify:cf:prod failed; auto-rollback DISABLED via DISABLE_AUTO_ROLLBACK=1. Rollback target was ${rollbackTarget}.`,
-        );
-      }
-      throw verifyError;
-    }
-
-    const expectedProductionVersion =
-      expectedProductionVersionFromShell ||
-      readEnv("RELEASE_EXPECT_PRODUCTION_VERSION") ||
-      readEnv("VERIFY_CF_EXPECT_PRODUCTION_VERSION");
-    if (args.env === "staging" && expectedProductionVersion) {
-      console.log("[release-cloudflare] verifying production remained unchanged");
-      run("npm", ["run", "verify:cf:prod"], {
-        label: "verify:cf:prod",
-        env: { VERIFY_CF_EXPECT_PRODUCTION_VERSION: expectedProductionVersion },
-        cwd: releaseRoot,
+  let deployment, stagingAcceptance;
+  const rollbackTarget = previousWorker?.versionId || null;
+  const deployScript = args.env === "production" ? "deploy:cf:prod" : "deploy:cf:staging";
+  const verifyScript = args.env === "production" ? "verify:cf:prod" : "verify:cf:staging";
+  try {
+    console.log(`[release-cloudflare] activating verified ${args.env} Worker and content pair`);
+    const deployOutput = run("npm", ["run", deployScript], {
+      capture: true, label: deployScript, cwd: releaseRoot,
+      env: {
+        DEPLOY_EXPECT_VERSION_ID: uploadedVersionId,
+        DEPLOY_SOURCE_SHA: git.sha, DEPLOY_SOURCE_BRANCH: git.branch,
+        DEPLOY_CONTENT_SHA: contentSnapshotSha, DEPLOY_CONTENT_BRANCH: git.branch,
+        DEPLOY_CODE_SHA: git.sha, DEPLOY_SOURCE_DIRTY: git.dirty ? "1" : "0",
+      },
+    });
+    deployment = parseDeployJson(deployOutput);
+    if (deployment?.versionId !== uploadedVersionId) throw new Error("Unexpected deployment response.");
+    codeOverlay.serving = await verify();
+    if (args.env === "staging") {
+      stagingAcceptance = await verifyStagingRelease({
+        root: ROOT,
+        expected: {
+          codeSha: git.sha, versionId: uploadedVersionId, artifactSha: contentSnapshotSha,
+          publicationSha: codeOverlay.publicationSnapshotSha, overlaySha: codeOverlay.snapshotSha,
+        },
+        force: true, runCheck: (check) => run("npm", ["run", check], { label: check }),
       });
+    } else {
+      run("npm", ["run", verifyScript], {
+        label: verifyScript, cwd: releaseRoot, env: { VERIFY_CF_EXPECT_PRODUCTION_VERSION: uploadedVersionId },
+      });
+    }
+    verifies.push(args.env);
+  } catch (error) {
+    if (rollbackTarget && readEnv("DISABLE_AUTO_ROLLBACK") !== "1") {
+      try {
+        // Also covers a lost response after a successful Cloudflare activation.
+        const active = await readTargetWorkerDeployment(args.env);
+        if (active.versionId === uploadedVersionId) {
+          run("npx", ["wrangler", "rollback", "--env", args.env, rollbackTarget,
+            "--message", `Restore Worker and published content after release ${git.sha}`, "--yes"],
+          { label: `rollback ${args.env}`, cwd: releaseRoot });
+          const restored = await waitForWorkerVersion(args.env, rollbackTarget);
+          if ((await readPublishedBaseline(args.env, restored))?.sha !== previousBaseline?.sha) {
+            throw new Error("Rollback did not restore the original Worker and content pair.");
+          }
+          run("npm", ["run", verifyScript], { label: `${verifyScript} (post-rollback)`, cwd: releaseRoot,
+            env: args.env === "production" ? { VERIFY_CF_EXPECT_PRODUCTION_VERSION: rollbackTarget } : {} });
+          appendReleaseHistory({ env: args.env, sha: git.sha, deployedVersionId: rollbackTarget,
+            publicationSnapshotSha: previousBaseline?.sha, note: "Restored the previous Worker and publication" });
+          console.error(`[release-cloudflare] restored previous ${args.env} Worker and content ${rollbackTarget}`);
+        }
+      } catch (rollbackError) {
+        throw new Error(`Release failed: ${error.message}. Rollback could not be verified: ${rollbackError.message}`, { cause: error });
+      }
+    }
+    throw error;
+  }
+  await cleanup();
+
+  // Keep a verified staging artifact for audit/inspection, not as a source of production content.
+  if (args.env === "staging") {
+    const paths = packBuildArtifacts({ repoRoot: ROOT, artifactRoot: releaseRoot, sha: git.sha });
+    if (paths.length === BUILD_CACHE_PATHS.length) {
+      const markerPayload = { paths, branch: git.branch, contentSnapshotSha, env: args.env };
+      writeMarker({ repoRoot: ROOT, bucket: BUILD_CACHE_BUCKET, sha: git.sha, payload: markerPayload });
+      pruneBuildCache({ repoRoot: ROOT, keepSha: git.sha });
+      if (!artifactStoreDisabled()) uploadBuildArtifact({
+        root: ROOT, codeSha: git.sha, contentSha: contentSnapshotSha,
+        cacheDir: path.join(ROOT, ".cache", "release", BUILD_CACHE_BUCKET, git.sha), markerPayload,
+      });
+    }
+    if (expectedProductionVersionFromShell) {
+      run("npm", ["run", "verify:cf:prod"], { cwd: releaseRoot,
+        env: { VERIFY_CF_EXPECT_PRODUCTION_VERSION: expectedProductionVersionFromShell } });
       verifies.push("production");
     }
   }
@@ -1169,8 +805,7 @@ async function main() {
     releaseRoot,
     checksRun,
     checksCached,
-    buildRun: didRunBuild,
-    buildCache,
+    buildRun: true,
     contentSnapshotSha,
     uploadedVersionId,
     deployedVersionId: deployment?.versionId || null,
@@ -1179,10 +814,10 @@ async function main() {
     verified: verifies,
     contentDriftFromGit,
     contentAutoCommit,
-    contentSourceMode: resolvedContentSourceMode,
-    rolledBack,
-    rollbackTarget: args.env === "production" ? rollbackTarget : null,
-    overlayClear,
+    contentSourceMode: releaseWorkspace.contentSourceMode,
+    rollbackTarget,
+    codeOverlay,
+    stagingAcceptance,
   };
   // Audit log — replaces the GitHub Deployment row that the local path
   // bypasses. JSONL keeps it auditable + grep-able without creating git
@@ -1195,20 +830,13 @@ async function main() {
     deployedVersionId: deployment?.versionId || null,
     deploymentId: deployment?.deploymentId || null,
     verified: verifies,
-    rolledBack: rolledBack || null,
     contentAutoCommit: contentAutoCommit && contentAutoCommit.committed
       ? { newSha: contentAutoCommit.newSha, pushed: contentAutoCommit.pushed }
       : null,
-    overlayClear,
+    codeOverlay,
+    stagingAcceptance,
     checksCached,
   });
-  try {
-    removeImmutableReleaseSnapshot({ repoRoot: ROOT, snapshotRoot: releaseRoot });
-  } catch (error) {
-    console.error(
-      `[release-cloudflare] warning: could not remove release snapshot: ${error?.message || error}`,
-    );
-  }
   reportAndExit(finalReport);
 }
 
@@ -1243,4 +871,10 @@ main()
     // history write still need the event loop to drain.
     process.exitCode = 1;
   })
-  .finally(() => heldReleaseLock?.release());
+  .finally(async () => {
+    if (releaseSnapshotRoot) {
+      try { removeImmutableReleaseSnapshot({ repoRoot: ROOT, snapshotRoot: releaseSnapshotRoot }); }
+      catch (error) { console.warn(`[release-cloudflare] release workspace cleanup warning: ${error.message}`); }
+    }
+    await heldReleaseLock?.release();
+  });

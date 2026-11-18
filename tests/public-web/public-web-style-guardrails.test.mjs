@@ -294,10 +294,10 @@ test("public-web-style-guardrails: data-page entry components keep legacy Notion
     "Teaching page legacy link-row component",
   );
 
-  const publicationsEntry = await read("components/posts-mdx/publications-entry.tsx");
+  const publicationsEntry = await read("components/publications/publication-list.tsx");
   assertIncludes(
     publicationsEntry,
-    'className="notion-toggle closed publication-toggle"',
+    '"notion-toggle closed publication-toggle"',
     "PublicationsEntry toggle wrapper",
   );
   assertIncludes(
@@ -474,14 +474,10 @@ test("public-web-style-guardrails: publication highlights render as badges, not 
     "Publication highlight CSS hook",
   );
 
-  for (const [name, source] of [
-    ["PublicationsEntry", publicationsEntry],
-    ["PublicationList", publicationList],
-  ]) {
-    assertIncludes(source, "PublicationHighlightBadge", `${name} highlight component`);
-    assertIncludes(source, "hasMetadata", `${name} metadata row gate`);
-    assertExcludes(source, "[{highlight}]", `${name} raw highlight brackets`);
-  }
+  assertIncludes(publicationsEntry, "<PublicationRow", "Inline entries share the publication row");
+  assertIncludes(publicationList, "PublicationHighlightBadge", "Shared row highlight component");
+  assertIncludes(publicationList, "hasMetadata", "Shared row metadata gate");
+  assertExcludes(publicationList, "[{highlight}]", "No raw highlight brackets");
 
   assertIncludes(publicationsCss, ".pub-highlight-badge", "Publication highlight badge CSS");
   assertIncludes(publicationsCss, ".pub-meta-line", "Publication metadata line CSS");

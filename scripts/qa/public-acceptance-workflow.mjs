@@ -58,6 +58,72 @@ async function main() {
       await page.screenshot({ path: `/tmp/public-acceptance-search-${viewport.width}.png` });
       await page.keyboard.press("Escape");
       assert.equal(await page.locator("#search-trigger").evaluate((el) => el === document.activeElement), true);
+
+      const paperTitle = "Maritime tracking data analysis and integration with AISDB";
+      await page.locator("#search-trigger").click();
+      await input.fill(paperTitle);
+      const hit = page.locator('.notion-search__result-item[href^="/publications#paper-"]').filter({ hasText: paperTitle });
+      const href = await hit.getAttribute("href");
+      assert.equal(await page.locator(".notion-search__result-item").first().getAttribute("href"), href);
+      assert.match(await hit.innerText(), /2024/);
+      await hit.click();
+      await page.waitForURL(`${origin}${href}`);
+      const anchor = href.split("#")[1];
+      const row = page.locator(`[id="${anchor}"]`);
+      const toggle = row.getByRole("button", { name: `Authors of ${paperTitle}`, exact: true });
+      const authors = row.locator(".notion-toggle__content");
+      await authors.waitFor({ state: "visible" });
+      await page.waitForFunction((id) => {
+        const box = document.getElementById(id)?.getBoundingClientRect();
+        return box && box.top >= -4 && box.top < window.innerHeight / 2;
+      }, anchor);
+      await toggle.press("Enter");
+      await authors.waitFor({ state: "hidden" });
+      await toggle.press("Space");
+      await authors.waitFor({ state: "visible" });
+      assert.match(await authors.innerText(), /G\. Spadon/);
+      assert.equal(await authors.getByRole("link").count(), 0);
+      assert.equal(await row.evaluate((element) => {
+        const badges = element.querySelector(".pub-meta-line")?.getBoundingClientRect();
+        const venue = element.querySelector(".pub-venue-line")?.getBoundingClientRect();
+        return Boolean(badges && venue && venue.top >= badges.bottom - 1);
+      }), true);
+      assert.equal(await row.getByRole("link", { name: `Link to ${paperTitle}` }).getAttribute("href"), `#${anchor}`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.screenshot({ path: `/tmp/public-acceptance-publication-${viewport.width}.png`, animations: "disabled" });
+
+      await page.locator("#search-trigger").click();
+      await input.fill("CAB-KWS");
+      const samePageHit = page.locator('.notion-search__result-item[href^="/publications#paper-"]').filter({ hasText: "CAB-KWS" });
+      const samePageHref = await samePageHit.getAttribute("href");
+      await samePageHit.click();
+      await page.waitForURL(`${origin}${samePageHref}`);
+      await page.locator("#notion-search.open").waitFor({ state: "hidden" });
+      await page.waitForFunction((id) => {
+        const box = document.getElementById(id)?.getBoundingClientRect();
+        return box && box.top >= -4 && box.top < window.innerHeight / 2;
+      }, samePageHref.split("#")[1]);
+      const longTitle = page.locator(`[id="${samePageHref.split("#")[1]}"] .pub-title-line`);
+      assert.equal(await longTitle.evaluate((element) => {
+        const title = element.querySelector(".pub-title-text")?.getBoundingClientRect();
+        const link = element.querySelector(".pub-permalink")?.getBoundingClientRect();
+        return Boolean(title && link && Math.abs(link.top - title.top) < 2 && link.left >= title.right);
+      }), true, "A long title must not push its permalink onto an empty line");
+
+      await page.goto(`${origin}/bio`);
+      const reading = page.getByRole("region", { name: "Selected research reading" });
+      assert.equal(await reading.getByRole("link", { name: paperTitle, exact: true }).getAttribute("href"), href);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await reading.screenshot({ path: `/tmp/public-acceptance-bio-reading-${viewport.width}.png`, animations: "disabled" });
+      await page.goto(`${origin}/blog`);
+      const series = page.getByRole("navigation", { name: "Reasoning Drift", exact: true });
+      assert.deepEqual(await series.getByRole("link").allTextContents(), ["Recognizing reasoning drift", "Measuring drift at the token level", "Testing context order"]);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await series.screenshot({ path: `/tmp/public-acceptance-blog-series-${viewport.width}.png`, animations: "disabled" });
+      await series.getByRole("link", { name: "Recognizing reasoning drift", exact: true }).click();
+      await page.waitForURL("**/blog/when-ai-reasoning-starts-to-drift");
+      assert.equal(await series.locator('[aria-current="page"]').innerText(), "Recognizing reasoning drift");
+      await page.goto(origin);
     }
     const missing = await page.goto(`${origin}/qa-page-that-does-not-exist-291837`);
     assert.equal(missing.status(), 404);
@@ -66,7 +132,7 @@ async function main() {
     await page.waitForURL(`${origin}/`);
     assert.deepEqual(errors, []);
     assert.deepEqual(warnings.filter((message) => !/ERR_BLOCKED_BY_CLIENT|status of (503|404)/.test(message)), []);
-    console.log("[public-acceptance] PASS: desktop/mobile bilingual search, full-width query, no results, real retry, More dismissal, 404 recovery, zero writes");
+    console.log("[public-acceptance] PASS: desktop/mobile bilingual search, paper links and keyboard disclosure, BIO reading, blog series, retry, More dismissal, 404 recovery, zero writes");
   } catch (error) {
     console.error({ errors, warnings });
     console.error(server.getLogs());

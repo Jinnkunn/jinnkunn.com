@@ -7,6 +7,7 @@ import { readActiveDeployment } from "./cloudflare-api.mjs";
 import { effectiveCodeSha } from "./deploy-metadata.mjs";
 import { createNextAuthSessionCookie } from "./site-admin-auth-cookie.mjs";
 import { d1DatabaseIdForEnv } from "./wrangler-d1.mjs";
+import { activeOverlayTable, versionedOverlay } from "../../lib/shared/static-release.ts";
 
 export const DEFAULT_RELEASE_ROUTES = ["/", "/news", "/blog", "/calendar"];
 export const PRODUCTION_HISTORY_PATH = "docs/runbooks/production-version-history.md";
@@ -179,12 +180,12 @@ function isMissingContentFilesTableError(error) {
   return /no such table:\s*content_files/i.test(String(error?.message || error));
 }
 
-async function readOverlayStatus({ root, env }) {
+async function readOverlayStatus({ root, env, overlayKey }) {
   try {
     const result = await cfD1Query({
       root,
       env,
-      sql: "SELECT body FROM static_shell_overlays WHERE asset_path = ? LIMIT 1",
+      sql: `SELECT body FROM ${activeOverlayTable(overlayKey)} WHERE asset_path = ? LIMIT 1`,
       params: ["/__static/content-overlay-status.json"],
     });
     const body = String(d1Rows(result)[0]?.body || "");
@@ -297,6 +298,7 @@ async function readDeployment({ root, env }) {
       env,
       workerName,
       versionId: String(active?.versionId || ""),
+      overlayKey: versionedOverlay(active?.versionMessage) ? active.versionId : "",
       deploymentId: String(active?.deploymentId || ""),
       codeSha,
       contentSha: normalizeSha(active?.meta?.contentSha) || normalizeSha(active?.meta?.sourceSha),
@@ -510,8 +512,9 @@ export function buildContentPreview({
     production.contentSha === contentInputSha &&
     production.codeSha === staging.codeSha;
   const productionCurrent =
-    productionBundledCurrent ||
-    (productionCanCopy && stagingOverlay.snapshotSha === productionOverlay?.snapshotSha);
+    production.overlayKey
+      ? production.codeSha === staging.codeSha && productionOverlay?.workerCodeSha === production.codeSha && Boolean(productionOverlay.publicationSnapshotSha)
+      : productionBundledCurrent || (productionCanCopy && stagingOverlay.snapshotSha === productionOverlay?.snapshotSha);
 
   return {
     contentInputSha,
@@ -637,6 +640,13 @@ export function deriveLiveReleasePlan({ status, target = "production", contentCh
       reason: "Production code differs from the verified staging candidate.",
     };
   }
+  if (production.overlayKey) {
+    if (!productionOverlay?.publicationSnapshotSha || productionOverlay.workerCodeSha !== production.codeSha) {
+      return { kind: "blocked", label: "Publication not verified", script: "", reason: "Production has no verified publication for its active Worker." };
+    }
+    return { kind: "noop", label: "Production code current", script: "",
+      reason: "Staging and production keep independent published content. Review and publish production drafts explicitly." };
+  }
   if (
     stagingOverlay?.snapshotSha &&
     stagingOverlay.snapshotSha !== productionOverlay?.snapshotSha
@@ -693,17 +703,17 @@ export async function buildLiveReleaseStatus({
   const [
     staging,
     production,
-    stagingOverlay,
-    productionOverlay,
     stagingNow,
     productionNow,
   ] = await Promise.all([
     readDeployment({ root, env: "staging" }),
     readDeployment({ root, env: "production" }),
-    readOverlayStatus({ root, env: "staging" }),
-    readOverlayStatus({ root, env: "production" }),
     readContentFileStatus({ root, env: "staging", relPath: "now.json" }),
     readContentFileStatus({ root, env: "production", relPath: "now.json" }),
+  ]);
+  const [stagingOverlay, productionOverlay] = await Promise.all([
+    readOverlayStatus({ root, env: "staging", overlayKey: staging.overlayKey }),
+    readOverlayStatus({ root, env: "production", overlayKey: production.overlayKey }),
   ]);
   const contentInputSha = hashContentInput(root);
   const stagingDiffFromLocal = contentOnlyDiffFrom({

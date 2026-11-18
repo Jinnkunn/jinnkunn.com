@@ -659,7 +659,11 @@ test("tauri-ui-engineering: static Notion toggles do not expose fake buttons", a
     const source = await read(relPath);
     assert.doesNotMatch(source, /role="button"/);
     assert.doesNotMatch(source, /tabIndex=\{0\}/);
-    assert.doesNotMatch(source, /aria-expanded="false"/);
+    if (relPath.endsWith("publication-list.tsx")) {
+      assert.match(source, /\{hasAuthors \? \(\s*<button[\s\S]+?aria-expanded="false"/);
+    } else {
+      assert.doesNotMatch(source, /aria-expanded="false"/);
+    }
   }
 });
 
@@ -891,8 +895,8 @@ test("tauri-ui-engineering: staging D1 snapshot workflow is manual-only", async 
   assert.doesNotMatch(releaseFromStaging, /copy-content-db\.mjs/);
   assert.doesNotMatch(releaseFromStaging, /syncProductionD1FromStaging/);
   assert.match(releaseFromStaging, /preserveProductionD1/);
-  assert.match(releaseFromStaging, /publishProductionOverlayFromProductionD1/);
-  assert.match(releaseFromStaging, /publish:content:prod/);
+  assert.match(releaseFromStaging, /publishSavedDrafts: false/);
+  assert.doesNotMatch(releaseFromStaging, /publish:content:prod/);
   assert.match(wrangler, /\[env\.production\.vars\][\s\S]*SITE_ADMIN_STORAGE = "db"/);
 });
 

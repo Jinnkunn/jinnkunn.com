@@ -467,6 +467,10 @@ function writeJson<T>(path: string, method: string, body: unknown): Promise<T> {
   });
 }
 
+function readScopedPublicationReview(scope: string, signal: AbortSignal) {
+  return readJson<PublicationReview>(`/api/site-admin/publication-review?${new URLSearchParams({ scope })}`, { signal });
+}
+
 type ContentPublishAction =
   | "publish-content-staging"
   | "publish-content-production";
@@ -691,15 +695,19 @@ export function SiteAdminWebConsole({
     onFinished: (outcome, coveredRevision) => {
       if (outcome.state === "succeeded") {
         const remaining = Math.max(0, savedContentRevisionRef.current - coveredRevision);
-        setPendingPublishCount(remaining);
         setError("");
-        setNotice("Published successfully. Checking for newer saved drafts…");
+        const verified = outcome.verifiedPublicationSha;
+        setNotice(verified ? "Live verified. Checking remaining drafts…" : "Runner finished. Checking the published snapshot…");
         void refreshPublicationReview().then((review) => {
-          setNotice(review
-            ? review.changes.length
-              ? "Published successfully. Newer drafts still need publishing."
-              : "Published successfully. The public site is current."
-            : "Published successfully. The remaining draft comparison is unavailable; refresh publication review.");
+          if (verified && review?.baselineSha === verified) {
+            const pending = review.changes.length;
+            setNotice(pending ? `Live verified. ${countLabel(pending)} saved ${pending === 1 ? "change" : "changes"} still unpublished.` : "Live verified. All saved content is current.");
+          } else if (verified) {
+            setNotice(review ? "Publication was verified. A newer Live snapshot is now active." : "Publication was verified. Refresh to see remaining drafts.");
+          } else {
+            if (!review && remaining > 0) setPendingPublishCount((count) => Math.max(count, remaining));
+            setNotice("Runner finished, but did not report frontend verification. Check the Live preview or release log.");
+          }
         });
       } else {
         setNotice("");
@@ -1681,7 +1689,7 @@ export function SiteAdminWebConsole({
     void refreshReleaseJobs();
   }, [area, refreshReleaseJobs]);
 
-  async function queueSavedContentPublish(reason: string, reviewSnapshotSha: string): Promise<string> {
+  async function queueSavedContentPublish(reason: string, reviewed: PublicationReview): Promise<string> {
     const action = contentPublishActionForBrowser();
     if (!action) return "";
     const coveredRevision = savedContentRevisionRef.current;
@@ -1698,7 +1706,9 @@ export function SiteAdminWebConsole({
             source: "site-admin-web-console",
             reason,
             area,
-            reviewSnapshotSha,
+            reviewSnapshotSha: reviewed.snapshotSha,
+            reviewBaselineSha: reviewed.baselineSha,
+            reviewScope: reviewed.scope || "all",
           },
         },
       );
@@ -1715,22 +1725,22 @@ export function SiteAdminWebConsole({
         );
       }
       return action === "publish-content-production"
-        ? ` Publishing the saved content to the public site.${jobId}`
-        : ` Publishing the saved content to staging.${jobId}`;
+        ? ` Reviewed changes queued for Production.${jobId}`
+        : ` Reviewed changes queued for Staging.${jobId}`;
     } catch (err) {
       throw new Error(`Publishing could not be queued: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  async function publishSavedContent() {
-    if (!publicationReview || !publicationReview.changes.length || hasUnsavedChanges || publicationReviewLoading || publicationReviewError || publicationReview.validation?.blockers.length) return;
+  async function publishSavedContent(reviewed: PublicationReview) {
+    if (!reviewed.changes.length || hasUnsavedChanges || publicationReviewLoading || publicationReviewError || reviewed.validation?.blockers.length) return;
     setReleaseSaving(true);
     setError("");
     setWarning("");
     setNotice("");
     try {
-      const publishNotice = await queueSavedContentPublish("content:publish-saved", publicationReview.snapshotSha);
-      if (publishNotice) { setNotice(`Publish queued.${publishNotice}`); setPublishReviewOpen(false); }
+      const publishNotice = await queueSavedContentPublish("content:publish-reviewed", reviewed);
+      if (publishNotice) { setNotice(publishNotice.trim()); setPublishReviewOpen(false); }
     } catch (error) {
       await refreshPublicationReview();
       setPublicationReviewError(error instanceof Error ? error.message : String(error));
@@ -2041,10 +2051,6 @@ export function SiteAdminWebConsole({
     } else if (groupEdit.kind === "publications") updatePublicationYear(groupEdit.year, change.label);
     else moveWorksGroup(groupEdit.category, change.label === "passed" ? "passed" : "recent");
     setGroupEdit(null);
-  }
-
-  async function publishCurrentContent() {
-    await publishSavedContent();
   }
 
 
@@ -3571,7 +3577,8 @@ export function SiteAdminWebConsole({
         busy={releaseSaving} disabled={hasUnsavedChanges || saving || releaseSaving || releaseIsRunning || !contentPublishActionForBrowser()}
         hasUnsaved={hasUnsavedChanges}
         target={contentPublishActionForBrowser() === "publish-content-production" ? "Production" : contentPublishActionForBrowser() === "publish-content-staging" ? "Staging" : "Local preview"}
-        onClose={() => setPublishReviewOpen(false)} onRefresh={() => void refreshPublicationReview()} onConfirm={() => void publishCurrentContent()}
+        readScope={readScopedPublicationReview}
+        onClose={() => setPublishReviewOpen(false)} onRefresh={() => void refreshPublicationReview()} onConfirm={(reviewed) => void publishSavedContent(reviewed)}
         onIssue={async (issue) => {
           setPublishReviewOpen(false);
           const match = /^(posts|pages|components)\/(.+)\.mdx$/.exec(issue.path);

@@ -209,7 +209,7 @@ async function main() {
     await review.getByText("Advanced source comparison", { exact: true }).first().waitFor();
     await eventually(async () => {
       assert.ok((await review.innerText()).includes("Affects:"));
-      assert.equal(await review.getByRole("button", { name: "Confirm publish", exact: true }).isEnabled(), true);
+      assert.equal(await review.getByRole("button", { name: "Publish all changes", exact: true }).isEnabled(), true);
     }, "Publication review finished loading");
     assert.equal(await review.locator("pre:visible").count(), 0, "Code is hidden by default");
     await page.screenshot({ path: "/tmp/priority-publication-review-desktop.png" });

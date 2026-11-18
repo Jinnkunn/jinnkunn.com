@@ -16,8 +16,9 @@ import {
 } from "@/lib/server/release-jobs-service";
 import { wakeReleaseRunnerForJob } from "@/lib/server/release-runner-wake";
 import type { ParseResult } from "@/lib/site-admin/request-types";
-import { loadSavedSnapshot } from "@/lib/server/publication-review-service";
+import { loadPublishedSnapshot, loadSavedSnapshot } from "@/lib/server/publication-review-service";
 import { publicationValidation } from "@/lib/shared/publication-validation";
+import { ALL_PUBLICATION_SCOPE, validPublicationScope, publicationCandidate } from "@/lib/shared/publication-scope";
 
 export const runtime = "nodejs";
 
@@ -67,20 +68,31 @@ export async function POST(req: NextRequest) {
       const parsed = await readSiteAdminJsonCommand(req, parseCreateJob);
       if (!parsed.ok) return parsed.res;
       const reviewed = parsed.value.request.reviewSnapshotSha;
+      const scope = parsed.value.request.reviewScope ?? ALL_PUBLICATION_SCOPE;
+      const baselineSha = parsed.value.request.reviewBaselineSha;
       const publishesContent = /^publish-content-(production|staging)$/.test(String(parsed.value.action));
-      const snapshot = publishesContent ? await loadSavedSnapshot() : null;
       const target = new URL(req.url).hostname.startsWith("staging.") ? "staging" : "production";
       if (publishesContent && parsed.value.action !== `publish-content-${target}`) return apiError("Review belongs to a different environment.", { status: 400, code: "PUBLICATION_TARGET_MISMATCH" });
-      if (reviewed !== undefined) {
-        if (!/^publish-content-(production|staging)$/.test(String(parsed.value.action)) || !/^[a-f0-9]{64}$/.test(String(reviewed))) {
-          return apiError("Invalid publication review.", { status: 400, code: "INVALID_PUBLICATION_REVIEW" });
-        }
-        if (snapshot?.sha !== reviewed) return apiError("Saved content changed after review. Refresh the review before publishing.", { status: 409, code: "PUBLICATION_SNAPSHOT_CHANGED" });
+      if ((reviewed !== undefined && (!publishesContent || !/^[a-f0-9]{64}$/.test(String(reviewed)))) ||
+          (baselineSha !== undefined && (!publishesContent || !/^[a-f0-9]{64}$/.test(String(baselineSha)))) ||
+          !validPublicationScope(scope) || (scope !== ALL_PUBLICATION_SCOPE && (!publishesContent || !reviewed || !baselineSha))) {
+        return apiError("Invalid publication review.", { status: 400, code: "INVALID_PUBLICATION_REVIEW" });
       }
-      if (snapshot) {
+      if (publishesContent) {
+        const [saved, live] = await Promise.all([loadSavedSnapshot(), loadPublishedSnapshot()]);
+        if (baselineSha && live.sha !== baselineSha) return apiError("Live content changed after review. Refresh before publishing.", { status: 409, code: "PUBLICATION_BASELINE_CHANGED" });
+        let snapshot;
+        try { snapshot = publicationCandidate(saved, live, scope); }
+        catch (error) {
+          if (!(error instanceof Error) || !error.message.startsWith("PUBLICATION_SCOPE_CHANGED:")) throw error;
+          return apiError(error.message.replace(/^PUBLICATION_SCOPE_CHANGED: /, ""), { status: 409, code: "PUBLICATION_SCOPE_CHANGED" });
+        }
+        if (reviewed && snapshot.sha !== reviewed) return apiError("Selected saved content changed after review. Refresh before publishing.", { status: 409, code: "PUBLICATION_SNAPSHOT_CHANGED" });
         const validation = publicationValidation(snapshot.sources);
-        if (validation.blockers.length) return apiError("Saved drafts need attention before publication.", { status: 422, code: "PUBLICATION_VALIDATION_FAILED", extras: { issues: validation.blockers, snapshotSha: snapshot.sha } });
+        if (validation.blockers.length) return apiError("Reviewed content needs attention before publication.", { status: 422, code: "PUBLICATION_VALIDATION_FAILED", extras: { issues: validation.blockers, snapshotSha: snapshot.sha } });
         parsed.value.request.reviewSnapshotSha = snapshot.sha;
+        if (baselineSha) parsed.value.request.reviewBaselineSha = live.sha;
+        parsed.value.request.reviewScope = scope;
       }
       const out = await createReleaseJob({
         action: parsed.value.action,

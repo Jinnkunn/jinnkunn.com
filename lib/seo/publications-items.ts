@@ -3,35 +3,8 @@ import { parse, type DefaultTreeAdapterTypes } from "parse5";
 type HtmlNode = DefaultTreeAdapterTypes.Node;
 type HtmlElement = DefaultTreeAdapterTypes.Element;
 
-export type PublicationStructuredItem = {
-  title: string;
-  year: string;
-  url: string;
-  labels: string[];
-};
-
-export type PublicationAuthor = {
-  name: string;
-  isSelf: boolean;
-};
-
-export type PublicationVenue = {
-  type: string;
-  text: string;
-  url?: string;
-};
-
-export type PublicationStructuredEntry = PublicationStructuredItem & {
-  entryId?: string;
-  authors?: string[];
-  authorsRich?: PublicationAuthor[];
-  externalUrls?: string[];
-  doiUrl?: string;
-  arxivUrl?: string;
-  venue?: string;
-  venues?: PublicationVenue[];
-  highlights?: string[];
-};
+import type { PublicationStructuredItem, PublicationAuthor, PublicationVenue, PublicationStructuredEntry } from "../../packages/content-core/src/publications.ts";
+export type { PublicationStructuredItem, PublicationAuthor, PublicationVenue, PublicationStructuredEntry } from "../../packages/content-core/src/publications.ts";
 
 function asChildren(node: HtmlNode): HtmlNode[] {
   const n = node as HtmlNode & { childNodes?: HtmlNode[] };

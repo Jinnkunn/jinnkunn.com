@@ -3,6 +3,7 @@ import "server-only";
 import type { ReactElement, ReactNode } from "react";
 
 import { ClassicLink } from "@/components/classic/classic-link";
+import { normalizeWorksAffiliation } from "@/lib/shared/works-affiliation";
 
 interface WorksEntryProps {
   /** Stable editor identity. It is intentionally not rendered. */
@@ -46,7 +47,7 @@ export function WorksEntry({
   children,
 }: WorksEntryProps): ReactElement {
   const hasBody = Boolean(children);
-  const aff = affiliation ?? "";
+  const aff = normalizeWorksAffiliation(affiliation ?? "");
   const affNode = aff ? (
     affiliationUrl ? (
       <span className="highlighted-background bg-yellow">

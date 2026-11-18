@@ -113,10 +113,10 @@ async function main() {
       await page.getByRole("button", { name: "Publish updates", exact: true }).filter({ visible: true }).click();
       const review = page.getByRole("dialog", { name: "Review publication" });
       await review.waitFor();
-      assert.match(await review.innerText(), /all saved site content/);
+      assert.match(await review.innerText(), /saved changes from all sessions/);
       assert.match(await review.innerText(), /Staging/);
       await page.screenshot({ path: "/tmp/collections-workflow-publish-review.png", animations: "disabled" });
-      await review.getByRole("button", { name: "Confirm publish", exact: true }).click();
+      await review.getByRole("button", { name: "Publish all changes", exact: true }).click();
       await review.waitFor({ state: "detached" });
     };
     const entry = (title) => page.locator("[data-entry-trigger]").filter({ hasText: title }).first();
@@ -375,12 +375,12 @@ async function main() {
     await worksReviewHeading.locator("..").locator("summary").filter({ hasText: /^Updated:/ }).first().click();
     assert.match(await siteReview.innerText(), /Other session's work update/);
     fixture.changeRemotely("works", remoteOriginal.replace("Recent body.", "Changed after confirmation preview."));
-    await siteReview.getByRole("button", { name: "Confirm publish", exact: true }).click();
+    await siteReview.getByRole("button", { name: "Publish all changes", exact: true }).click();
     await siteReview.getByRole("alert").filter({ hasText: "Saved content changed after this review" }).waitFor();
     assert.equal(fixture.jobs.length, 0, "A stale review cannot queue publication");
-    assert.equal(await siteReview.getByRole("button", { name: "Confirm publish", exact: true }).isDisabled(), true);
+    assert.equal(await siteReview.getByRole("button", { name: "Publish all changes", exact: true }).isDisabled(), true);
     await siteReview.getByRole("button", { name: "Refresh review", exact: true }).click();
-    await eventually(async () => assert.equal(await siteReview.getByRole("button", { name: "Confirm publish", exact: true }).isDisabled(), false), "refresh makes the latest review confirmable");
+    await eventually(async () => assert.equal(await siteReview.getByRole("button", { name: "Publish all changes", exact: true }).isDisabled(), false), "refresh makes the latest review confirmable");
     await siteReview.getByRole("button", { name: "Cancel", exact: true }).click();
     fixture.changeRemotely("works", remoteOriginal);
     await publish();
@@ -397,18 +397,41 @@ async function main() {
     await body().fill("Newer draft saved while publishing.");
     await saved("news", (rows) => assert.ok(rows.some((row) => row.body.includes("Newer draft saved while publishing."))));
     fixture.completeRelease();
-    await page.getByText("Published successfully. Newer drafts still need publishing.", { exact: true }).waitFor({ timeout: 15_000 });
+    await page.getByText("Live verified. 1 saved change still unpublished.", { exact: true }).waitFor({ timeout: 15_000 });
     assert.notEqual(fixture.published.get("news"), fixture.saved.get("news"));
     assert.ok(fixture.published.get("news").includes("Conflict-preserved"));
     await publish();
     await eventually(() => assert.equal(fixture.jobs.length, 3), "newer draft remains publishable");
     fixture.completeRelease();
-    await page.getByText("Published successfully. The public site is current.", { exact: true }).waitFor({ timeout: 15_000 });
+    await page.getByText("Live verified. All saved content is current.", { exact: true }).waitFor({ timeout: 15_000 });
     assert.equal(fixture.published.get("news"), fixture.saved.get("news"));
 
+    log("Scoped publication: verify one News entry while Works stays a draft");
+    if (await entry("Newer draft saved").getAttribute("aria-expanded") !== "true") await entry("Newer draft saved").click();
+    await body().fill("Selected News update from this review.");
+    await saved("news", (rows) => assert.ok(rows.some((row) => row.body.includes("Selected News update"))));
+    const selected = fixture.entries("news").find((row) => row.body?.includes("Selected News update"));
+    const liveWorks = fixture.published.get("works");
+    fixture.changeRemotely("works", liveWorks.replace("Recent body.", "Do not publish this Works draft."));
+    await page.getByRole("button", { name: "Publish updates", exact: true }).click();
+    const scopedReview = page.getByRole("dialog", { name: "Review publication" });
+    const scopeSelect = scopedReview.getByLabel("Changes to publish", { exact: true });
+    await eventually(async () => assert.ok((await scopeSelect.locator("option").allTextContents()).some((item) => item.includes("Selected News update"))), "scoped review options loaded");
+    await scopeSelect.selectOption(`news:${selected.id}`);
+    await scopedReview.getByRole("heading", { name: "Selected changes", exact: true }).waitFor();
+    await scopedReview.getByRole("heading", { name: /^News · changed$/ }).waitFor();
+    assert.equal(await scopedReview.getByRole("heading", { name: /^Works · changed$/ }).count(), 0);
+    await page.screenshot({ path: "/tmp/site-admin-scoped-publication.png", animations: "disabled" });
+    await scopedReview.getByRole("button", { name: "Publish selection", exact: true }).click();
+    await eventually(() => assert.equal(fixture.jobs.length, 4), "only the verified selection queues");
+    fixture.completeRelease();
+    await page.getByText("Live verified. 1 saved change still unpublished.", { exact: true }).waitFor({ timeout: 15_000 });
+    assert.match(fixture.published.get("news"), /Selected News update/);
+    assert.equal(fixture.published.get("works"), liveWorks);
+
     log("Responsive panel: desktop/mobile geometry, focus containment and dismissal");
-    if (await entry("Newer draft saved").getAttribute("aria-expanded") !== "true") {
-      await entry("Newer draft saved").click();
+    if (await entry("Selected News update").getAttribute("aria-expanded") !== "true") {
+      await entry("Selected News update").click();
     }
     await page.screenshot({ path: "/tmp/collections-workflow-desktop.png", animations: "disabled" });
     await page.setViewportSize({ width: 390, height: 844 });
@@ -430,14 +453,14 @@ async function main() {
     const mobileReview = page.getByRole("dialog", { name: "Review publication", exact: true });
     const reviewBox = await mobileReview.boundingBox();
     assert.ok(reviewBox && reviewBox.x >= 0 && reviewBox.x + reviewBox.width <= 391 && reviewBox.y >= 0 && reviewBox.y + reviewBox.height <= 845, "Mobile publication dialog fits the viewport");
-    await mobileReview.getByRole("button", { name: "Confirm publish", exact: true }).focus();
+    await mobileReview.getByRole("button", { name: "Publish all changes", exact: true }).focus();
     await page.keyboard.press("Tab");
     assert.equal(await mobileReview.evaluate((el) => el.contains(document.activeElement)), true);
     await page.keyboard.press("Escape");
     await mobileReview.waitFor({ state: "detached" });
     assert.equal(await dialog.isVisible(), true, "Canceling a review must keep the mobile entry open");
     assert.equal(await dialog.evaluate((el) => el.contains(document.activeElement)), true, "Canceling publication restores focus to the entry editor");
-    assert.equal(fixture.jobs.length, 3, "Dismissing mobile review cannot publish");
+    assert.equal(fixture.jobs.length, 4, "Dismissing mobile review cannot publish");
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "detached" });
     assert.deepEqual(fixture.unexpected, [], "All admin requests must remain inside the fixture");

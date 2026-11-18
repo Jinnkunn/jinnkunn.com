@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { BlogIndexView } from "@/components/blog-index/blog-index-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
-import { getBlogIndex } from "@/lib/blog";
+import { getBlogIndex, getReasoningDriftSeries } from "@/lib/blog";
 import { FEED_PATH, buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogIndexStructuredData } from "@/lib/seo/structured-data";
 import { getSiteConfig } from "@/lib/site-config";
@@ -47,6 +47,7 @@ export default async function BlogPage() {
         title={BLOG_TITLE}
         introLinks={BLOG_INTRO_LINKS}
         entries={listEntries}
+        series={getReasoningDriftSeries(listEntries)}
       />
     </>
   );

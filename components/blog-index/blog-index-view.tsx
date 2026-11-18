@@ -3,8 +3,10 @@ import { Fragment } from "react";
 import { ClassicLink } from "@/components/classic/classic-link";
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
 import type { BlogPostIndexItem } from "@/lib/blog";
+import type { SeriesLink } from "@/lib/posts/reasoning-drift-series";
 
 import { BlogIndexList } from "./blog-index-list";
+import { ReasoningDriftSeries } from "./reasoning-drift-series";
 
 export type BlogIntroLink = {
   label: string;
@@ -15,10 +17,12 @@ export function BlogIndexView({
   title,
   introLinks,
   entries,
+  series = [],
 }: {
   title: string;
   introLinks: BlogIntroLink[];
   entries: BlogPostIndexItem[];
+  series?: SeriesLink[];
 }) {
   return (
     <ClassicPageShell
@@ -51,6 +55,7 @@ export function BlogIndexView({
           ))}
         </p>
       )}
+      <ReasoningDriftSeries entries={series} />
       <div className="notion-text" aria-hidden="true" />
       <BlogIndexList entries={entries} />
     </ClassicPageShell>

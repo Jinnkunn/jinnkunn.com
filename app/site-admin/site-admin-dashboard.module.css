@@ -3373,6 +3373,8 @@ button.statusPill:disabled {
 .actionDialog .panelTitle { font-size: 20px; letter-spacing: 0; }
 .actionDialog form { display: grid; gap: 16px; }
 .reviewHeading { margin: 20px 0 8px; font-size: 13px; }
+.publicationScope { display: grid; gap: 6px; max-width: 100%; font-weight: 600; }
+.publicationScope select { width: 100%; min-width: 0; min-height: 36px; padding-inline: 8px; }
 .reviewIssueList { margin: 8px 0 16px; padding-inline-start: 18px; }
 .reviewIssueList button { border: 0; padding: 4px 0; background: transparent; color: inherit; font: inherit; text-align: start; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; cursor: pointer; }
 .reviewIssueList button:focus-visible { outline: 2px solid var(--ds-text-primary); outline-offset: 3px; }

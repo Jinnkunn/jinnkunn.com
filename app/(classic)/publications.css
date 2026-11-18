@@ -10,16 +10,65 @@
   align-items: flex-start;
 }
 
+.publication-toggle {
+  scroll-margin-top: 1rem;
+}
+
+.publication-toggle--static .notion-toggle__summary {
+  cursor: default;
+}
+
+.publication-toggle .notion-toggle__trigger {
+  flex: 0 0 1.5rem;
+}
+
+.publication-toggle button.notion-toggle__trigger {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.publication-toggle :is(button.notion-toggle__trigger, .pub-permalink):focus-visible {
+  outline: var(--ds-focus-ring-width) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
+.pub-permalink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  color: var(--color-text-gray);
+  text-decoration: none;
+  font-size: 0.85em;
+}
+
+.pub-permalink:hover {
+  text-decoration: underline;
+}
+
 .publication-toggle .notion-semantic-string {
   line-height: 24px;
 }
 
+.publication-toggle .notion-toggle__summary > .notion-semantic-string {
+  min-width: 0;
+}
+
 .pub-title-line {
-  display: inline;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--ds-space-1);
+  max-width: 100%;
+  vertical-align: top;
 }
 
 .pub-title-text {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .pub-meta-line {

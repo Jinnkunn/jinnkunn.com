@@ -67,22 +67,14 @@ test("release script uses an immutable snapshot for every full release", async (
   assert.match(script, /prepareImmutableReleaseSnapshot/);
   assert.match(script, /removeImmutableReleaseSnapshot/);
   assert.match(script, /immutable snapshot/);
-  assert.match(script, /--skip-build requires a recent immutable build cache/);
-  assert.match(script, /--skip-build requires RELEASE_EXPECT_CONTENT_SHA/);
-  assert.match(script, /buildRun: didRunBuild/);
-  assert.match(script, /resolvedContentSourceMode = `\$\{cached\.env \|\| "unknown"\}-immutable-build-cache`/);
-  assert.match(script, /Production promotion requires the exact verified staging artifact/);
-  assert.match(script, /restore verified cached build artifacts/);
+  assert.match(script, /Code releases require a fresh build, upload, and verification/);
   assert.match(script, /dumpD1Content/);
   assert.match(script, /--sync-content-to-git/);
   assert.doesNotMatch(script, /autoCommitContent: !argv\.includes/);
   assert.match(script, /evaluateStagingDirtyGuard\(git\)/);
   assert.match(script, /gitRefContainsCommit\("origin\/main", sha\)/);
   assert.match(script, /current HEAD is not available on origin\/main/);
-  assert.match(script, /ALLOW_D1_BUILD_CACHE/);
-  assert.match(script, /RELEASE_REUSE_STAGING_BUILD/);
-  assert.match(script, /RELEASE_EXPECT_CONTENT_SHA/);
-  assert.match(script, /buildCacheContentMatches/);
+  assert.doesNotMatch(script, /RELEASE_REUSE_STAGING_BUILD|restoreBuildArtifacts/);
   assert.match(script, /contentSnapshotSha/);
   assert.match(script, /hashReleaseContent/);
   assert.match(script, /content\/local\/site-config\.json/);
@@ -159,12 +151,16 @@ test("smart release CLI and package scripts expose content production copy", asy
   assert.match(packageJson, /"publish:content:staging:sync-git"/);
 });
 
-test("full Cloudflare release clears stale content overlays after code deploy", async () => {
+test("a full release prepares a matching overlay before activation and never republishes drafts", async () => {
   const script = await fs.readFile(
     path.join(process.cwd(), "scripts/release/release-cloudflare.mjs"),
     "utf8",
   );
-  assert.match(script, /clearContentOverlayAfterCodeDeploy/);
-  assert.match(script, /--clear/);
-  assert.match(script, /overlayClear/);
+  assert.doesNotMatch(script, /clearContentOverlayAfterCodeDeploy/);
+  assert.match(script, /await readPublishedBaseline\(args\.env, previousWorker\)/);
+  assert.match(script, /materializePublicationSnapshot\(releaseRoot, previousBaseline\)/);
+  assert.match(script, /publicationSha: pinnedPublication\.sha/);
+  assert.ok(script.indexOf("await prepareCodeOverlay") < script.indexOf("DEPLOY_EXPECT_VERSION_ID"));
+  const promotion = await fs.readFile(path.join(process.cwd(), "scripts/release/release-from-staging.mjs"), "utf8");
+  assert.doesNotMatch(promotion, /publish:content:prod|validate-publication\.mjs/);
 });

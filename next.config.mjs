@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import bundleAnalyzer from "@next/bundle-analyzer";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 
 // Gate the analyzer behind `ANALYZE=1 npm run build` so a normal build
 // stays fast and without HTML-report side effects. The analyzer emits
@@ -166,4 +167,12 @@ const nextConfig = {
   },
 };
 
-export default withBundleAnalyzer(nextConfig);
+function configForPhase(phase) {
+  return withBundleAnalyzer({
+    ...nextConfig,
+    // Do not let a local server load a middleware bundle from a Worker build.
+    ...(phase === PHASE_DEVELOPMENT_SERVER ? { distDir: ".next-local" } : {}),
+  });
+}
+
+export default configForPhase;

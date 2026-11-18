@@ -2,6 +2,7 @@ import "server-only";
 import { getPageEntry } from "@/lib/pages/index";
 import type { PageEntry } from "@jinnkunn/content-core/pages";
 import { compilePostMdx } from "@/lib/posts/compile";
+import { BioResearchReading } from "./bio-research-reading";
 import { postMdxComponents } from "./components";
 import { PageArticle, type DocumentBreadcrumb } from "./document-layouts";
 
@@ -17,5 +18,8 @@ async function buildBreadcrumbTrail(entry: PageEntry): Promise<DocumentBreadcrum
 
 export async function PageView({ entry, source }: { entry: PageEntry; source: string }) {
   const [{ Content }, trail] = await Promise.all([compilePostMdx(source), buildBreadcrumbTrail(entry)]);
-  return <PageArticle entry={entry} trail={trail}><Content components={postMdxComponents} /></PageArticle>;
+  return <PageArticle entry={entry} trail={trail}>
+    <Content components={postMdxComponents} />
+    {entry.slug === "bio" ? <BioResearchReading /> : null}
+  </PageArticle>;
 }

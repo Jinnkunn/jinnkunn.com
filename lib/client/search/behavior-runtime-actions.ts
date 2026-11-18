@@ -92,6 +92,12 @@ export function createSearchActionHandlers({
   };
 
   const onResultsClick = (e: MouseEvent) => {
+    const link = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a.notion-search__result-item") : null;
+    if (link?.hash && !e.defaultPrevented && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      // A result can be a fragment on this page. Unlock scrolling before the browser follows it.
+      close();
+      return;
+    }
     handleSearchResultsClick(queryDeps, e);
   };
 

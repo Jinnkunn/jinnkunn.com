@@ -6,11 +6,12 @@ and production releases are issued. Content-only web edits can use
 reads the target D1 database and updates that environment's static-shell
 overlay without a Worker deploy. That path is
 incremental, captures rollback snapshots, and is surfaced in the Tauri
-Release Center as **Publish Content**. Full Worker releases clear stale
-content overlays after deploy. Full releases build from an immutable archive
-of the selected Git SHA; staging hydrates D1 content inside that archive, and
-production can reuse only a staging build cache whose code and content SHAs
-both match. GitHub Actions remain wired only for manual
+Release Center as **Publish Content**. Full releases build from an immutable
+archive of the selected Git SHA. Staging pins the already-published staging
+sources, restores their overlay under the new Worker, and verifies the actual
+deployment before marking it accepted. Production builds the accepted code
+against its own last published snapshot and activates the prepared pair. GitHub
+Actions remain wired only for manual
 fallback and for tasks that genuinely need a sandbox runner (e.g. signed
 `.dmg` builds). This file records the current status of every release-adjacent
 workflow so we can spot stragglers without grepping through `.github/workflows/`.

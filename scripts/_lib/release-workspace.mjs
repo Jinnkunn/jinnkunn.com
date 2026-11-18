@@ -39,12 +39,29 @@ function pruneStaleSnapshots(snapshotsRoot, now = Date.now()) {
   }
 }
 
+function linkSnapshotDependencies(root, snapshotRoot, relative) {
+  const installed = path.join(root, relative, "node_modules");
+  const target = path.join(snapshotRoot, relative, "node_modules");
+  if (!fs.existsSync(installed) || !fs.existsSync(path.dirname(target)) || fs.existsSync(target)) return;
+  fs.mkdirSync(target);
+  for (const name of fs.readdirSync(installed)) {
+    if (name !== "@jinnkunn") {
+      fs.symlinkSync(path.join(installed, name), path.join(target, name));
+      continue;
+    }
+    // npm's file: workspace links otherwise resolve back to the dirty checkout.
+    const scope = path.join(target, name);
+    fs.mkdirSync(scope);
+    for (const local of fs.readdirSync(path.join(installed, name))) {
+      const archived = path.join(snapshotRoot, "packages", local);
+      if (fs.existsSync(path.join(archived, "package.json"))) fs.symlinkSync(archived, path.join(scope, local), "dir");
+    }
+  }
+}
+
 export function createReleaseWorkspacePlan({
   env,
   contentEnv = "staging",
-  skipBuild = false,
-  syncContentToGit = false,
-  reuseStagingBuild = false,
 }) {
   if (!RELEASE_ENVIRONMENTS.has(env)) {
     throw new Error(`Unsupported release environment: ${env}`);
@@ -53,28 +70,11 @@ export function createReleaseWorkspacePlan({
     throw new Error(`Unsupported content environment: ${contentEnv}`);
   }
 
-  const hydrateContentFromD1 =
-    env === "staging" && !skipBuild && !syncContentToGit;
-
-  const requiresCachedBuild = skipBuild || reuseStagingBuild;
-
   return Object.freeze({
-    mode: skipBuild
-      ? "immutable-snapshot-cached-artifacts"
-      : reuseStagingBuild
-        ? "immutable-snapshot-promoted-artifact"
-        : "immutable-snapshot-build",
+    mode: "immutable-snapshot-build",
     useImmutableSnapshot: true,
-    hydrateContentFromD1,
-    requiresCachedBuild,
-    requiresExpectedContentSha: requiresCachedBuild,
-    contentSourceMode: reuseStagingBuild
-      ? "staging-immutable-build-cache"
-      : hydrateContentFromD1
-        ? `${contentEnv}-d1-snapshot`
-        : syncContentToGit
-          ? `${contentEnv}-d1-git-sync`
-          : "git",
+    publicationEnvironment: env,
+    contentSourceMode: `${env}-published-baseline`,
   });
 }
 
@@ -123,16 +123,7 @@ export function prepareImmutableReleaseSnapshot({
   }
 
   for (const relativeRoot of dependencyRoots) {
-    const relative = String(relativeRoot || "").trim();
-    const source = path.join(root, relative, "node_modules");
-    const target = path.join(snapshotRoot, relative, "node_modules");
-    if (
-      fs.existsSync(source) &&
-      fs.existsSync(path.dirname(target)) &&
-      !fs.existsSync(target)
-    ) {
-      fs.symlinkSync(source, target, "dir");
-    }
+    linkSnapshotDependencies(root, snapshotRoot, String(relativeRoot || "").trim());
   }
 
   return snapshotRoot;

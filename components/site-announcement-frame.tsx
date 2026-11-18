@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 
 import { announcementInitiallyExpanded, announcementVisibleOnRoute, type SiteAnnouncement } from "@/lib/shared/announcements";
 
+export type AnnouncementFrameData = Pick<SiteAnnouncement, "id" | "title" | "scope" | "routes" | "layout" | "initialState" | "collapsible">;
+
 export function SiteAnnouncementFrame({
   announcement,
   compactContent,
   children,
 }: {
-  announcement: SiteAnnouncement;
+  announcement: AnnouncementFrameData;
   compactContent: ReactNode;
   children: ReactNode;
 }) {

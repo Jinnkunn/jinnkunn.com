@@ -4,6 +4,7 @@ import { publicationSnapshot, publicationReview } from "../../lib/shared/publica
 import { describePublicationChange } from "../../lib/shared/publication-review-details.ts";
 import { contentInventory } from "../../lib/shared/content-inventory.ts";
 import { publicationValidation } from "../../lib/shared/publication-validation.ts";
+import { publicationCandidate, publicationScopeOptions } from "../../lib/shared/publication-scope.ts";
 
 const INITIAL_SOURCES = {
   news: '---\ntitle: News\n---\n<NewsEntry entryId="news-one" date="2026-10-01">\nInitial news body.\n</NewsEntry>\n',
@@ -22,6 +23,7 @@ export function createCollectionsFixture() {
   const unexpected = [];
   const jobs = [];
   let releaseSnapshot = null;
+  const snapshot = (from) => publicationSnapshot(Object.fromEntries([...from].map(([name, body]) => [`components/${name}.mdx`, body])));
   const entries = (name) => parseCollectionDraft(name, saved.get(name)).value.items;
   const summaries = () => Object.fromEntries(SITE_COMPONENT_DEFINITIONS.map((def) => [def.name, {
     count: entries(def.name).length, entryLabel: def.entryLabel, rows: [],
@@ -51,17 +53,23 @@ export function createCollectionsFixture() {
     const job = activeJob();
     if (!job) throw new Error("No fixture release is active");
     Object.assign(job, { status, finishedAt: new Date().toISOString(), error: status === "failed" ? "Fixture publish failed" : "" });
-    if (status === "succeeded") for (const [name, source] of releaseSnapshot) published.set(name, source);
+    if (status === "succeeded") {
+      for (const [path, source] of Object.entries(releaseSnapshot.sources)) published.set(path.slice(11, -4), source);
+      job.result = { verifiedPublicationSha: releaseSnapshot.sha };
+    }
   }
   async function handle(route) {
     const req = route.request(), url = new URL(req.url()), path = url.pathname;
     const json = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
     if (req.method() === "GET") {
       if (path === "/api/site-admin/publication-review") {
-        const current = publicationSnapshot(Object.fromEntries([...saved].map(([name, body]) => [`components/${name}.mdx`, body])));
-        const baseline = publicationSnapshot(Object.fromEntries([...published].map(([name, body]) => [`components/${name}.mdx`, body])));
+        const draft = snapshot(saved), baseline = snapshot(published), scope = url.searchParams.get("scope") || "all";
+        let current;
+        try { current = publicationCandidate(draft, baseline, scope); }
+        catch (error) { return json({ error: error.message }, 409); }
         const review = publicationReview(current, baseline);
-        return json({ ...review, validation: publicationValidation(current.sources), inventory: contentInventory(current.sources, Object.fromEntries(Object.keys(current.sources).map((path) => [path, Date.now()]))), changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
+        return json({ ...review, scope, availableScopes: publicationScopeOptions(draft, baseline), pendingChangeCount: publicationReview(draft, baseline).changes.length,
+          validation: publicationValidation(current.sources), inventory: contentInventory(current.sources, Object.fromEntries(Object.keys(current.sources).map((path) => [path, Date.now()]))), changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
       }
       if (path === "/api/site-admin/mobile/summary") return json({ summary: summary() });
       if (path === "/api/site-admin/home") return json({ data: { title: "Home", bodyMdx: "Fixture home" }, sourceVersion: { fileSha: "fixture" } });
@@ -87,12 +95,17 @@ export function createCollectionsFixture() {
       }
     }
     if (req.method() === "POST" && ["/api/site-admin/release-jobs", "/api/site-admin/release-jobs/smart"].includes(path)) {
-      const current = publicationSnapshot(Object.fromEntries([...saved].map(([name, body]) => [`components/${name}.mdx`, body])));
-      const reviewed = req.postDataJSON()?.request?.reviewSnapshotSha;
+      const review = req.postDataJSON()?.request || {};
+      const baseline = snapshot(published);
+      const reviewed = review.reviewSnapshotSha;
+      if (review.reviewBaselineSha && review.reviewBaselineSha !== baseline.sha) return json({ error: "Live content changed after this review." }, 409);
+      let current;
+      try { current = publicationCandidate(snapshot(saved), baseline, review.reviewScope || "all"); }
+      catch (error) { return json({ error: error.message }, 409); }
       const validation = publicationValidation(current.sources);
       if (validation.blockers.length) return json({ error: "Saved drafts need attention before publication.", code: "PUBLICATION_VALIDATION_FAILED", issues: validation.blockers }, 422);
       if (reviewed !== undefined && reviewed !== current.sha) return json({ error: "Saved content changed after this review. Review the latest changes before publishing." }, 409);
-      releaseSnapshot = new Map(saved);
+      releaseSnapshot = current;
       const job = { id: `fixture-job-${jobs.length + 1}`, status: "running", action: "publish-content-staging", script: "publish:content:staging", phase: "verify", createdAt: new Date().toISOString(), startedAt: new Date().toISOString() };
       jobs.unshift(job);
       return json({ job, wake: { configured: true, ok: true } });

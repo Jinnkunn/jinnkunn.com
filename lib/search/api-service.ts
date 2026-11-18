@@ -1,6 +1,7 @@
 import { canonicalizePublicRoute, normalizePathname } from "../routes/strategy.ts";
 import { scoreSearchResult } from "./rank.ts";
 import type { SearchItem, SearchMeta, SearchResponse } from "../shared/search-contract.ts";
+import { isPublicationAnchor } from "../shared/publication-identity.ts";
 import {
   bestPos,
   buildBreadcrumb,
@@ -79,6 +80,20 @@ function buildMaps(manifest: SearchManifestItem[]) {
   return { byRoute, byId };
 }
 
+type SearchCandidate = SearchIndexItem & { anchor?: string; year?: string };
+
+function expandPublicationHits(index: SearchIndexItem[]): SearchCandidate[] {
+  return index.flatMap((item) => {
+    if (item.routePath !== "/publications" || !Array.isArray(item.publications)) return [item];
+    return [item, ...item.publications.flatMap((entry): SearchCandidate[] => {
+      if (!isPublicationAnchor(entry?.anchor) || typeof entry.title !== "string" || !entry.title.trim()) return [];
+      return [{ routePath: item.routePath, kind: item.kind, title: entry.title,
+        anchor: entry.anchor, year: typeof entry.year === "string" ? entry.year : "",
+        text: typeof entry.text === "string" ? entry.text : "" }];
+    })];
+  });
+}
+
 export function buildSearchResponse(input: SearchRunInput): SearchResponse {
   const { q, type, offset, limit, scope, index, manifest, includeSnippets = true } = input;
   const ql = safeLower(q);
@@ -86,12 +101,12 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
   const { byRoute, byId } = buildMaps(manifest);
 
   if (index.length) {
-    const allMatches0 = index
+    const allMatches0 = expandPublicationHits(index)
       .filter((item) => {
         const canon = canonicalizePublicRoute(item.routePath);
         if (!inScope(canon, scope)) return false;
         const headings = readHeadings(item).join("\n");
-        const hay = `${safeLower(item.title)}\n${safeLower(canon)}\n${safeLower(headings)}\n${safeLower(item.text)}`;
+        const hay = `${safeLower(item.title)}\n${item.anchor ? "" : safeLower(canon)}\n${safeLower(headings)}\n${safeLower(item.text)}`;
         if (terms.length <= 1) return hay.includes(ql);
         return terms.every((t) => hay.includes(t));
       })
@@ -99,7 +114,8 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
         const canon = canonicalizePublicRoute(item.routePath);
         const typeKey = classifyType(item.kind, canon);
         const titlePos = bestPos(safeLower(item.title), terms);
-        const routePos = bestPos(safeLower(canon), terms);
+        const route = item.anchor ? "" : canon;
+        const routePos = bestPos(safeLower(route), terms);
         const headingsArr = readHeadings(item);
         const headingsText = headingsArr.join("\n");
         const headingsHay = safeLower(headingsText);
@@ -111,13 +127,13 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
         const homePenalty = canon === "/" && titlePos === -1 && routePos === -1 ? 250 : 0;
         const navBoost = byRoute.get(normalizePathname(item.routePath))?.navGroup ? 180 : 0;
         const exactTitle = safeLower(item.title).trim() === safeLower(q).trim();
-        const exactRoute = safeLower(canon).trim() === safeLower(q).trim();
+        const exactRoute = safeLower(route).trim() === safeLower(q).trim();
         const exactBoost = exactTitle ? 1800 : exactRoute ? 900 : 0;
         const score =
           scoreSearchResult({
             title: item.title,
-            route: canon,
-            text: `${headingsText}\n${bodyText}`.trim(),
+            route,
+            text: `${item.anchor ? item.title : ""}\n${headingsText}\n${bodyText}`.trim(),
             query: q,
             navBoost,
           }) +
@@ -126,7 +142,8 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
           // Headings are stronger signals than body text for navigational queries.
           (headingPos >= 0 ? Math.max(120, 340 - headingPos) : 0) -
           (headingPos >= 0 && bodyPos === -1 ? 120 : 0);
-        return { item, score, canon, typeKey, headingsArr, headingPos, bodyPos };
+        const destination = item.anchor ? `${canon}#${item.anchor}` : canon;
+        return { item, score, canon, destination, typeKey, headingsArr, headingPos, bodyPos };
       })
       .sort(
         (a, b) =>
@@ -142,7 +159,7 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
 
     const items: SearchItem[] = filtered
       .slice(offset, offset + limit)
-      .map(({ item, canon, typeKey, headingsArr, bodyPos }) => {
+      .map(({ item, canon, destination, typeKey, headingsArr, bodyPos }) => {
         const snippet = (() => {
           if (!includeSnippets) return "";
           const headings = headingsArr.join("\n");
@@ -157,12 +174,13 @@ export function buildSearchResponse(input: SearchRunInput): SearchResponse {
           return buildSnippetByTerms(src, terms);
         })();
 
+        const trail = buildBreadcrumb(item.routePath, byRoute, byId) || (canon === "/" ? "Home" : "");
         return {
           title: item.routePath === "/" ? "Home" : item.title || "Untitled",
-          routePath: canon,
+          routePath: destination,
           kind: normalizeKindForTypeKey(typeKey),
           ...(snippet ? { snippet } : {}),
-          breadcrumb: buildBreadcrumb(item.routePath, byRoute, byId) || (canon === "/" ? "Home" : ""),
+          breadcrumb: item.anchor ? [trail || "Publications", item.year].filter(Boolean).join(" / ") : trail,
         };
       });
 

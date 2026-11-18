@@ -101,6 +101,8 @@ test("release outcome: failed jobs stay failed instead of becoming live", () => 
     state: "succeeded",
     message: "",
   });
+  const verifiedPublicationSha = "d".repeat(64);
+  assert.equal(releaseJobOutcome({ status: "succeeded", result: { verifiedPublicationSha } }).verifiedPublicationSha, verifiedPublicationSha);
   assert.deepEqual(releaseJobOutcome({ status: "running", error: "" }), {
     state: "active",
     message: "",

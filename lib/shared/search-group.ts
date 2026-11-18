@@ -1,5 +1,5 @@
 export function groupLabelForRoutePath(routePath: string): string {
-  const p0 = String(routePath || "/").trim() || "/";
+  const p0 = String(routePath || "/").trim().split(/[?#]/, 1)[0] || "/";
   const p = p0.startsWith("/") ? p0 : `/${p0}`;
   if (p === "/") return "Home";
   if (p === "/blog" || p.startsWith("/blog/")) return "Blog";
