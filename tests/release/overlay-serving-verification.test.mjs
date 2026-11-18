@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
-import { overlayVerificationTargets, verifyOverlayContent } from "../../scripts/_lib/overlay-serving-verification.mjs";
+import { overlayVerificationTargets, verifyOverlayContent, verifyStaticAssetResponses } from "../../scripts/_lib/overlay-serving-verification.mjs";
 
 const sha = (body) => crypto.createHash("sha1").update(body).digest("hex");
 const row = (route, body = `<main>${route} new content</main>`) => ({
@@ -99,4 +99,41 @@ test("matching bytes still fail with an incorrect served path or fingerprint hea
 test("rejects corrupt overlay metadata and missing homepage instead of passing vacuously", () => {
   assert.throws(() => overlayVerificationTargets([{ ...row("/"), content_sha: "wrong" }]), /fingerprint/);
   assert.throws(() => overlayVerificationTargets([row("/news")]), /homepage/);
+});
+
+test("asset verification waits for an old edge Worker to stop returning 404", async () => {
+  const js = "/_next/static/chunks/changed.js", css = "/_next/static/css/shared.css";
+  const calls = [];
+  const result = await verifyStaticAssetResponses({
+    origin: "https://staging.example.test", refs: [js, css],
+    expectedHashes: new Map([[js, sha("new script")], [css, sha("same style")]]),
+    wait: async () => {},
+    fetchImpl: async (url, options) => {
+      const path = new URL(url).pathname;
+      assert.equal(options.cache, "no-store");
+      assert.ok(options.signal);
+      calls.push(path);
+      if (calls.length === 1) return new Response("old Worker", { status: 404 });
+      return new Response(path === js ? "new script" : "same style");
+    },
+  });
+  assert.deepEqual(result, { checked: 2, attempts: 2 });
+  assert.deepEqual(calls, [js, css, js]);
+});
+
+test("asset verification never accepts a persistent 404 or mismatched 200", async () => {
+  const missing = "/_next/static/chunks/missing.js", stale = "/_next/static/css/stale.css";
+  let waits = 0;
+  await assert.rejects(verifyStaticAssetResponses({
+    origin: "https://staging.example.test", refs: [missing, stale], attempts: 3,
+    expectedHashes: new Map([[stale, sha("expected style")]]), wait: async () => { waits += 1; },
+    fetchImpl: async (url) => new URL(url).pathname === missing
+      ? new Response("not found", { status: 404 }) : new Response("stale style"),
+  }), (error) => {
+    assert.match(error.message, /after 3 attempts/);
+    assert.match(error.message, /missing\.js \(HTTP 404\)/);
+    assert.match(error.message, /stale\.css \(fingerprint mismatch\)/);
+    return true;
+  });
+  assert.equal(waits, 2);
 });

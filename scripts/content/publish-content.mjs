@@ -12,7 +12,7 @@ import { prepareImmutableReleaseSnapshot, removeImmutableReleaseSnapshot } from 
 import { effectiveCodeSha } from "../_lib/deploy-metadata.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 import { d1DatabaseIdForEnv } from "../_lib/wrangler-d1.mjs";
-import { verifyOverlayContent } from "../_lib/overlay-serving-verification.mjs";
+import { verifyOverlayContent, verifyStaticAssetResponses } from "../_lib/overlay-serving-verification.mjs";
 import { activeOverlayTable, versionedOverlay } from "../../lib/shared/static-release.ts";
 import { activateVerifiedOverlay, prepareOverlayGeneration, readOverlayPointer, switchOverlayPointer, validateOverlayCandidate } from "../_lib/versioned-overlay.mjs";
 import { materializePublicationSnapshot, readPublicationSnapshot, validatePublishedSnapshot } from "../_lib/publication-snapshot-files.mjs";
@@ -713,40 +713,18 @@ async function fetchLiveBuildId(env, workerCodeSha) {
   return fallback;
 }
 
-async function assertReferencedAssetsExist({ env, files }) {
-  const origin = normalizeOrigin(env);
-  const cookie = await stagingCookieIfNeeded(env);
+async function assertReferencedAssetsExist({ env, files, assetRows }) {
   const refs = new Set();
   for (const file of files) {
     if (!file.assetPath.endsWith(".html")) continue;
     const source = fs.readFileSync(file.abs, "utf8");
     for (const ref of extractNextStaticRefs(source)) refs.add(ref);
   }
-  const missing = [];
   logPhase(`checking ${refs.size} referenced _next/static asset${refs.size === 1 ? "" : "s"}`);
-  for (const ref of refs) {
-    const response = await fetch(`${origin}${ref}`, {
-      method: "GET",
-      redirect: "manual",
-      cache: "no-store",
-      headers: cookie ? { cookie } : {},
-    });
-    await response.arrayBuffer().catch(() => null);
-    if (response.status !== 200) missing.push({ ref, status: response.status });
-  }
-  if (missing.length > 0) {
-    throw new Error(
-      [
-        "Content publish produced HTML that references static assets not present in the current Worker.",
-        "This means code/CSS assets changed; use the full Code Release path.",
-        ...missing.slice(0, 12).map((item) => `  - ${item.ref} (${item.status})`),
-        missing.length > 12 ? `  (+${missing.length - 12} more)` : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-  return { checked: refs.size };
+  return verifyStaticAssetResponses({
+    origin: normalizeOrigin(env), refs, cookie: await stagingCookieIfNeeded(env),
+    expectedHashes: new Map(assetRows.map((row) => [row.asset_path, row.content_sha])),
+  });
 }
 
 async function assertReferencedAssetsExistForRows({ env, rows }) {
@@ -757,31 +735,11 @@ async function assertReferencedAssetsExistForRows({ env, rows }) {
     if (!String(row.asset_path || "").endsWith(".html")) continue;
     for (const ref of extractNextStaticRefs(row.body)) refs.add(ref);
   }
-  const missing = [];
   logPhase(`checking ${refs.size} copied _next/static asset${refs.size === 1 ? "" : "s"}`);
-  for (const ref of refs) {
-    const response = await fetch(`${origin}${ref}`, {
-      method: "GET",
-      redirect: "manual",
-      cache: "no-store",
-      headers: cookie ? { cookie } : {},
-    });
-    await response.arrayBuffer().catch(() => null);
-    if (response.status !== 200) missing.push({ ref, status: response.status });
-  }
-  if (missing.length > 0) {
-    throw new Error(
-      [
-        "Production cannot serve the staging content overlay because required static assets are missing.",
-        "Promote the matching staging Worker to production first, then retry.",
-        ...missing.slice(0, 12).map((item) => `  - ${item.ref} (${item.status})`),
-        missing.length > 12 ? `  (+${missing.length - 12} more)` : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-  return { checked: refs.size };
+  return verifyStaticAssetResponses({
+    origin, refs, cookie,
+    expectedHashes: new Map(rows.map((row) => [row.asset_path, row.content_sha])),
+  });
 }
 
 async function verifyOverlayServing(env, rows) {
@@ -1588,7 +1546,7 @@ async function publishBuiltOverlay({ env, releaseRoot, git, publicationBaseline,
     logPhase("activating verified content generation");
     const serving = await activateVerifiedOverlay({ query: cfD1Query, env, workerVersionId: targetWorker.overlayKey, candidateId: candidate.id, current, verify: async () => {
       const result = await verifyOverlayServing(env, diff.verificationRows);
-      await assertReferencedAssetsExist({ env, files: shellFiles });
+      await assertReferencedAssetsExist({ env, files: shellFiles, assetRows: diff.expectedRows });
       return result;
     } });
     await pruneOverlaySnapshots(env, OVERLAY_SNAPSHOT_RETENTION, cfD1Query, targetWorker.overlayKey).catch((error) => console.warn(`[publish-content] snapshot cleanup warning: ${error.message}`));
@@ -1602,7 +1560,7 @@ async function publishBuiltOverlay({ env, releaseRoot, git, publicationBaseline,
   try {
     if (!dryRun && !skipVerify) {
       serving = await verifyOverlayServing(env, diff.verificationRows);
-      assets = await assertReferencedAssetsExist({ env, files: shellFiles });
+      assets = await assertReferencedAssetsExist({ env, files: shellFiles, assetRows: diff.expectedRows });
     }
   } catch (error) {
     if (upload.uploaded > 0 || upload.deleted > 0) {
@@ -1655,7 +1613,7 @@ export async function prepareCodeOverlay({ env, releaseRoot, git, versionId, pub
       const active = await waitForWorkerVersion(env, versionId);
       if (active.overlayKey !== versionId) throw new Error("Unexpected deployed Worker version metadata.");
       const serving = await verifyOverlayServing(env, diff.verificationRows);
-      await assertReferencedAssetsExist({ env, files: shellFiles });
+      await assertReferencedAssetsExist({ env, files: shellFiles, assetRows: diff.expectedRows });
       return serving;
     },
     async cleanup() {
