@@ -1,41 +1,16 @@
 import "server-only";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import compiledBaseline from "@/content/generated/publication-baseline.json";
 import { getDocumentRepository } from "./content-store-resolver";
 import { contentInventory } from "../shared/content-inventory";
 import { publicationValidation } from "../shared/publication-validation";
-import { createD1Executor, type D1DatabaseLike } from "./d1-executor";
-import { PUBLICATION_BASELINE_PATH, isPublicationSource, publicationReview, publicationSnapshot } from "../shared/publication-snapshot";
+import { isPublicationSource, publicationReview, publicationSnapshot } from "../shared/publication-snapshot";
 import { describePublicationChange } from "../shared/publication-review-details";
+import { ALL_PUBLICATION_SCOPE, publicationCandidate, publicationScopeOptions } from "../shared/publication-scope";
+import { loadPublishedSnapshot, publicationStoreContext } from "./active-publication";
 
-function database() {
-  if (process.env.SITE_ADMIN_STORAGE !== "db") return null;
-  try { return (getCloudflareContext().env as unknown as { SITE_ADMIN_DB?: D1DatabaseLike }).SITE_ADMIN_DB; }
-  catch { return null; }
-}
-
-export async function loadPublishedSnapshot() {
-  const db = database();
-  if (db) {
-    let row: { body: string } | null;
-    try {
-      const result = await createD1Executor(db).execute({ sql: "SELECT body FROM static_shell_overlays WHERE asset_path = ?", args: [PUBLICATION_BASELINE_PATH] });
-      row = result.rows[0] as { body: string } || null;
-    } catch (error) {
-      if (!String(error).includes("no such table")) throw error;
-      row = null;
-    }
-    if (row) {
-      const value = JSON.parse(row.body);
-      if (value.version !== 1 || !value.sources || typeof value.sources !== "object") throw new Error("Published baseline is invalid.");
-      return publicationSnapshot(value.sources);
-    }
-  }
-  return publicationSnapshot(compiledBaseline.sources);
-}
+export { loadPublishedSnapshot, loadPublishedSource } from "./active-publication";
 
 export async function loadSavedSnapshot(modified: Record<string, number> = {}) {
-  const db = database();
+  const db = publicationStoreContext()?.db;
   const sources: Record<string, string> = {};
   if (db) {
     // One SELECT gives the review a consistent database snapshot.
@@ -61,37 +36,17 @@ export async function loadSavedSnapshot(modified: Record<string, number> = {}) {
   return publicationSnapshot(sources);
 }
 
-export async function loadPublicationReview() {
+export async function loadPublicationReview(scope = ALL_PUBLICATION_SCOPE) {
   const modified: Record<string, number> = {};
-  const current = await loadSavedSnapshot(modified);
-  const baseline = await loadPublishedSnapshot();
+  const [saved, baseline] = await Promise.all([loadSavedSnapshot(modified), loadPublishedSnapshot()]);
+  const current = publicationCandidate(saved, baseline, scope);
   const review = publicationReview(current, baseline);
   const inventory = contentInventory(current.sources, modified);
-  return { ...review, validation: publicationValidation(current.sources, inventory), inventory, changes: review.changes.map((change) => ({
+  return { ...review, scope, availableScopes: publicationScopeOptions(saved, baseline),
+    pendingChangeCount: scope === ALL_PUBLICATION_SCOPE ? review.changes.length : publicationReview(saved, baseline).changes.length,
+    validation: publicationValidation(current.sources, inventory), inventory, changes: review.changes.map((change) => ({
     ...change,
     title: ({ "home.json": "Home", "now.json": "Now", "page-tree.json": "Page order", "filesystem/announcements.json": "Announcements", "filesystem/site-config.json": "Site settings", "filesystem/protected-routes.json": "Page access" } as Record<string, string>)[change.path] || change.title,
     details: describePublicationChange(change, current, baseline),
   })) };
-}
-
-export async function loadPublishedSource(relPath: string) {
-  if (!isPublicationSource(relPath)) throw new Error("Invalid publication path.");
-  const db = database();
-  if (db) {
-    try {
-      // Public feeds need only their own document, not every site's MDX source.
-      const result = await createD1Executor(db).execute({
-        sql: "SELECT json_extract(body, ?) AS source, json_extract(body, '$.sha') AS snapshot_sha FROM static_shell_overlays WHERE asset_path = ?",
-        args: [`$.sources.${JSON.stringify(relPath)}`, PUBLICATION_BASELINE_PATH],
-      });
-      const row = result.rows[0];
-      if (row) {
-        if (!/^[a-f0-9]{64}$/.test(String(row.snapshot_sha)) || (row.source !== null && typeof row.source !== "string")) throw new Error("Published baseline is invalid.");
-        return { source: row.source as string | null, snapshotSha: String(row.snapshot_sha) };
-      }
-    } catch (error) {
-      if (!String(error).includes("no such table")) throw error;
-    }
-  }
-  return { source: compiledBaseline.sources[relPath as keyof typeof compiledBaseline.sources] ?? null, snapshotSha: compiledBaseline.sha };
 }

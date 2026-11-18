@@ -37,8 +37,8 @@ Release Center or the dry-run commands below.
   the outgoing production version into the release history audit trail (shared
   `release_history` table in the control-plane D1, plus the local JSONL), then
   invokes `release:prod --skip-checks` with the confirmation env vars
-  pre-populated, preserves production D1, and rebuilds the production static
-  overlay from production D1 after the Worker deploy. Fall back to the
+  pre-populated. Production builds from its own verified Live snapshot; it
+  never reads the saved drafts or adopts staging content during a code release. Fall back to the
   long-form path below if you need finer-grained control or are recovering
   from a partial release.
 - Releases are serialized by a per-environment lock in the shared
@@ -48,85 +48,52 @@ Release Center or the dry-run commands below.
   lock; `RELEASE_CONTROL_PLANE=0` bypasses locking entirely when the
   control-plane D1 itself is down (both are for emergencies and are loud).
 
-## Content-from-D1 sync
+## Code Release and Live Content
 
-The staging worker runs `SITE_ADMIN_STORAGE=db` (per `wrangler.toml`), so its
-canonical content lives in D1. `release:staging` archives the requested Git SHA
-into an immutable directory under `.cache/release/snapshots/`, dumps staging D1
-into that snapshot, and builds there. It never rewrites the operator's working
-tree during the normal release path.
+Both guarded code releases build the committed SHA in an immutable workspace
+with the target environment's **last published snapshot**. They never build
+from draft content or reuse staging's rendered artifact for production. Staging
+acceptance covers the exact Worker, artifact, and overlay; the complete result
+is reusable for 30 minutes. Use `--force-verify` to rerun it.
 
-When Git needs a content backup, use the explicit sync path. It retains the
-dirty-content guard because this command intentionally rewrites root
-`content/*` before committing:
+1. Prepare the Worker, its static files, access policy, and search from that
+   pinned snapshot. Upload the Worker without exposing a preview URL.
+2. Write an inactive, versioned overlay generation to the target D1 and read
+   back its fingerprints. Associate it with the uploaded Worker version.
+3. Activate the checked Worker version and verify served HTML, resources, search,
+   and the environment's authentication behavior. A failed verification restores
+   the prior Worker, which still points to its original overlay. Cloudflare
+   deployment and D1 are not one transaction; a post-activation check failure
+   still requires rollback.
 
-```bash
-npm run release:staging:sync-git
-```
+The release lock covers all three steps. There is no clear-and-republish step.
+A missing or inconsistent Live baseline blocks the release; do not substitute
+saved drafts. Recover the known published snapshot before retrying. The
+legacy overlay is kept unchanged for the first Worker rollback. Versioned
+rollbacks retain the current Worker and five recent Worker generations, plus
+the recent content history. Do not manually deploy an unprepared Worker upload.
 
-Every full staging and production release uses an immutable snapshot of the
-committed source SHA. Tracked edits and untracked files in the working tree are
-excluded from the Worker bundle. Production still requires a clean tree and
-explicit SHA confirmation; staging may run while unrelated local work exists,
-but the release will contain committed code only.
+`release:staging:sync-git` remains an explicit draft backup, not part of a
+normal code build. Production still requires manual approval and SHA checks.
 
-Build-cache reuse is content-addressed as well as code-addressed. Recovery with
-`--skip-build` requires both an existing build cache for the exact Git SHA and
-an explicit `RELEASE_EXPECT_CONTENT_SHA`; the release fails closed when either
-identity cannot be proven. Routine `release:prod:from-staging` supplies the
-expected staging content SHA automatically and requires the complete staging
-artifact. If that artifact is missing, promotion stops and asks for a new
-staging release instead of rebuilding different bytes for production.
+## Content-Only Publish
 
-## Content-only fast publish
+Review and publish in the environment where the content was saved. The
+browser offers independent scopes or the full set of saved changes. Review
+shows the target, affected routes and field changes. The runner rechecks
+both the candidate and Live hashes under the release lock.
 
-For article/page/news text edits that do not change React code, CSS, images,
-or other `/_next/static/*` assets, use the content-only path:
+`npm run publish:content:staging` and `npm run publish:content:prod` are explicit
+full-draft operations. `npm run publish:content:prod:from-staging` is an
+explicit import of verified staging content, not part of a code release.
 
-```bash
-npm run publish:content:staging
-npm run publish:content:prod:from-staging
-```
-
-The Tauri Release Center exposes this as **Smart Release**. Content uses a
-two-step production path: publish the staging overlay first, verify staging,
-then copy the exact same verified overlay to production.
-
-This path:
-
-- dumps staging D1 to `content/*` for staging publishes;
-- auto-commits content-only drift on `main`;
-- computes `contentInputSha` before building;
-- skips the Next build entirely when `contentInputSha`, active Worker code SHA,
-  and live build id already match the current overlay status;
-- rebuilds the Next HTML shells with the currently deployed build id;
-- verifies every referenced `/_next/static/*` asset already exists on the
-  target environment;
-- uploads only changed generated `/__static/*.html` and policy JSON rows into
-  `static_shell_overlays` in the target D1;
-- stores the previous overlay rows as a D1 rollback snapshot before any
-  overlay change; and
-- verifies public routes return `x-static-overlay: 1`; and
-- for production, copies the verified staging overlay instead of rebuilding.
-
-If the asset check fails, do not force it. That means the edit changed code,
-CSS, or another static asset. Run the normal `release:staging` /
-`release:prod:from-staging` path instead.
-
-Useful recovery commands:
-
-```bash
-npm run publish:content:staging:rollback
-npm run publish:content:staging:clear
-npm run publish:content:prod:rollback
-npm run publish:content:prod:clear
-```
-
-Full Worker releases (`release:staging` / `release:prod:from-staging`) clear
-the target content overlay after deploying the code bundle. Production
-promotion then immediately rebuilds that overlay from production D1, preserving
-content authored in the production Site Admin while adopting the new code and
-static assets.
+The versioned content path builds the reviewed snapshot against the active
+Worker's code, verifies all new rows and resources before switching the
+pointer, then verifies the public site. A post-switch failure restores the
+previous complete generation. Use `publish:content:staging:rollback` or
+`publish:content:prod:rollback` for content-only rollback within the current
+Worker. To restore an earlier code/content pair, roll back the Worker. Do
+not clear a versioned overlay.
 
 ## Routine Release (recommended)
 

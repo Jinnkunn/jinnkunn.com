@@ -89,31 +89,30 @@ test("publication presentation: CAB-KWS retains its journal description for the 
 });
 
 test("publication presentation: both rendering paths keep venue metadata in the summary and authors alone in expanded content", async () => {
-  for (const path of ["../../components/publications/publication-list.tsx", "../../components/posts-mdx/publications-entry.tsx"]) {
-    const source = await readFile(new URL(path, import.meta.url), "utf8");
-    const [summary, expanded] = source.split('<div className="notion-toggle__content"');
-    assert.ok(expanded, path);
-    assert.match(summary, /additionalVenues\.map/);
-    assert.match(summary, /pub-venue-line highlighted-color color-gray/);
-    assert.ok(summary.indexOf("additionalVenues.map") < summary.indexOf("<PublicationResourceLinks"));
-    assert.match(expanded, /authors\.length > 0/);
-    assert.match(expanded, /<AuthorsLine|authors\.map/);
-    assert.doesNotMatch(expanded, /additionalVenues|VenueLine|PublicationTag|PublicationResourceLinks|pub-tag-colon|<br/);
-  }
+  const inline = await readFile(new URL("../../components/posts-mdx/publications-entry.tsx", import.meta.url), "utf8");
+  assert.match(inline, /<PublicationRow entry=/);
+  const source = await readFile(new URL("../../components/publications/publication-list.tsx", import.meta.url), "utf8");
+  const [summary, expanded] = source.split('<div className="notion-toggle__content"');
+  assert.ok(expanded);
+  assert.match(summary, /additionalVenues\.map/);
+  assert.match(summary, /pub-venue-line highlighted-color color-gray/);
+  assert.ok(summary.indexOf("additionalVenues.map") < summary.indexOf("<PublicationResourceLinks"));
+  assert.match(summary, /const hasAuthors = authors\.length > 0/);
+  assert.match(summary, /aria-label=\{`Authors of \$\{title\}`\}/);
+  assert.match(expanded, /<AuthorsLine/);
+  assert.doesNotMatch(expanded, /additionalVenues|VenueLine|PublicationTag|PublicationResourceLinks|pub-tag-colon|<br/);
 });
 
-test("publication presentation: both rendering paths put the primary venue on its own row after labels and highlights", async () => {
-  for (const path of ["../../components/publications/publication-list.tsx", "../../components/posts-mdx/publications-entry.tsx"]) {
-    const source = await readFile(new URL(path, import.meta.url), "utf8");
-    assert.match(source, /const hasMetadata = labels\.length > 0 \|\| highlights\.length > 0;/);
-    const metadataStart = source.indexOf("{hasMetadata &&");
-    const venueStart = source.indexOf("{primaryVenue ?", metadataStart);
-    assert.ok(metadataStart >= 0 && venueStart > metadataStart, path);
-    const metadata = source.slice(metadataStart, venueStart);
-    assert.match(metadata, /pub-meta-line ds-meta-row/);
-    assert.match(metadata, /PublicationHighlightBadge/);
-    assert.doesNotMatch(metadata, /primaryVenue|pub-venue-line/);
-    assert.match(source.slice(venueStart), /className="pub-venue-line highlighted-color color-gray">\{primaryVenue\}<\/span>/);
-    assert.ok(venueStart < source.indexOf("additionalVenues.map"));
-  }
+test("publication presentation: the shared row puts the venue below labels and highlights", async () => {
+  const source = await readFile(new URL("../../components/publications/publication-list.tsx", import.meta.url), "utf8");
+  assert.match(source, /const hasMetadata = labels\.length > 0 \|\| highlights\.length > 0;/);
+  const metadataStart = source.indexOf("{hasMetadata &&");
+  const venueStart = source.indexOf("{primaryVenue ?", metadataStart);
+  assert.ok(metadataStart >= 0 && venueStart > metadataStart);
+  const metadata = source.slice(metadataStart, venueStart);
+  assert.match(metadata, /pub-meta-line ds-meta-row/);
+  assert.match(metadata, /PublicationHighlightBadge/);
+  assert.doesNotMatch(metadata, /primaryVenue|pub-venue-line/);
+  assert.match(source.slice(venueStart), /className="pub-venue-line highlighted-color color-gray">\{primaryVenue\}<\/span>/);
+  assert.ok(venueStart < source.indexOf("additionalVenues.map"));
 });

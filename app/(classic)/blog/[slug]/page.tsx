@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { PostView } from "@/components/posts-mdx/post-view";
 import JsonLdScript from "@/components/seo/json-ld-script";
-import { getAdjacentBlogPosts } from "@/lib/blog";
+import { getBlogPostNavigation } from "@/lib/blog";
 import { getPostEntry, getPostSlugs, readPostSource } from "@/lib/posts/index";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildBlogPostStructuredData } from "@/lib/seo/structured-data";
@@ -58,7 +58,7 @@ export default async function BlogPostPage({
   const file = await readPostSource(slug);
   if (!file) notFound();
   // Same ordering as /blog (newest first), so "previous" is the newer post.
-  const { prev, next } = await getAdjacentBlogPosts(entry.href);
+  const { prev, next, series } = await getBlogPostNavigation(entry.href);
 
   const jsonLd = buildBlogPostStructuredData(cfg, {
     slug,
@@ -70,7 +70,7 @@ export default async function BlogPostPage({
   return (
     <>
       <JsonLdScript id={`ld-blog-${slug}`} data={jsonLd} />
-      <PostView entry={entry} source={file.source} prev={prev} next={next} />
+      <PostView entry={entry} source={file.source} prev={prev} next={next} series={series} />
     </>
   );
 }

@@ -23,12 +23,9 @@
 //      docs/runbooks/production-version-history.md.
 //   7. Invoke `release:prod --skip-checks` with all confirmation env
 //      vars pre-populated. We pass `--skip-checks` because staging
-//      already proved the same code SHA passes lint/tests/etc. When the
-//      staging build cache has the same content SHA, production reuses
-//      that artifact instead of rebuilding.
-//   8. Rebuild the production static overlay from production D1. Code
-//      promotion must never replace production-authored content with the
-//      staging database.
+//      already proved the same code SHA passes lint/tests/etc.
+//   8. Build against the active production publication, never drafts or
+//      the staging artifact, and verify the complete candidate before switching.
 //   9. After success, snapshot the new production version too — gives
 //      a continuous history without an extra command.
 //
@@ -48,7 +45,7 @@ import {
   compareDeploymentToReleaseSource,
   effectiveCodeSha,
 } from "../_lib/deploy-metadata.mjs";
-import { readMarker } from "../_lib/release-cache.mjs";
+import { verifyStagingRelease } from "../_lib/staging-release-verification.mjs";
 import {
   acquireReleaseLock,
   formatHeldLock,
@@ -72,25 +69,11 @@ function parseArgs(argv = process.argv.slice(2)) {
     dryRun: argv.includes("--dry-run"),
     skipVisual: argv.includes("--skip-visual"),
     skipAuthenticated: argv.includes("--skip-authenticated"),
-    // --force-verify forces a re-run of verify:staging:authenticated +
-    // check:staging-visual even when release-cloudflare.mjs cached a
-    // recent successful staging verify for the same SHA. Default is to
-    // honor the cache — the operator typically promotes within minutes
-    // of a green staging release, and re-running adds 1-3 min for no
-    // additional safety.
     forceVerify: argv.includes("--force-verify"),
     note,
   };
 }
 
-// Reuse the staging-verify cache that release-cloudflare.mjs writes
-// after a successful `verify:cf:staging`. 30 minutes is the
-// release-from-staging "warm window" — long enough that
-// release:staging → release:prod:from-staging in one sitting hits the
-// cache, short enough that an operator coming back from lunch re-runs
-// the gates fresh.
-const STAGING_VERIFY_TTL_MS = 30 * 60 * 1000;
-const STAGING_VERIFY_BUCKET = "staging-verified";
 const PRODUCTION_HISTORY_PATH = "docs/runbooks/production-version-history.md";
 
 function readEnv(name) {
@@ -187,10 +170,11 @@ function fail(message) {
 }
 
 let heldReleaseLock = null;
+let heldStagingLock = null;
 
 async function main() {
   const args = parseArgs();
-  loadProjectEnv({ cwd: ROOT, override: true });
+  loadProjectEnv({ cwd: ROOT, override: true, files: [".env"] });
 
   const accountId = readAccountId();
   const apiToken = readApiToken();
@@ -298,20 +282,17 @@ async function main() {
           ok: true,
           dryRun: true,
           plan: {
-            validateProductionDrafts: true,
             verifyStagingAuthenticated: !args.skipAuthenticated,
             checkStagingVisual: !args.skipVisual,
             snapshotPreviousProduction: Boolean(productionVersionId),
             releaseProd: {
               skipChecks: true,
-              reuseStagingBuild: staging.meta?.contentSha
-                ? "if staging cache exists for the same code+content"
-                : "best-effort; staging content metadata is missing",
-              expectedContentSha: staging.meta?.contentSha || "",
+              contentSource: "active production publication",
+              verifyBeforeActivation: true,
               expectProductionVersion: productionVersionId || "(none)",
             },
             preserveProductionD1: true,
-            publishProductionOverlayFromProductionD1: true,
+            publishSavedDrafts: false,
             snapshotNewProduction: true,
           },
           git,
@@ -348,35 +329,28 @@ async function main() {
   }
   heldReleaseLock = lock;
 
-  const verifyCache = args.forceVerify
-    ? null
-    : readMarker({
-        repoRoot: ROOT,
-        bucket: STAGING_VERIFY_BUCKET,
-        sha: git.sha,
-        maxAgeMs: STAGING_VERIFY_TTL_MS,
-      });
-  if (verifyCache) {
-    const ageMin = Math.round((Date.now() - verifyCache._writtenAtMs) / 60000);
-    console.log(
-      `[release-from-staging] reusing staging verify cache for ${git.sha.slice(0, 12)} (${ageMin}m old). Pass --force-verify to re-run.`,
-    );
+  // Hold the staging snapshot stable while verifying and promoting it.
+  const stagingLock = await acquireReleaseLock({
+    root: ROOT, environment: "staging", operation: `verify staging for promotion ${git.sha.slice(0, 12)}`,
+  });
+  if (!stagingLock.ok) {
+    console.error(`[release-from-staging] ${formatHeldLock(stagingLock.held)}`);
+    process.exitCode = 1;
+    return;
   }
-  if (!args.skipAuthenticated && !verifyCache) {
-    console.log(`[release-from-staging] verify:staging:authenticated`);
-    run("npm", ["run", "verify:staging:authenticated"], {
-      label: "verify:staging:authenticated",
-    });
-  }
-  if (!args.skipVisual && !verifyCache) {
-    console.log(`[release-from-staging] check:staging-visual`);
-    run("npm", ["run", "check:staging-visual"], {
-      label: "check:staging-visual",
-    });
-  }
-
-  console.log("[release-from-staging] validating production content before changing the Worker");
-  run("node", ["scripts/content/validate-publication.mjs", "--env=production"], { label: "production publication preflight" });
+  heldStagingLock = stagingLock;
+  const acceptance = await verifyStagingRelease({
+    root: ROOT,
+    expected: {
+      codeSha: git.sha, versionId: staging.versionId, deploymentId: staging.deploymentId,
+      artifactSha: staging.meta?.contentSha,
+    },
+    force: args.forceVerify,
+    skipAuthenticated: args.skipAuthenticated,
+    skipVisual: args.skipVisual,
+    runCheck: (check) => run("npm", ["run", check], { label: check }),
+  });
+  console.log(`[release-from-staging] staging ${acceptance.cached ? "cached" : "fresh"} checks: ${acceptance.checks.join(", ")}; version=${acceptance.identity.versionId} publication=${acceptance.identity.publicationSha}`);
 
   if (productionVersionId) {
     console.log(`[release-from-staging] snapshotting current production version`);
@@ -398,8 +372,6 @@ async function main() {
   const productionReleaseEnv = {
     CONFIRM_PRODUCTION_DEPLOY: "1",
     CONFIRM_PRODUCTION_SHA: git.sha,
-    RELEASE_REUSE_STAGING_BUILD: "1",
-    RELEASE_EXPECT_CONTENT_SHA: staging.meta?.contentSha || "",
     ...(productionVersionId
       ? { RELEASE_EXPECT_PRODUCTION_VERSION: productionVersionId }
       : {}),
@@ -414,13 +386,6 @@ async function main() {
   run("npm", ["run", "release:prod", "--", "--skip-checks"], {
     label: "release:prod",
     env: productionReleaseEnv,
-  });
-
-  console.log(
-    `[release-from-staging] preserving production D1 and rebuilding its public content overlay`,
-  );
-  run("npm", ["run", "publish:content:prod"], {
-    label: "publish production D1 content overlay",
   });
 
   console.log(`[release-from-staging] snapshotting new production version`);
@@ -443,4 +408,7 @@ main()
     // exitCode instead of exit() so the lock release below still runs.
     process.exitCode = 1;
   })
-  .finally(() => heldReleaseLock?.release());
+  .finally(async () => {
+    await heldStagingLock?.release();
+    await heldReleaseLock?.release();
+  });

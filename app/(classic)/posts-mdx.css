@@ -863,3 +863,39 @@
 .mdx-post__nav br {
   line-height: 2;
 }
+.reading-guide {
+  margin-block: var(--ds-space-5);
+  font-size: var(--ds-text-md);
+  line-height: 1.5;
+}
+
+.reading-guide > h2 {
+  margin: 0 0 var(--ds-space-2);
+  font-size: var(--ds-text-base);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: 0;
+}
+
+.reading-guide > ol {
+  margin: 0;
+  padding-inline-start: 1.4em;
+  list-style: decimal;
+}
+
+.reading-guide li + li {
+  margin-top: var(--ds-space-1);
+}
+
+.bio-research-reading dl {
+  display: grid;
+  gap: var(--ds-space-3);
+  margin: 0;
+}
+
+.bio-research-reading dt {
+  color: var(--ds-text-muted);
+}
+
+.bio-research-reading dd {
+  margin: 0;
+}

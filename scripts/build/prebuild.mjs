@@ -6,6 +6,10 @@ import { pathToFileURL } from "node:url";
 
 import matter from "gray-matter";
 import { readPublicationSnapshot } from "../_lib/publication-snapshot-files.mjs";
+import { publicationsDisplayedOnPage } from "../../lib/components/parse.ts";
+import { publicationAnchorId } from "../../lib/shared/publication-identity.ts";
+import { normalizeWorksAffiliation } from "../../lib/shared/works-affiliation.ts";
+import { venueSummaryText } from "../../components/publications/labels.ts";
 
 import { DEFAULT_SITE_CONFIG } from "../../lib/shared/default-site-config.mjs";
 import { canonicalizeRoutePath, normalizeRoutePath } from "../../lib/shared/route-utils.mjs";
@@ -237,7 +241,7 @@ function extractJsxAttrText(rawLine) {
           // Not JSON after all; fall through and treat it as plain text.
         }
       }
-      out.push(value);
+      out.push(tag[0].startsWith("<WorksEntry ") && name === "affiliation" ? normalizeWorksAffiliation(value) : value);
     }
   }
   return stripMarkdownInline(out.join(" "));
@@ -246,6 +250,7 @@ function extractJsxAttrText(rawLine) {
 function collectSearchLines(body) {
   const headings = [];
   const bodyLines = [];
+  const contentLines = [];
   let inFence = false;
 
   for (const rawLine of String(body || "").split(/\r?\n/)) {
@@ -254,6 +259,7 @@ function collectSearchLines(body) {
       continue;
     }
     if (inFence) continue;
+    contentLines.push(rawLine);
     // Thematic breaks (`---`, `***`) carry no search value.
     if (/^\s{0,3}([-*_])\s*\1\s*\1[-*_\s]*$/.test(rawLine)) continue;
 
@@ -272,7 +278,7 @@ function collectSearchLines(body) {
     if (text) bodyLines.push(text);
   }
 
-  return { headings, bodyLines };
+  return { headings, bodyLines, contentLines };
 }
 
 export function extractSearchFieldsFromMdx(body) {
@@ -328,11 +334,15 @@ function parseContentEntry({ root, kind, slug, routePath, source, mtimeMs }) {
   if (!title) throw new Error(`${kind}: frontmatter.title is required (${slug})`);
 
   const collected = collectSearchLines(parsed.content);
+  const publicationPage = routePath === "/publications";
+  let publicationsSource = "";
   let contentMtimeMs = Number.isFinite(mtimeMs) ? mtimeMs : 0;
   for (const embed of resolveEmbeddedComponents(root, parsed.content)) {
     let embedded = null;
     try {
-      embedded = collectSearchLines(matter(fs.readFileSync(embed.file, "utf8")).content);
+      const embeddedSource = fs.readFileSync(embed.file, "utf8");
+      embedded = collectSearchLines(matter(embeddedSource).content);
+      if (publicationPage && embed.name === "publications") publicationsSource = embeddedSource;
       contentMtimeMs = Math.max(contentMtimeMs, fs.statSync(embed.file).mtimeMs);
     } catch (err) {
       throw new Error(`${kind}: <${embed.name}Block /> source is unreadable (${err?.message || err})`);
@@ -359,6 +369,8 @@ function parseContentEntry({ root, kind, slug, routePath, source, mtimeMs }) {
     lastmod = new Date(contentMtimeMs).toISOString();
   }
 
+  const publicationEntries = publicationPage
+    ? publicationsDisplayedOnPage(collected.contentLines.join("\n"), publicationsSource) : [];
   return {
     routePath,
     kind,
@@ -368,6 +380,17 @@ function parseContentEntry({ root, kind, slug, routePath, source, mtimeMs }) {
     lastmod,
     headings: capHeadings(collected.headings),
     text: capSearchText(collected.bodyLines),
+    publications: publicationEntries.filter((entry) => typeof entry.title === "string" && entry.title.trim()).map((entry) => ({
+      anchor: publicationAnchorId(entry.entryId),
+      title: entry.title,
+      year: typeof entry.year === "string" ? entry.year : "",
+      text: capSearchText([
+        entry.year,
+        ...(entry.venues ?? []).map(venueSummaryText),
+        ...(entry.authorsRich?.map((author) => author.name) ?? entry.authors ?? []),
+        ...(entry.labels ?? []),
+      ].filter((text) => typeof text === "string")),
+    })),
   };
 }
 
@@ -528,6 +551,7 @@ export function buildContentIndexes(root = process.cwd()) {
         text: entry.text,
       };
       if (entry.headings.length) item.headings = entry.headings;
+      if (entry.publications?.length) item.publications = entry.publications;
       return item;
     });
 
@@ -567,6 +591,7 @@ function writeContentIndexes({ writeSearchIndex = true } = {}) {
 }
 
 function resolveMode() {
+  if (process.argv.includes("--stubs")) return "stubs";
   // Explicit env always wins. When unset, infer `db` from
   // SITE_ADMIN_STORAGE=db so users only need one knob to flip the whole
   // content pipeline; everything else falls through to the legacy `stubs`

@@ -4,10 +4,11 @@ import SiteFooter from "@/components/site-footer";
 import SiteNav from "@/components/site-nav";
 import NotionBlockBehavior from "@/components/notion-block-behavior";
 import ViewportCssVars from "@/components/viewport-css-vars";
-import { SiteAnnouncement } from "@/components/site-announcement";
+import { announcementFrameData, SiteAnnouncement } from "@/components/site-announcement";
+import { MonochromeSchedule, ScheduledSiteAnnouncement } from "@/components/site-presentation-schedule";
 import { getAnnouncementsDocument } from "@/lib/announcements";
 import { getActiveMonochromeAppearance } from "@/lib/appearance";
-import { getActiveAnnouncement } from "@/lib/shared/announcements";
+import { getAnnouncementSchedule } from "@/lib/shared/announcements";
 import { getSiteConfig } from "@/lib/site-config";
 
 // Route-scoped global CSS for the classic (1:1) version.
@@ -40,7 +41,7 @@ export default async function ClassicLayout({
   children: React.ReactNode;
 }>) {
   const config = getSiteConfig();
-  const announcement = getActiveAnnouncement(getAnnouncementsDocument());
+  const { announcement, refreshAt } = getAnnouncementSchedule(getAnnouncementsDocument());
   const monochrome = getActiveMonochromeAppearance(config.appearance.monochrome);
   return (
     <>
@@ -59,7 +60,10 @@ export default async function ClassicLayout({
         <ViewportCssVars />
         {/* Lightweight JS to restore Notion interactions that otherwise require client hydration. */}
         <NotionBlockBehavior />
-        {announcement ? <SiteAnnouncement announcement={announcement} /> : null}
+        {refreshAt !== null ? <ScheduledSiteAnnouncement initial={announcement ? announcementFrameData(announcement) : null} refreshAt={refreshAt}>
+          {announcement ? <SiteAnnouncement announcement={announcement} /> : null}
+        </ScheduledSiteAnnouncement> : announcement ? <SiteAnnouncement announcement={announcement} /> : null}
+        {config.appearance.monochrome.enabled && (config.appearance.monochrome.startsAt || config.appearance.monochrome.endsAt) ? <MonochromeSchedule config={config.appearance.monochrome} /> : null}
         <div id="content-wrapper" className="super-content-wrapper">
           {children}
         </div>

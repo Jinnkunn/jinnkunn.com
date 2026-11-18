@@ -2,6 +2,7 @@
 
 import { loadProjectEnv } from "../_lib/load-project-env.mjs";
 import { spawnSync } from "node:child_process";
+import { versionedOverlay } from "../../lib/shared/static-release.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -200,6 +201,13 @@ async function main() {
   const latestVersion = pickLatestVersion(versions);
   if (!latestVersion) {
     throw new Error("No Worker version available to deploy. Upload a version first.");
+  }
+  const expectedVersionId = readStringEnv("DEPLOY_EXPECT_VERSION_ID");
+  if (expectedVersionId && latestVersion.id !== expectedVersionId) {
+    throw new Error("DEPLOY_VERSION_STALE: latest upload is not the prepared Worker candidate.");
+  }
+  if (versionedOverlay(latestVersion.message) && !expectedVersionId) {
+    throw new Error("Use the guarded release command to prepare and verify this Worker's content before deployment.");
   }
   if (codeSha) {
     const mismatch = describeVersionMismatch({

@@ -3,9 +3,10 @@ import { isSiteComponentName } from "../site-admin/component-registry.ts";
 import { documentFieldProblems } from "./document-fields.ts";
 import { frontmatterProblems } from "./document-draft-validation.ts";
 import {
-  parseNewsComponentDraft, parseTeachingComponentDraft, parseWorksComponentDraft, parsePublicationsComponentDraft,
-  newsEntryIssues, teachingEntryIssues, worksEntryIssues, publicationEntryIssues,
+  parseNewsComponentDraft, parseTeachingComponentDraft, parseWorksComponentDraft,
+  newsEntryIssues, teachingEntryIssues, worksEntryIssues,
 } from "../../app/site-admin/site-admin-structured-collection-model.ts";
+import { publicationEntryProblems, readPublicationsDocument } from "../../packages/content-core/src/publications.ts";
 
 export type ContentProblem = { field: string; message: string; entryId?: string };
 export type ContentInventoryItem = { path: string; modifiedAt: string | null; hidden: boolean; issues: ContentProblem[] };
@@ -36,9 +37,8 @@ export function contentInventory(sources: Record<string, string>, modified: Reco
         else if (name === "teaching") issues = parseTeachingComponentDraft(source).items.flatMap(teachingEntryIssues);
         else if (name === "works") issues = parseWorksComponentDraft(source).items.flatMap(worksEntryIssues);
         else {
-          const draft = parsePublicationsComponentDraft(source);
-          issues = draft.items.flatMap(publicationEntryIssues);
-          if ((source.match(/<PublicationsEntry\b/g)?.length || 0) > draft.items.length) issues.push({ field: "source", message: "A publication entry could not be read. Review the source before saving." });
+          issues = readPublicationsDocument(source, { strict: true }).entries.flatMap((entry) =>
+            publicationEntryProblems(entry).map((issue) => ({ ...issue, entryId: entry.entryId })));
         }
         } catch { issues = [{ field: "source", message: "An entry could not be read. Review the source before saving." }]; }
       }

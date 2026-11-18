@@ -21,25 +21,12 @@ function readWorkflow() {
   );
 }
 
-test("release-from-dispatch: SITE_ADMIN_DB_ENV is pinned to staging for both targets", () => {
-  // Incident (2026-04-29): SITE_ADMIN_DB_ENV used to track TARGET_ENV, so
-  // production builds dumped from production D1 — which the operator never
-  // writes to. A workspace nav addition lived in staging D1 only; the
-  // production deploy dumped a stale 1.3 KB site-config from production D1
-  // and shipped a worker with no Calendar nav even though the code SHA was
-  // correct. Always dumping staging D1 makes "Promote to Production" ship
-  // exactly what the operator just looked at on staging.
+test("release-from-dispatch: guarded CLI owns both staging and production", () => {
   const yaml = readWorkflow();
-  assert.match(
-    yaml,
-    /SITE_ADMIN_DB_ENV:\s*staging\b/,
-    "SITE_ADMIN_DB_ENV must be pinned to literal `staging`, not bound to TARGET_ENV",
-  );
-  assert.doesNotMatch(
-    yaml,
-    /SITE_ADMIN_DB_ENV:\s*\$\{\{\s*env\.TARGET_ENV\s*\}\}/,
-    "SITE_ADMIN_DB_ENV must NOT track TARGET_ENV — production has no operator path that writes to its D1",
-  );
+  assert.match(yaml, /npm run release:staging -- --skip-checks/);
+  assert.match(yaml, /npm run release:prod:from-staging\b/);
+  assert.doesNotMatch(yaml, /npm run release:prod --/);
+  assert.match(yaml, /playwright-core install --with-deps chromium/);
 });
 
 test("release-from-dispatch: workflow_dispatch + repository_dispatch triggers are present", () => {
@@ -57,25 +44,6 @@ test("release-from-dispatch: workflow_dispatch + repository_dispatch triggers ar
     yaml,
     /types:\s*\n\s*-\s*release-staging\s*\n\s*-\s*release-production/,
     "repository_dispatch must keep release-staging + release-production action types",
-  );
-});
-
-test("release-from-dispatch: staging≡release-source SHA guard fires on production releases", () => {
-  // Defense-in-depth for the manual GitHub Actions fallback. The normal
-  // workspace path runs local Cloudflare release commands; this workflow
-  // re-checks because `gh workflow run … -f env=production` bypasses the
-  // local preflight entirely. Comparing CF API + GITHUB_SHA in the runner
-  // means an out-of-band trigger can't ship code staging hasn't validated.
-  const yaml = readWorkflow();
-  assert.match(
-    yaml,
-    /Guard\s*—\s*staging matches release source before production releases/,
-    "staging≡release-source guard step is missing or renamed",
-  );
-  assert.match(
-    yaml,
-    /if:\s*env\.TARGET_ENV\s*==\s*'production'/,
-    "guard must only fire when TARGET_ENV=production",
   );
 });
 

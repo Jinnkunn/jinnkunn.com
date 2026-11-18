@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const root = process.cwd();
@@ -17,6 +17,17 @@ const middlewareMethodTargetFiles = [
 
 const guardMarker = "open-next-runtime-manifest-guard";
 const getMiddlewareManifestMethodMarker = "open-next-runtime-get-middleware-manifest-guard";
+
+async function writeWorkerArtifact(file, source) {
+  const target = await realpath(file);
+  if (!target.startsWith(`${await realpath(serverRoot)}${path.sep}`)) throw new Error(`Refusing to patch a file outside the Worker artifact: ${file}`);
+  // Replace instead of editing in-place: traced files may be hardlinked.
+  const temporary = `${file}.patch-${process.pid}`;
+  try {
+    await writeFile(temporary, source, { flag: "wx" });
+    await rename(temporary, file);
+  } finally { await rm(temporary, { force: true }); }
+}
 
 async function readMiddlewareManifestLiteral() {
   const raw = await readFile(manifestPath, "utf8");
@@ -125,7 +136,7 @@ async function main() {
     const source = await readFile(file, "utf8");
     const patched = applyGuard(source, manifestLiteral, path.relative(root, file));
     if (patched.changed) {
-      await writeFile(file, patched.source);
+      await writeWorkerArtifact(file, patched.source);
     }
     results.push({
       file: path.relative(root, file),
@@ -146,7 +157,7 @@ async function main() {
     }
     const patched = applyMiddlewareManifestMethodGuard(source, path.relative(root, file));
     if (patched.changed) {
-      await writeFile(file, patched.source);
+      await writeWorkerArtifact(file, patched.source);
     }
     results.push({
       file: path.relative(root, file),

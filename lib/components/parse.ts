@@ -1,4 +1,7 @@
 import type { PublicationStructuredEntry } from "../seo/publications-items";
+import { readPublicationsDocument, type IdentifiedPublication } from "../../packages/content-core/src/publications.ts";
+export { parsePublicationEntryData } from "../../packages/content-core/src/publications.ts";
+import { normalizeWorksAffiliation } from "../shared/works-affiliation.ts";
 import {
   type SiteComponentName,
   getSiteComponentDefinition,
@@ -8,7 +11,6 @@ const ATTR_RE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{([^}]*)\})/g;
 const NEWS_ENTRY_RE = /<NewsEntry\b([\s\S]*?)>\s*([\s\S]*?)\s*<\/NewsEntry>/g;
 const WORKS_ENTRY_RE = /<WorksEntry\b([\s\S]*?)>\s*([\s\S]*?)\s*<\/WorksEntry>/g;
 const TEACHING_ENTRY_RE = /<TeachingEntry\b([\s\S]*?)\/>/g;
-const PUBLICATIONS_ENTRY_RE = /<PublicationsEntry\b([\s\S]*?)\/>/g;
 
 export type NewsComponentEntry = {
   entryId?: string;
@@ -79,10 +81,6 @@ export function parseJsxAttrs(raw: string): Record<string, string> {
   return attrs;
 }
 
-function unescapeJsonAttr(raw: string): string {
-  return raw.replace(/\\u0027/g, "'");
-}
-
 export function parseNewsEntries(source: string): NewsComponentEntry[] {
   const entries = parseNewsFeedItems(source)
     .filter((item): item is Extract<NewsComponentFeedItem, { type: "entry" }> => item.type === "entry")
@@ -145,24 +143,17 @@ export function parseTeachingEntries(source: string): TeachingComponentEntry[] {
 
 export function parsePublicationsEntries(
   source: string,
-): PublicationStructuredEntry[] {
-  const body = stripMdxFrontmatter(source);
-  const entries: PublicationStructuredEntry[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = PUBLICATIONS_ENTRY_RE.exec(body)) !== null) {
-    const attrs = parseJsxAttrs(match[1] ?? "");
-    const rawData = attrs.data ?? "";
-    if (!rawData) continue;
-    try {
-      const parsed = JSON.parse(unescapeJsonAttr(rawData));
-      if (parsed && typeof parsed === "object") {
-        entries.push(parsed as PublicationStructuredEntry);
-      }
-    } catch {
-      // Skip malformed rows so one bad entry does not break the page.
-    }
-  }
-  return entries;
+): IdentifiedPublication[] {
+  return readPublicationsDocument(source).entries;
+}
+
+export function publicationsDisplayedOnPage(body: string, component: string): IdentifiedPublication[] {
+  const inline = parsePublicationsEntries(body);
+  const block = /^\s*<PublicationsBlock(?:\s+limit=\{(\d+)\})?\s*\/>\s*$/m.exec(body);
+  if (!block) return inline;
+  const entries = parsePublicationsEntries(component);
+  const limit = Number(block[1] || 0);
+  return [...inline, ...(limit > 0 ? entries.slice(0, limit) : entries)];
 }
 
 export function parseWorksEntries(source: string): WorksComponentEntry[] {
@@ -175,7 +166,7 @@ export function parseWorksEntries(source: string): WorksComponentEntry[] {
       entryId: attrs.entryId || undefined,
       category: attrs.category === "passed" ? "passed" : "recent",
       role: attrs.role ?? "",
-      affiliation: attrs.affiliation || undefined,
+      affiliation: attrs.affiliation ? normalizeWorksAffiliation(attrs.affiliation) : undefined,
       affiliationUrl: attrs.affiliationUrl || undefined,
       location: attrs.location || undefined,
       period: attrs.period ?? "",

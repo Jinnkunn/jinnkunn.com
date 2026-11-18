@@ -84,6 +84,15 @@ test("release live status: production content changes publish production D1 to L
   assert.equal(plan.script, "publish:content:prod");
 });
 
+test("release live status: versioned production does not suggest importing staging content after code promotion", () => {
+  const status = statusFixture();
+  status.deployments.production.overlayKey = "live-worker";
+  status.overlays.production.status.publicationSnapshotSha = "9".repeat(64);
+  const plan = deriveLiveReleasePlan({ status });
+  assert.equal(plan.kind, "noop");
+  assert.match(plan.reason, /independent published content/);
+});
+
 test("release live status: Now-only change publishes one D1 row to production", () => {
   const plan = deriveLiveReleasePlan({
     status: statusFixture({

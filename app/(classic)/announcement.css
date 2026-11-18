@@ -283,3 +283,4 @@
     transition: none;
   }
 }
+.site-announcement__markup { display: contents; }

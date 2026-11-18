@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/build/prebuild.mjs --stubs",
     "dev": "next dev --webpack",
     "prebuild": "node scripts/build/prebuild.mjs",
     "build": "next build --webpack",
@@ -83,6 +84,7 @@
     "verify:cf:both": "node scripts/release/verify-cloudflare-deployment.mjs --env=both",
     "verify:static-shell": "node scripts/release/verify-cloudflare-deployment.mjs --env=production",
     "verify:staging:authenticated": "node scripts/qa/staging-authenticated-qa.mjs",
+    "verify:release:local": "node scripts/qa/local-publication-worker.mjs",
     "smoke:prod": "node scripts/qa/smoke-prod.mjs",
     "check:quality:prod": "node scripts/qa/quality-prod.mjs",
     "check:a11y": "node scripts/qa/a11y-check.mjs",

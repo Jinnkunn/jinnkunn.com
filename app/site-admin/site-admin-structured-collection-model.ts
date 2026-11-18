@@ -1,12 +1,11 @@
 import {
   parseJsxAttrs,
-  parsePublicationsEntries,
   parseTeachingEntries,
   parseWorksEntries,
   type TeachingComponentEntry,
   type WorksComponentEntry,
 } from "../../lib/components/parse.ts";
-import type { PublicationStructuredEntry } from "@/lib/seo/publications-items";
+import { legacyPublicationsSource, publicationEntryProblems, readPublicationsDocument, type PublicationStructuredEntry } from "../../packages/content-core/src/publications.ts";
 import type { SiteComponentName } from "@jinnkunn/content-core/components";
 import { parseMonthRangePeriod, type MonthRangeValue } from "./site-admin-month-range.ts";
 import { parseTeachingTerm } from "./site-admin-teaching-term.ts";
@@ -158,27 +157,8 @@ export function worksEntryIssues(item: WorksDraftEntry): ComponentEntryIssue[] {
   return issues;
 }
 
-export function publicationEntryIssues(
-  item: PublicationDraftEntry,
-): ComponentEntryIssue[] {
-  const issues: ComponentEntryIssue[] = [];
-  if (!item.title.trim()) {
-    issues.push({ entryId: item.id, field: "title", message: "Add a title." });
-  }
-  if (!item.year.trim()) {
-    issues.push({ entryId: item.id, field: "year", message: "Add a year or year group." });
-  }
-  const urlFields: Array<[string, string | undefined]> = [
-    ["url", item.url],
-    ["doiUrl", item.doiUrl],
-    ["arxivUrl", item.arxivUrl],
-  ];
-  for (const [field, value] of urlFields) {
-    if (!optionalUrlIsValid(value)) {
-      issues.push({ entryId: item.id, field, message: "Enter a valid URL." });
-    }
-  }
-  return issues;
+export function publicationEntryIssues(item: PublicationDraftEntry): ComponentEntryIssue[] {
+  return publicationEntryProblems(item).map((issue) => ({ ...issue, entryId: item.id }));
 }
 
 export function parseNewsComponentDraft(source: string): NewsComponentDraft {
@@ -292,32 +272,16 @@ export function serializeWorksComponentDraft(draft: WorksComponentDraft): string
   return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
 }
 
-export function parsePublicationsComponentDraft(
-  source: string,
-): PublicationsComponentDraft {
-  const { frontmatter } = componentFrontmatterFromSource(source, "Publications");
-  return {
-    frontmatter,
-    items: parsePublicationsEntries(source).map((entry, index) => {
-      const { entryId, ...value } = entry;
-      return {
-        id: normalizeComponentEntryId(entryId, "publication", index),
-        ...value,
-      };
-    }),
-  };
+export function parsePublicationsComponentDraft(source: string): PublicationsComponentDraft {
+  const { frontmatter, entries } = readPublicationsDocument(source);
+  return { frontmatter, items: entries.map(({ entryId, ...value }) => ({ ...value, id: entryId })) };
 }
 
-export function serializePublicationsComponentDraft(
-  draft: PublicationsComponentDraft,
-): string {
-  const body = draft.items
-    .map((entry) => {
-      const data = { ...entry, entryId: entry.id, id: undefined };
-      return `<PublicationsEntry data='${jsonDataAttr(data)}' />`;
-    })
-    .join("\n\n");
-  return [draft.frontmatter.trimEnd(), "", body.trimEnd(), ""].join("\n");
+export function serializePublicationsComponentDraft(draft: PublicationsComponentDraft): string {
+  return legacyPublicationsSource({
+    kind: "publications", version: 1, frontmatter: draft.frontmatter,
+    entries: draft.items.map(({ id, ...entry }) => ({ ...entry, entryId: id })),
+  });
 }
 
 export function moveDraftEntry<T>(items: T[], index: number, direction: -1 | 1) {
@@ -461,10 +425,6 @@ function jsxAttr(name: string, value: string | undefined) {
 
 function compactAttrs(attrs: string[]) {
   return attrs.filter(Boolean).join(" ");
-}
-
-function jsonDataAttr(value: unknown) {
-  return JSON.stringify(value).replace(/'/g, "\\u0027");
 }
 
 function componentDraftItemsForSource(name: SiteComponentName, source: string) {

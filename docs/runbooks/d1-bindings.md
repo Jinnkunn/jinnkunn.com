@@ -7,10 +7,9 @@
 - **Production D1 is the Live content source.** Content saved in the
   production Site Admin remains authoritative and is published through the
   production static overlay without a Worker rebuild.
-- Full production code promotion may reuse the staging build artifact, but it
-  never copies staging `content_files` over production. After the Worker is
-  deployed, `release:prod:from-staging` rebuilds the public overlay from the
-  existing production D1.
+- Production code promotion builds the verified code against production's
+  last **published** snapshot. It never reads or copies either Draft table.
+  It verifies a versioned overlay before activating the new Worker.
 - **We don't delete production D1** — leaving it bound costs $0 and
   removing the binding would break Live editing and overlay publishing.
 
@@ -34,23 +33,20 @@ The `2026-04-29` Calendar nav incident exposed the gap:
 6. Production worker shipped without the new nav, even though its code
    SHA was correct.
 
-Fix landed in commit `b8194e1`: pin `SITE_ADMIN_DB_ENV: staging` for
-both targets. "Promote to Production" now ships exactly what the
-operator just looked at on staging.
+The earlier fix pinned the staging content environment for both targets.
+The current release path supersedes it: the code is verified in staging,
+but each environment uses only its own already-published sources.
 
 ## Guardrails
 
-- `scripts/release/release-cloudflare.mjs` forces build-time `SITE_ADMIN_DB_ENV=staging`
-  for both local staging and production releases.
+- `scripts/release/release-cloudflare.mjs` pins the destination's Live
+  sources and disables draft synchronization during candidate builds.
 - The release script records a post-build `content=` snapshot hash in Worker
   metadata. This is what lets production preflight detect content-only edits
   even when `code=` is unchanged.
-- `build:cf` artifact reuse is disabled by default because staging D1 can
-  change without a git commit. `ALLOW_D1_BUILD_CACHE=1` is an explicit
-  operator override, not the routine path.
-- `tests/release-from-dispatch-contract.test.mjs` re-asserts the fallback
-  workflow pin and fails any future change that re-binds
-  `SITE_ADMIN_DB_ENV` to `TARGET_ENV`.
+- The staging artifact mirror is useful for inspection, not as the
+  source of production content. Production builds its own candidate.
+- The fallback workflow uses the same guarded CLI entrypoints.
 - `.github/workflows/snapshot-staging-d1.yml` is manual-only. Dispatch it
   when staging D1 needs a git recovery/audit snapshot; the weekday
   schedule stays disabled to avoid routine Actions minutes.
@@ -63,8 +59,8 @@ operator just looked at on staging.
 ## Production D1 safety boundary
 
 Production Site Admin writes directly to production D1. Normal code promotion
-preserves those rows and runs `npm run publish:content:prod` after deployment,
-so the bundled staging snapshot cannot hide newer Live content. The
+preserves those rows and the independent Live snapshot. Only an explicit
+content publication changes what visitors read. The
 `db:copy:staging-to-production` command remains available only for deliberate
 recovery or migration; it is never called by the promotion script.
 

@@ -4,11 +4,15 @@ import type { RouteManifestItem } from "../routes-manifest";
 import type { PublicationChangeDetails } from "./publication-review-details";
 import type { ContentInventoryItem } from "./content-inventory";
 import type { PublicationValidation } from "./publication-validation";
+import type { PublicationScopeOption } from "./publication-scope";
 
 export type PublicationSnapshot = { version: number; sha: string; sources: Record<string, string> };
 export type PublicationSearchSnapshot = { version: number; snapshotSha: string; index: SearchIndexItem[]; manifest: RouteManifestItem[] };
 export type PublicationReview = {
   snapshotSha: string; baselineSha: string;
+  scope?: string;
+  availableScopes?: PublicationScopeOption[];
+  pendingChangeCount?: number;
   inventory?: ContentInventoryItem[];
   validation?: PublicationValidation;
   changes: { path: string; oldPath: string; kind: string; title: string; before: string; after: string; details?: PublicationChangeDetails }[];

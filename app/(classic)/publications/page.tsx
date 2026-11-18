@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import JsonLdScript from "@/components/seo/json-ld-script";
 import { PageView } from "@/components/posts-mdx/page-view";
 import { parsePublicationsEntries } from "@/lib/components/parse";
-import { readComponent } from "@/lib/components/store";
+import { readComponentSource } from "@/lib/components/source";
 import { getPageEntry, readPageSource } from "@/lib/pages/index";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { buildPublicationsStructuredData } from "@/lib/seo/structured-data";
@@ -16,8 +16,7 @@ export const dynamic = "force-static";
 // only embeds `<PublicationsBlock />`; entries live in the dedicated
 // component file). Used to materialize JSON-LD for SEO.
 async function readPublicationsEntries() {
-  const component = await readComponent("publications");
-  return parsePublicationsEntries(component?.source ?? "");
+  return parsePublicationsEntries(await readComponentSource("publications"));
 }
 
 export async function generateMetadata(): Promise<Metadata> {

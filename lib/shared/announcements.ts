@@ -1,3 +1,5 @@
+import { nextPresentationBoundary, presentationTimestamp } from "./presentation-time.ts";
+
 export type AnnouncementStatus = "draft" | "published" | "archived";
 export type AnnouncementScope = "home" | "all-public" | "paths";
 export type AnnouncementLayout = "prose" | "columns";
@@ -24,7 +26,7 @@ export type AnnouncementsDocument = {
   items: SiteAnnouncement[];
 };
 
-export function announcementVisibleOnRoute(announcement: SiteAnnouncement, pathname: string): boolean {
+export function announcementVisibleOnRoute(announcement: Pick<SiteAnnouncement, "scope" | "routes">, pathname: string): boolean {
   if (announcement.scope === "home") return pathname === "/";
   if (announcement.scope === "paths") return announcement.routes.some((route) => {
     const normalized = route === "/" ? "/" : route.replace(/\/+$/, "");
@@ -33,7 +35,7 @@ export function announcementVisibleOnRoute(announcement: SiteAnnouncement, pathn
   return true;
 }
 
-export function announcementInitiallyExpanded(announcement: SiteAnnouncement, isHome: boolean): boolean {
+export function announcementInitiallyExpanded(announcement: Pick<SiteAnnouncement, "initialState">, isHome: boolean): boolean {
   if (announcement.initialState === "expanded") return true;
   if (announcement.initialState === "compact") return false;
   return isHome;
@@ -49,7 +51,9 @@ export function announcementProblems(announcement: SiteAnnouncement): { field: s
     const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(date);
     if (date && (dateOnly ? !Number.isFinite(Date.parse(`${date}T00:00:00Z`)) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date : !/^\d{4}-\d{2}-\d{2}T/.test(date) || !Number.isFinite(Date.parse(date)))) issues.push({ field, message: "Choose a valid date." });
   }
-  if (announcement.startsAt && announcement.endsAt && announcement.endsAt < announcement.startsAt) issues.push({ field: "endsAt", message: "End date must not be before the start date." });
+  const start = presentationTimestamp(announcement.startsAt);
+  const end = presentationTimestamp(announcement.endsAt, true);
+  if (start !== null && end !== null && end < start) issues.push({ field: "endsAt", message: "End date must not be before the start date." });
   return issues;
 }
 
@@ -173,26 +177,14 @@ export function normalizeAnnouncementsDocument(value: unknown): AnnouncementsDoc
   return { version: 1, items };
 }
 
-function timestamp(raw: string, endOfDay = false): number | null {
-  const value = String(raw || "").trim();
-  if (!value) return null;
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const parsed = Date.parse(
-    dateOnly
-      ? `${value}T${endOfDay ? "23:59:59.999" : "00:00:00"}-03:00`
-      : value,
-  );
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 export function isAnnouncementActive(
   announcement: SiteAnnouncement,
   now: Date = new Date(),
 ): boolean {
   if (announcement.status !== "published" || !announcement.bodyMdx.trim()) return false;
   const nowMs = now.getTime();
-  const startsAt = timestamp(announcement.startsAt);
-  const endsAt = timestamp(announcement.endsAt, true);
+  const startsAt = presentationTimestamp(announcement.startsAt);
+  const endsAt = presentationTimestamp(announcement.endsAt, true);
   if (startsAt !== null && nowMs < startsAt) return false;
   if (endsAt !== null && nowMs > endsAt) return false;
   return true;
@@ -203,6 +195,14 @@ export function getActiveAnnouncement(
   now: Date = new Date(),
 ): SiteAnnouncement | null {
   return document.items.find((item) => isAnnouncementActive(item, now)) ?? null;
+}
+
+export function getAnnouncementSchedule(document: AnnouncementsDocument, now = new Date()) {
+  const published = document.items.filter((item) => item.status === "published" && item.bodyMdx.trim());
+  return {
+    announcement: published.find((item) => isAnnouncementActive(item, now)) ?? null,
+    refreshAt: nextPresentationBoundary(published, now.getTime()),
+  };
 }
 
 export function splitAnnouncementColumns(source: string): string[] {

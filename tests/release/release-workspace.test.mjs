@@ -32,33 +32,20 @@ test("release workspace: full staging and production releases are immutable", ()
   });
 
   assert.equal(staging.useImmutableSnapshot, true);
-  assert.equal(staging.hydrateContentFromD1, true);
-  assert.equal(staging.contentSourceMode, "staging-d1-snapshot");
+  assert.equal(staging.publicationEnvironment, "staging");
+  assert.equal(staging.contentSourceMode, "staging-published-baseline");
   assert.equal(production.useImmutableSnapshot, true);
-  assert.equal(production.hydrateContentFromD1, false);
-  assert.equal(production.contentSourceMode, "git");
+  assert.equal(production.publicationEnvironment, "production");
+  assert.equal(production.contentSourceMode, "production-published-baseline");
 });
 
-test("release workspace: skip-build requires cached artifacts inside a snapshot", () => {
+test("release workspace: explicit staging draft backup cannot change the production build source", () => {
   const plan = createReleaseWorkspacePlan({
     env: "production",
-    skipBuild: true,
+    contentEnv: "staging",
   });
-  assert.equal(plan.mode, "immutable-snapshot-cached-artifacts");
-  assert.equal(plan.useImmutableSnapshot, true);
-  assert.equal(plan.requiresCachedBuild, true);
-  assert.equal(plan.requiresExpectedContentSha, true);
-});
-
-test("release workspace: production promotion requires the staging artifact", () => {
-  const plan = createReleaseWorkspacePlan({
-    env: "production",
-    reuseStagingBuild: true,
-  });
-  assert.equal(plan.mode, "immutable-snapshot-promoted-artifact");
-  assert.equal(plan.requiresCachedBuild, true);
-  assert.equal(plan.requiresExpectedContentSha, true);
-  assert.equal(plan.contentSourceMode, "staging-immutable-build-cache");
+  assert.equal(plan.mode, "immutable-snapshot-build");
+  assert.equal(plan.contentSourceMode, "production-published-baseline");
 });
 
 test("release workspace: snapshot contains committed source and excludes dirty work", (t) => {
@@ -69,11 +56,15 @@ test("release workspace: snapshot contains committed source and excludes dirty w
     recursive: true,
   });
   fs.mkdirSync(path.join(repoRoot, "node_modules"), { recursive: true });
+  fs.mkdirSync(path.join(repoRoot, "node_modules", "@jinnkunn"), { recursive: true });
+  fs.mkdirSync(path.join(repoRoot, "packages", "content-core"), { recursive: true });
+  fs.writeFileSync(path.join(repoRoot, "packages", "content-core", "package.json"), "{}\n");
+  fs.symlinkSync(path.join(repoRoot, "packages", "content-core"), path.join(repoRoot, "node_modules", "@jinnkunn", "content-core"));
   fs.writeFileSync(path.join(repoRoot, "tracked.txt"), "committed\n");
   fs.writeFileSync(path.join(repoRoot, "apps", "workspace", "package.json"), "{}\n");
 
   run("git", ["init"], repoRoot);
-  run("git", ["add", "tracked.txt", "apps/workspace/package.json"], repoRoot);
+  run("git", ["add", "tracked.txt", "apps/workspace/package.json", "packages/content-core/package.json"], repoRoot);
   run(
     "git",
     [
@@ -90,6 +81,7 @@ test("release workspace: snapshot contains committed source and excludes dirty w
   const sha = run("git", ["rev-parse", "HEAD"], repoRoot);
 
   fs.writeFileSync(path.join(repoRoot, "tracked.txt"), "dirty\n");
+  fs.writeFileSync(path.join(repoRoot, "packages", "content-core", "package.json"), '{"dirty":true}\n');
   fs.writeFileSync(path.join(repoRoot, "untracked.txt"), "not released\n");
 
   const snapshotRoot = prepareImmutableReleaseSnapshot({
@@ -102,11 +94,8 @@ test("release workspace: snapshot contains committed source and excludes dirty w
 
   assert.equal(fs.readFileSync(path.join(snapshotRoot, "tracked.txt"), "utf8"), "committed\n");
   assert.equal(fs.existsSync(path.join(snapshotRoot, "untracked.txt")), false);
-  assert.equal(fs.lstatSync(path.join(snapshotRoot, "node_modules")).isSymbolicLink(), true);
-  assert.equal(
-    fs.lstatSync(path.join(snapshotRoot, "apps", "workspace", "node_modules")).isSymbolicLink(),
-    true,
-  );
+  assert.equal(fs.readFileSync(path.join(snapshotRoot, "node_modules", "@jinnkunn", "content-core", "package.json"), "utf8"), "{}\n");
+  assert.equal(fs.statSync(path.join(snapshotRoot, "apps", "workspace", "node_modules")).isDirectory(), true);
 
   removeImmutableReleaseSnapshot({ repoRoot, snapshotRoot });
   assert.equal(fs.existsSync(snapshotRoot), false);

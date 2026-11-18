@@ -2,10 +2,12 @@
 import { Fragment, type ReactNode } from "react";
 import { ClassicLink } from "@/components/classic/classic-link";
 import { ClassicPageShell } from "@/components/classic/classic-page-shell";
+import { ReasoningDriftSeries } from "@/components/blog-index/reasoning-drift-series";
 import type { PostEntry } from "@jinnkunn/content-core/posts";
 import { formatLongDate } from "@jinnkunn/content-core/posts";
 import type { PageEntry } from "@jinnkunn/content-core/pages";
 import { shouldShowPostOutline, type PostHeading } from "@/lib/posts/outline";
+import type { SeriesLink } from "@/lib/posts/reasoning-drift-series";
 
 export type DocumentBreadcrumb = { label: string; href: string | null };
 export type AdjacentPost = { href: string; title: string };
@@ -21,8 +23,8 @@ function Breadcrumbs({ trail }: { trail: DocumentBreadcrumb[] }) {
   </div></div>;
 }
 
-export function PostArticle({ entry, headings, children, prev = null, next = null }: {
-  entry: PostEntry; headings: PostHeading[]; children: ReactNode; prev?: AdjacentPost | null; next?: AdjacentPost | null;
+export function PostArticle({ entry, headings, children, prev = null, next = null, series = [] }: {
+  entry: PostEntry; headings: PostHeading[]; children: ReactNode; prev?: AdjacentPost | null; next?: AdjacentPost | null; series?: SeriesLink[];
 }) {
   return <ClassicPageShell title={entry.title || "Untitled Post"} className="super-content page__blog-post parent-page__blog-post"
     beforeHeader={<Breadcrumbs trail={[{ label: "Blog", href: "/blog" }, { label: entry.title || "Untitled Post", href: entry.href }]} />}>
@@ -42,6 +44,7 @@ export function PostArticle({ entry, headings, children, prev = null, next = nul
       </li>)}</ul></nav>
     </details> : null}
     <div className="mdx-post__body">{children}</div>
+    <ReasoningDriftSeries entries={series} current={entry.href} />
     <nav className="notion-text notion-text__content notion-semantic-string mdx-post__nav" aria-label="More blog posts">
       {prev ? <><span className="highlighted-color color-gray">← Previous: </span><ClassicLink href={prev.href} rel="prev">{prev.title}</ClassicLink><br /></> : null}
       {next ? <><span className="highlighted-color color-gray">Next → </span><ClassicLink href={next.href} rel="next">{next.title}</ClassicLink><br /></> : null}

@@ -8,6 +8,7 @@ import {
   pickStaticProtectedRule,
 } from "./static-shell-protection.mjs";
 import { handleMobileSummaryRequest } from "./mobile-summary-direct.mjs";
+import { workerOverlayKey, STATIC_POLICY_PATH } from "../lib/shared/static-release.ts";
 import {
   isInternalStaticAssetPath,
   isRscRequest,
@@ -123,15 +124,16 @@ async function loadStaticProtectionPolicy(request, env) {
           // Fall through to bundled ASSETS.
         }
       }
-      const policyUrl = new URL(request.url);
-      policyUrl.pathname = "/__static/protected-routes-policy.json";
-      policyUrl.search = "";
-      const res = await env.ASSETS.fetch(cloneStaticRequest(request, policyUrl, "GET"));
-      if (!res || !res.ok) return null;
-      return res.json().catch(() => null);
+      return loadBundledProtectionPolicy(request, env);
     })();
   }
   return staticProtectionPolicyPromise;
+}
+
+async function loadBundledProtectionPolicy(request, env) {
+  const policyUrl = new URL(STATIC_POLICY_PATH, request.url);
+  const res = await env.ASSETS.fetch(cloneStaticRequest(request, policyUrl, "GET"));
+  return res?.ok ? res.json().catch(() => null) : null;
 }
 
 function resolveProtectedRouteSecret(env) {
@@ -172,6 +174,60 @@ async function fetchStaticAssetWithRedirects(request, env, assetPath) {
     response = await env.ASSETS.fetch(cloneStaticRequest(request, currentUrl, "GET"));
   }
   return response;
+}
+
+function overlayShellResponse(request, overlay, protectedRoute) {
+  return new Response(request.method === "HEAD" ? null : overlay.body, { headers: {
+    "content-type": overlay.content_type || "text/html; charset=utf-8",
+    "cache-control": protectedRoute ? "private, no-store" : "public, max-age=0, must-revalidate",
+    etag: `"${overlay.content_sha}"`,
+    "x-static-shell": "1",
+    "x-static-shell-path": overlay.asset_path,
+    "x-static-overlay": "1",
+    "x-publication-snapshot": overlay.publication_sha,
+    vary: "RSC, Next-Router-Prefetch, Next-Router-State-Tree",
+  } });
+}
+
+async function tryServeVersionedShell(request, env, key, pathname) {
+  if (shouldBypassStatic(pathname)) return null;
+  const [html, index, raw] = staticAssetPathForRoute(pathname);
+  // One statement pins policy, route HTML, and bundled compatibility to the
+  // same generation, even if a publication activates during this request.
+  const row = await staticOverlayDb(env).prepare(`SELECT route.asset_path, route.body, route.content_type, route.content_sha,
+    policy.body AS policy, json_extract(status.body, '$.bundledBuild') AS bundled_build,
+    json_extract(status.body, '$.publicationSnapshotSha') AS publication_sha
+    FROM static_shell_overlay_active a
+    LEFT JOIN static_shell_overlay_versions policy ON policy.snapshot_id = a.snapshot_id AND policy.asset_path = ?
+    LEFT JOIN static_shell_overlay_versions status ON status.snapshot_id = a.snapshot_id AND status.asset_path = '/__static/content-overlay-status.json'
+    LEFT JOIN static_shell_overlay_versions route ON route.snapshot_id = a.snapshot_id AND route.asset_path IN (?, ?, ?)
+    WHERE a.worker_version_id = ? ORDER BY CASE route.asset_path WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END LIMIT 1`)
+    .bind(STATIC_POLICY_PATH, html, index, raw, key, html, index).first();
+  const policy = row?.policy ? JSON.parse(row.policy) : null;
+  if (!Array.isArray(policy?.rules) || !/^[a-f0-9]{64}$/.test(row.publication_sha)) throw new Error("Active publication is unavailable.");
+  const rule = pickStaticProtectedRule(pathname, policy);
+  if (rule && !await isStaticProtectionSatisfied(rule, request.headers.get("cookie") || "", parseCookieHeader, resolveProtectedRouteSecret(env))) {
+    const bundled = await loadBundledProtectionPolicy(request, env);
+    const bundledRule = bundled && pickStaticProtectedRule(pathname, bundled);
+    if (bundledRule?.id === rule.id && bundledRule.auth === rule.auth && bundledRule.token === rule.token) return null;
+    return new Response("This page requires access.", { status: 403, headers: { "cache-control": "private, no-store" } });
+  }
+  if (!row.asset_path) {
+    // An omitted document must not reappear from the older bundled build.
+    for (const assetPath of [html, index, raw]) {
+      if ((await fetchStaticAssetWithRedirects(request, env, assetPath))?.ok) {
+        return new Response("Not Found", { status: 404, headers: { "cache-control": "no-store" } });
+      }
+    }
+    return null;
+  }
+  if (isRscRequest(request)) {
+    if (row.bundled_build) return null;
+    // A content-only publication has no corresponding runtime RSC tree.
+    // A non-RSC response makes Next fall back to a fresh document navigation.
+    return new Response(null, { status: 409, headers: { "cache-control": "no-store", vary: "RSC, Next-Router-Prefetch, Next-Router-State-Tree" } });
+  }
+  return overlayShellResponse(request, row, Boolean(rule));
 }
 
 async function tryServeStaticShell(request, env) {
@@ -226,7 +282,12 @@ async function tryServeNextStaticAsset(request, env) {
   const pathname = normalizePathname(url.pathname);
   if (!pathname.startsWith("/_next/static/")) return null;
 
-  const overlay = await fetchStaticOverlay(env, pathname);
+  const key = workerOverlayKey(env);
+  const overlay = key ? await staticOverlayDb(env).prepare(`SELECT v.body, v.content_type, v.content_sha
+    FROM static_shell_overlay_active a JOIN static_shell_overlay_versions v
+      ON v.snapshot_id IN (a.snapshot_id, a.previous_snapshot_id) AND v.asset_path = ?
+    WHERE a.worker_version_id = ? ORDER BY v.snapshot_id = a.snapshot_id DESC LIMIT 1`).bind(pathname, key).first()
+    : await fetchStaticOverlay(env, pathname);
   if (overlay?.body) {
     const headers = new Headers();
     headers.set(
@@ -257,6 +318,7 @@ const worker = {
     if (new URL(request.url).pathname.startsWith("/__admin/")) return new Response("Not found", { status: 404 });
     const method = String(request.method || "GET").toUpperCase();
     const url = new URL(request.url);
+    const overlayKey = workerOverlayKey(env);
     // Reject direct hits on the internal shell key space before anything else.
     // `[assets] run_worker_first = ["/__static/*"]` in wrangler.toml routes these
     // here instead of letting the asset server answer them.
@@ -288,10 +350,13 @@ const worker = {
     if (method === "GET" || method === "HEAD") {
       try {
         if (!gateEnabled || (await isStagingStaticShellAuthorized(request, env))) {
-          const staticRes = await tryServeStaticShell(request, env);
+          const staticRes = overlayKey
+            ? await tryServeVersionedShell(request, env, overlayKey, normalizePathname(url.pathname))
+            : await tryServeStaticShell(request, env);
           if (staticRes) return staticRes;
         }
       } catch {
+        if (overlayKey) return new Response("Publication temporarily unavailable", { status: 503, headers: { "cache-control": "no-store" } });
         // Fall through to OpenNext runtime.
       }
     }

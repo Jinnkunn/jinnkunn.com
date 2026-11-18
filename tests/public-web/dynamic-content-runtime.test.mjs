@@ -19,7 +19,8 @@ test("public posts and pages read through ContentStore wrappers", async () => {
   assert.match(pagesIndex, /from "\.\/store"/);
   assert.doesNotMatch(pagesIndex, /node:fs|readFile|readdir|stat|process\.cwd\(\)/);
 
-  assert.match(publicationsPage, /readComponent\("publications"\)/);
+  assert.match(publicationsPage, /readComponentSource\("publications"\)/);
+  assert.doesNotMatch(publicationsPage, /components\/store/);
   assert.doesNotMatch(publicationsPage, /node:fs|readFile|process\.cwd\(\)/);
 });
 

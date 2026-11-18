@@ -9,7 +9,8 @@
     "./home": "./src/home-normalize.ts",
     "./now": "./src/now-normalize.ts",
     "./pages": "./src/pages.ts",
-    "./posts": "./src/posts.ts"
+    "./posts": "./src/posts.ts",
+    "./publications": "./src/publications.ts"
   },
   "dependencies": {
     "@jinnkunn/contracts": "file:../contracts",

@@ -71,7 +71,7 @@ export type LiveSyncState = "live" | "pending" | "publishing" | "unknown";
 
 export type ReleaseJobOutcome =
   | { state: "active"; message: "" }
-  | { state: "succeeded"; message: "" }
+  | { state: "succeeded"; message: ""; verifiedPublicationSha?: string }
   | { state: "failed" | "canceled"; message: string };
 
 /**
@@ -82,9 +82,13 @@ export type ReleaseJobOutcome =
 export function releaseJobOutcome(job: {
   status?: unknown;
   error?: unknown;
+  result?: Record<string, unknown> | null;
 }): ReleaseJobOutcome {
   const status = String(job.status || "").trim().toLowerCase();
-  if (status === "succeeded") return { state: "succeeded", message: "" };
+  if (status === "succeeded") {
+    const sha = job.result?.verifiedPublicationSha;
+    return { state: "succeeded", message: "", ...(typeof sha === "string" && /^[a-f0-9]{64}$/.test(sha) ? { verifiedPublicationSha: sha } : {}) };
+  }
   if (status === "failed" || status === "canceled") {
     return {
       state: status,
