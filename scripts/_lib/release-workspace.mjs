@@ -39,14 +39,26 @@ function pruneStaleSnapshots(snapshotsRoot, now = Date.now()) {
   }
 }
 
-function linkSnapshotDependencies(root, snapshotRoot, relative) {
+function prepareSnapshotDependencies(root, snapshotRoot, relative, copy) {
   const installed = path.join(root, relative, "node_modules");
   const target = path.join(snapshotRoot, relative, "node_modules");
   if (!fs.existsSync(installed) || !fs.existsSync(path.dirname(target)) || fs.existsSync(target)) return;
   fs.mkdirSync(target);
   for (const name of fs.readdirSync(installed)) {
     if (name !== "@jinnkunn") {
-      fs.symlinkSync(path.join(installed, name), path.join(target, name));
+      const source = path.join(installed, name);
+      const destination = path.join(target, name);
+      if (copy) {
+        // OpenNext carries traced symlinks into the Worker artifact. Copy
+        // dependency roots, but keep npm's relative .bin symlinks relative.
+        fs.cpSync(fs.realpathSync(source), destination, {
+          recursive: true,
+          verbatimSymlinks: true,
+          mode: fs.constants.COPYFILE_FICLONE,
+        });
+      } else {
+        fs.symlinkSync(source, destination);
+      }
       continue;
     }
     // npm's file: workspace links otherwise resolve back to the dirty checkout.
@@ -83,6 +95,7 @@ export function prepareImmutableReleaseSnapshot({
   sha,
   environment,
   dependencyRoots = [""],
+  copyRootDependencies = false,
   snapshotId = `${process.pid}`,
   runCommand = runChecked,
 }) {
@@ -123,7 +136,8 @@ export function prepareImmutableReleaseSnapshot({
   }
 
   for (const relativeRoot of dependencyRoots) {
-    linkSnapshotDependencies(root, snapshotRoot, String(relativeRoot || "").trim());
+    const relative = String(relativeRoot || "").trim();
+    prepareSnapshotDependencies(root, snapshotRoot, relative, copyRootDependencies && relative === "");
   }
 
   return snapshotRoot;
