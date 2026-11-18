@@ -62,7 +62,8 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    # Keep this image supported by the locked Playwright version.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       # repository_dispatch types map directly to env names; workflow_dispatch

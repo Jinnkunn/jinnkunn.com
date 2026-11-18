@@ -39,7 +39,8 @@ jobs:
     # successful deploys. Skipping here (rather than continuing and
     # exiting silently) keeps the Actions tab clean.
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
+    # Keep this image supported by the locked Playwright version.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
@@ -59,12 +60,12 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Install Playwright Chromium
-        # ubuntu-latest has Chrome pre-installed, but the runner image
+        # The runner image has Chrome pre-installed, but it
         # has been known to drop major versions ahead of playwright-core
         # — pinning the bundled chromium avoids "no executable found"
         # surprises that wouldn't reproduce locally. ~30 s on a warm
         # runner; ~90 s cold.
-        run: npx playwright install --with-deps chromium
+        run: npx --no-install playwright-core install --with-deps chromium
 
       - name: Compare staging vs production (Notion-style contract)
         # `check:staging-visual` calls scripts/qa/production-style-regression.mjs
