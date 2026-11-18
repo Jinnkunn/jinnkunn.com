@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { parsePublicationsEntries } from "../../lib/components/parse.ts";
 
 const ROOT = process.cwd();
 const ICON_LINK_REGISTRY = JSON.parse(
@@ -377,9 +378,8 @@ test("public-web-style-guardrails: bio experience summary uses shared structured
 test("public-web-style-guardrails: data-page files split between pages (shortcode) and components (entries)", async () => {
   // After the Components migration: each public route page MDX
   // contains a single `<{Name}Block />` shortcode (no inline entries),
-  // and the matching `content/components/{name}.mdx` holds the actual
-  // entry tags. Belt-and-suspenders: CI screams if someone reverts
-  // the split or mass-replaces the entry tag in a refactor.
+  // and the matching `content/components/{name}.mdx` holds the entries.
+  // Publications may use the structured JSON format at the same path.
   const news = await read("content/pages/news.mdx");
   assertIncludes(news, "<NewsBlock", "news.mdx embeds the NewsBlock shortcode");
   assertIncludes(news, 'title: "News"', "news.mdx frontmatter title");
@@ -448,10 +448,9 @@ test("public-web-style-guardrails: data-page files split between pages (shortcod
     "publications.mdx legacy profile links block",
   );
   const publicationsComponent = await read("content/components/publications.mdx");
-  assertIncludes(
-    publicationsComponent,
-    "<PublicationsEntry data=",
-    "components/publications.mdx contains PublicationsEntry blocks",
+  assert.ok(
+    parsePublicationsEntries(publicationsComponent).length > 0,
+    "components/publications.mdx contains readable publication entries",
   );
 });
 

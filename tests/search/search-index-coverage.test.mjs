@@ -4,7 +4,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import matter from "gray-matter";
 
+import { publicationsDisplayedOnPage } from "../../lib/components/parse.ts";
+import { publicationAnchorId } from "../../lib/shared/publication-identity.ts";
 import { registerNextModuleHooks } from "../helpers/next-module-hooks.mjs";
 
 const REPO_ROOT = registerNextModuleHooks();
@@ -100,9 +103,15 @@ test("search index: data-driven pages carry the text their components render", (
     assert.ok(item.text.length > 400, `${routePath} indexes as near-empty (${item.text.length} chars)`);
   }
 
-  // A publication title only exists inside `<PublicationsEntry data='…' />`.
-  const paths = search("Long-form evaluation of model editing").items.map((item) => item.routePath);
-  assert.ok(paths.includes("/publications"), `publications not findable by entry title: ${paths.join(", ")}`);
+  const pageSource = fs.readFileSync(path.join(REPO_ROOT, "content/pages/publications.mdx"), "utf8");
+  const componentSource = fs.readFileSync(path.join(REPO_ROOT, "content/components/publications.mdx"), "utf8");
+  const entries = publicationsDisplayedOnPage(matter(pageSource).content, componentSource);
+  assert.ok(entries.length > 0, "expected visible publication entries in the published snapshot");
+  for (const entry of entries) {
+    const destination = `/publications#${publicationAnchorId(entry.entryId)}`;
+    const paths = search(entry.title).items.map((item) => item.routePath);
+    assert.ok(paths.includes(destination), `publication not findable by title: ${destination}`);
+  }
 });
 
 test("search index: carries body text, not just titles", () => {
