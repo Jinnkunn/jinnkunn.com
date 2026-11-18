@@ -605,6 +605,7 @@ async function main() {
     sha: git.sha,
     environment: args.env,
     dependencyRoots: ["", WORKSPACE_DIR],
+    copyRootDependencies: true,
   });
   releaseSnapshotRoot = releaseRoot;
   console.log(

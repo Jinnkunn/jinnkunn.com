@@ -58,6 +58,13 @@ test("release workspace: snapshot contains committed source and excludes dirty w
   fs.mkdirSync(path.join(repoRoot, "node_modules"), { recursive: true });
   fs.mkdirSync(path.join(repoRoot, "node_modules", "@jinnkunn"), { recursive: true });
   fs.mkdirSync(path.join(repoRoot, "packages", "content-core"), { recursive: true });
+  // The runner's execution clone starts with links into its dependency cache.
+  const cachedNext = path.join(repoRoot, "cached-next");
+  fs.mkdirSync(cachedNext);
+  fs.writeFileSync(path.join(cachedNext, "server.js"), "original\n");
+  fs.symlinkSync(cachedNext, path.join(repoRoot, "node_modules", "next"), "dir");
+  fs.mkdirSync(path.join(repoRoot, "node_modules", ".bin"));
+  fs.symlinkSync("../next/server.js", path.join(repoRoot, "node_modules", ".bin", "next"));
   fs.writeFileSync(path.join(repoRoot, "packages", "content-core", "package.json"), "{}\n");
   fs.symlinkSync(path.join(repoRoot, "packages", "content-core"), path.join(repoRoot, "node_modules", "@jinnkunn", "content-core"));
   fs.writeFileSync(path.join(repoRoot, "tracked.txt"), "committed\n");
@@ -90,12 +97,18 @@ test("release workspace: snapshot contains committed source and excludes dirty w
     environment: "production",
     snapshotId: "test",
     dependencyRoots: ["", "apps/workspace"],
+    copyRootDependencies: true,
   });
 
   assert.equal(fs.readFileSync(path.join(snapshotRoot, "tracked.txt"), "utf8"), "committed\n");
   assert.equal(fs.existsSync(path.join(snapshotRoot, "untracked.txt")), false);
   assert.equal(fs.readFileSync(path.join(snapshotRoot, "node_modules", "@jinnkunn", "content-core", "package.json"), "utf8"), "{}\n");
   assert.equal(fs.statSync(path.join(snapshotRoot, "apps", "workspace", "node_modules")).isDirectory(), true);
+  const snapshotNextServer = path.join(snapshotRoot, "node_modules", "next", "server.js");
+  assert.equal(fs.lstatSync(path.dirname(snapshotNextServer)).isSymbolicLink(), false);
+  assert.equal(fs.realpathSync(path.join(snapshotRoot, "node_modules", ".bin", "next")), fs.realpathSync(snapshotNextServer));
+  fs.writeFileSync(snapshotNextServer, "patched\n");
+  assert.equal(fs.readFileSync(path.join(cachedNext, "server.js"), "utf8"), "original\n");
 
   removeImmutableReleaseSnapshot({ repoRoot, snapshotRoot });
   assert.equal(fs.existsSync(snapshotRoot), false);
