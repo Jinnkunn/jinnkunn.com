@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { createClient } from "@libsql/client";
+import { normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
 
 import {
   readObservedPublicCalendarFromDb,
@@ -24,7 +25,7 @@ async function makeCalendarDb() {
 
 async function makeCalendarObservationDb() {
   const client = createClient({ url: ":memory:" });
-  for (const migration of ["003_calendar_public.sql", "007_calendar_observations.sql"]) {
+  for (const migration of ["003_calendar_public.sql", "007_calendar_observations.sql", "011_calendar_observation_revision.sql"]) {
     const schema = await readFile(
       path.join(process.cwd(), "migrations", migration),
       "utf8",
@@ -195,7 +196,7 @@ test("public-calendar-db: missing migration returns ok=false with error", async 
 test("public-calendar-db: reads observed entities as private busy projection", async () => {
   const client = await makeCalendarObservationDb();
   const result = await writeCalendarObservationSync(
-    {
+    normalizeCalendarObservationSyncPayload({
       collector: { id: "ios:phone", kind: "ios" },
       sources: [{ id: "icloud", provider: "apple", title: "iCloud" }],
       range: {
@@ -213,7 +214,7 @@ test("public-calendar-db: reads observed entities as private busy projection", a
           endsAt: "2026-05-17T15:00:00.000Z",
         },
       ],
-    },
+    }),
     client,
   );
   assert.equal(result.ok, true);

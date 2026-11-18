@@ -371,19 +371,10 @@ export function normalizeCalendarObservationSyncPayload(
   };
 }
 
-function rangesOverlap(
-  left: Pick<CalendarObservation, "startsAt" | "endsAt">,
-  right: Pick<CalendarObservation, "startsAt" | "endsAt">,
-): boolean {
-  return Date.parse(left.startsAt) < Date.parse(right.endsAt) &&
-    Date.parse(left.endsAt) > Date.parse(right.startsAt);
-}
-
 function scoreCalendarObservationMatch(
   entity: CalendarEntity,
   observation: CalendarObservation,
 ): number {
-  if (!rangesOverlap(entity, observation)) return 0;
   if (
     observation.identityKey &&
     entity.observations.some((entry) => entry.identityKey === observation.identityKey)
@@ -462,14 +453,23 @@ export function mergeCalendarObservations(
     a.observationId.localeCompare(b.observationId),
   );
   const entities: CalendarEntity[] = [];
+  // Observations are sorted by their normalized ISO starts. Once an entity
+  // ends, later observations cannot overlap it. Keep the original tie order.
+  const overlapping = new Set<number>();
   for (const observation of observations) {
     let bestIndex = -1;
     let bestScore = 0;
-    for (let i = 0; i < entities.length; i += 1) {
-      const score = scoreCalendarObservationMatch(entities[i], observation);
+    for (const index of overlapping) {
+      const candidate = entities[index];
+      if (candidate.endsAt <= observation.startsAt) {
+        overlapping.delete(index);
+        continue;
+      }
+      if (candidate.startsAt >= observation.endsAt) continue;
+      const score = scoreCalendarObservationMatch(candidate, observation);
       if (score > bestScore) {
         bestScore = score;
-        bestIndex = i;
+        bestIndex = index;
       }
     }
     if (bestIndex >= 0 && bestScore >= 90) {
@@ -479,6 +479,7 @@ export function mergeCalendarObservations(
       );
       continue;
     }
+    overlapping.add(entities.length);
     entities.push(rebuildEntity([observation], 100));
   }
   return entities.sort((a, b) =>

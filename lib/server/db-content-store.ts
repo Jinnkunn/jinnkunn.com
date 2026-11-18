@@ -16,11 +16,18 @@ import {
   type ContentStore,
 } from "./content-store.ts";
 
+export type DbStatement = { sql: string; args?: unknown[] };
+export type DbResult = {
+  rows: Record<string, unknown>[];
+  rowsAffected: number;
+};
+
 export interface DbExecutor {
-  execute(opts: { sql: string; args?: unknown[] }): Promise<{
-    rows: Record<string, unknown>[];
-    rowsAffected: number;
-  }>;
+  execute(opts: DbStatement): Promise<DbResult>;
+}
+
+export interface TransactionalDbExecutor extends DbExecutor {
+  batch(statements: DbStatement[]): Promise<DbResult[]>;
 }
 
 export type DbContentStoreConfig = {

@@ -1,12 +1,16 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
-import type { DbExecutor } from "./db-content-store.ts";
+import type {
+  DbExecutor,
+  DbResult,
+  DbStatement,
+  TransactionalDbExecutor,
+} from "./db-content-store.ts";
 import { logWarn } from "./error-log.ts";
 import {
   mergeCalendarObservations,
   normalizeCalendarObservation,
-  normalizeCalendarObservationSyncPayload,
   type CalendarEntity,
   type CalendarObservation,
   type CalendarObservationSyncPayload,
@@ -34,6 +38,17 @@ const OBSERVATION_INSERT_BATCH_SIZE = rowsPerStatement(
 );
 const ENTITY_INSERT_BATCH_SIZE = rowsPerStatement(ENTITY_INSERT_COLUMN_COUNT);
 const ID_BATCH_SIZE = D1_SQL_VARIABLE_LIMIT;
+const REVISION_RETRY_LIMIT = 3;
+
+function* chunks<T>(values: readonly T[], size: number) {
+  for (let i = 0; i < values.length; i += size) {
+    yield values.slice(i, i + size);
+  }
+}
+
+function placeholders(count: number): string {
+  return Array(count).fill("?").join(", ");
+}
 
 export type CalendarObservationSyncResult =
   | {
@@ -42,6 +57,7 @@ export type CalendarObservationSyncResult =
       observationsWritten: number;
       entitiesWritten: number;
       staleObservations: number;
+      revision: number;
       skipped: false;
     }
   | { ok: true; skipped: true; reason: "no_executor" }
@@ -56,6 +72,7 @@ export type CalendarCollectorCleanupResult =
       tombstonedObservations: number;
       entitiesWritten: number;
       syncedAt: string;
+      revision: number;
     }
   | { ok: true; skipped: true; reason: "no_executor" }
   | { ok: false; error: string };
@@ -82,13 +99,75 @@ function isD1Like(value: unknown): value is D1DatabaseLike {
   );
 }
 
-function tryGetD1Executor(bindingName = "SITE_ADMIN_DB"): DbExecutor | null {
+function tryGetD1Executor(bindingName = "SITE_ADMIN_DB"): TransactionalDbExecutor | null {
   try {
     const { env } = getCloudflareContext();
     const binding = (env as Record<string, unknown>)[bindingName];
     return isD1Like(binding) ? createD1Executor(binding) : null;
   } catch {
     return null;
+  }
+}
+
+export function getCalendarObservationWriteDatabases() {
+  const staging = tryGetD1Executor("SITE_ADMIN_DB");
+  const live = tryGetD1Executor("SITE_ADMIN_DB_LIVE");
+  return staging && live ? { staging, live } : null;
+}
+
+const READ_REVISION: DbStatement = {
+  sql: "SELECT revision, updated_at FROM calendar_observation_revision WHERE id = 1",
+};
+
+function readRevision(result: DbResult) {
+  const row = result.rows[0];
+  const revision = Number(row?.revision);
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error("Calendar observation revision is not initialized.");
+  }
+  return {
+    revision,
+    updatedAt: typeof row?.updated_at === "string" ? row.updated_at : null,
+  };
+}
+
+function advanceRevision(
+  expected: number,
+  next: number,
+  updatedAt: string,
+  rowCounts: readonly number[] = [],
+): DbStatement {
+  const verification = rowCounts.length
+    ? CALENDAR_OBSERVATION_MIRROR_TABLES.map(
+        ({ name }) => `AND (SELECT COUNT(*) FROM ${name}) = ?`,
+      ).join(" ")
+    : "";
+  // A failed compare or count check must roll back the whole D1 batch.
+  return {
+    sql: `UPDATE calendar_observation_revision
+          SET revision = CASE WHEN revision = ? ${verification} THEN ? ELSE -1 END,
+              updated_at = ?
+          WHERE id = 1`,
+    args: [expected, ...rowCounts, next, updatedAt],
+  };
+}
+
+function confirmRevisionWrite(result: DbResult) {
+  if (result.rowsAffected !== 1) {
+    throw new Error("Calendar observation revision was not recorded.");
+  }
+}
+
+async function retryRevisionConflict<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      const message = err instanceof Error ? `${err.message} ${err.cause ?? ""}` : String(err);
+      if (attempt === REVISION_RETRY_LIMIT || !message.includes("calendar_observation_revision_guard")) {
+        throw err;
+      }
+    }
   }
 }
 
@@ -247,16 +326,16 @@ function buildEntityUpsertSql(rowCount: number): string {
             starts_at = excluded.starts_at,
             ends_at = excluded.ends_at,
             body_json = excluded.body_json,
-            updated_at = excluded.updated_at`;
+            updated_at = excluded.updated_at
+          WHERE calendar_event_entities.body_json IS NOT excluded.body_json`;
 }
 
-async function upsertSources(
-  executor: DbExecutor,
+function sourceWrites(
   payload: CalendarObservationSyncPayload,
   now: number,
-): Promise<void> {
-  for (let i = 0; i < payload.sources.length; i += SOURCE_INSERT_BATCH_SIZE) {
-    const batch = payload.sources.slice(i, i + SOURCE_INSERT_BATCH_SIZE);
+): DbStatement[] {
+  const writes: DbStatement[] = [];
+  for (const batch of chunks(payload.sources, SOURCE_INSERT_BATCH_SIZE)) {
     const args: unknown[] = [];
     for (const source of batch) {
       args.push(
@@ -272,24 +351,17 @@ async function upsertSources(
         now,
       );
     }
-    await executor.execute({ sql: buildSourceUpsertSql(batch.length), args });
+    writes.push({ sql: buildSourceUpsertSql(batch.length), args });
   }
+  return writes;
 }
 
-async function upsertObservations(
-  executor: DbExecutor,
+function observationWrites(
   payload: CalendarObservationSyncPayload,
   now: number,
-): Promise<void> {
-  for (
-    let i = 0;
-    i < payload.observations.length;
-    i += OBSERVATION_INSERT_BATCH_SIZE
-  ) {
-    const batch = payload.observations.slice(
-      i,
-      i + OBSERVATION_INSERT_BATCH_SIZE,
-    );
+): DbStatement[] {
+  const writes: DbStatement[] = [];
+  for (const batch of chunks(payload.observations, OBSERVATION_INSERT_BATCH_SIZE)) {
     const args: unknown[] = [];
     for (const observation of batch) {
       args.push(
@@ -308,44 +380,26 @@ async function upsertObservations(
         now,
       );
     }
-    await executor.execute({ sql: buildObservationUpsertSql(batch.length), args });
+    writes.push({ sql: buildObservationUpsertSql(batch.length), args });
   }
+  return writes;
 }
 
-async function markStaleSnapshotObservations(
-  executor: DbExecutor,
-  payload: CalendarObservationSyncPayload,
+function tombstoneWrites(
+  staleIds: string[],
+  observedAt: string,
   now: number,
-): Promise<number> {
-  if (payload.syncMode !== "snapshot") return 0;
-  const activeIds = new Set(payload.observations.map((entry) => entry.observationId));
-  const existing = await executor.execute({
-    sql: `SELECT observation_id
-          FROM calendar_event_observations
-          WHERE collector_id = ?
-            AND deleted_at IS NULL
-            AND starts_at < ?
-            AND ends_at > ?`,
-    args: [
-      payload.collector.id,
-      payload.range.endsAt,
-      payload.range.startsAt,
-    ],
-  });
-  const staleIds = existing.rows
-    .map((row) =>
-      typeof row.observation_id === "string" ? row.observation_id : "",
-    )
-    .filter((id) => id && !activeIds.has(id));
-  for (const id of staleIds) {
-    await executor.execute({
+): DbStatement[] {
+  const writes: DbStatement[] = [];
+  for (const batch of chunks(staleIds, ID_BATCH_SIZE - 2)) {
+    writes.push({
       sql: `UPDATE calendar_event_observations
             SET deleted_at = ?, updated_at = ?
-            WHERE observation_id = ?`,
-      args: [payload.observedAt, now, id],
+            WHERE observation_id IN (${placeholders(batch.length)})`,
+      args: [observedAt, now, ...batch],
     });
   }
-  return staleIds.length;
+  return writes;
 }
 
 function decodeObservation(raw: unknown): CalendarObservation | null {
@@ -357,31 +411,25 @@ function decodeObservation(raw: unknown): CalendarObservation | null {
   }
 }
 
-async function readActiveObservationsForRange(
-  executor: DbExecutor,
+function readActiveObservationsForRange(
   range: CalendarObservationSyncPayload["range"],
-): Promise<CalendarObservation[]> {
-  const result = await executor.execute({
-    sql: `SELECT body_json
+): DbStatement {
+  return {
+    sql: `SELECT observation_id, collector_id, body_json
           FROM calendar_event_observations
           WHERE deleted_at IS NULL
             AND starts_at < ?
-            AND ends_at > ?
-          ORDER BY starts_at ASC`,
+            AND ends_at > ?`,
     args: [range.endsAt, range.startsAt],
-  });
-  return result.rows
-    .map((row) => decodeObservation(row.body_json))
-    .filter((entry): entry is CalendarObservation => entry !== null);
+  };
 }
 
-async function upsertEntities(
-  executor: DbExecutor,
+function entityWrites(
   entities: CalendarEntity[],
   now: number,
-): Promise<void> {
-  for (let i = 0; i < entities.length; i += ENTITY_INSERT_BATCH_SIZE) {
-    const batch = entities.slice(i, i + ENTITY_INSERT_BATCH_SIZE);
+): DbStatement[] {
+  const writes: DbStatement[] = [];
+  for (const batch of chunks(entities, ENTITY_INSERT_BATCH_SIZE)) {
     const args: unknown[] = [];
     for (const entity of batch) {
       args.push(
@@ -403,65 +451,55 @@ async function upsertEntities(
         now,
       );
     }
-    await executor.execute({ sql: buildEntityUpsertSql(batch.length), args });
+    writes.push({ sql: buildEntityUpsertSql(batch.length), args });
   }
+  return writes;
 }
 
-async function pruneStaleEntitiesInRange(
-  executor: DbExecutor,
-  entities: CalendarEntity[],
+function readEntityIdsForRange(
   range: CalendarObservationSyncPayload["range"],
-): Promise<void> {
-  const activeIds = new Set(entities.map((entry) => entry.id));
-  const existing = await executor.execute({
+): DbStatement {
+  return {
     sql: `SELECT entity_id
           FROM calendar_event_entities
           WHERE starts_at < ?
             AND ends_at > ?`,
     args: [range.endsAt, range.startsAt],
-  });
-  const staleIds = existing.rows
-    .map((row) => (typeof row.entity_id === "string" ? row.entity_id : ""))
-    .filter((id) => id && !activeIds.has(id));
-  for (let i = 0; i < staleIds.length; i += ID_BATCH_SIZE) {
-    const batch = staleIds.slice(i, i + ID_BATCH_SIZE);
-    const marks = Array.from({ length: batch.length }, () => "?").join(", ");
-    await executor.execute({
-      sql: `DELETE FROM calendar_event_entities WHERE entity_id IN (${marks})`,
-      args: batch,
-    });
-  }
+  };
 }
 
-async function stampObservationEntityRefs(
-  executor: DbExecutor,
+function observationEntityRefWrites(
   entities: CalendarEntity[],
   now: number,
-): Promise<void> {
-  for (const entity of entities) {
-    for (const ref of entity.sourceRefs) {
-      await executor.execute({
-        sql: `UPDATE calendar_event_observations
-              SET entity_id = ?, updated_at = ?
-              WHERE observation_id = ?`,
-        args: [entity.id, now, ref.observationId],
-      });
-    }
+): DbStatement[] {
+  const refs = entities.flatMap((entity) =>
+    entity.sourceRefs.map((ref) => [ref.observationId, entity.id]),
+  );
+  const writes: DbStatement[] = [];
+  for (const batch of chunks(refs, Math.floor((D1_SQL_VARIABLE_LIMIT - 1) / 2))) {
+    const values = batch.map(() => "(?, ?)").join(", ");
+    writes.push({
+      sql: `WITH refs(obs_id, ref_entity_id) AS (VALUES ${values})
+            UPDATE calendar_event_observations AS observation
+            SET entity_id = refs.ref_entity_id, updated_at = ?
+            FROM refs
+            WHERE observation.observation_id = refs.obs_id
+              AND observation.entity_id IS NOT refs.ref_entity_id`,
+      args: [...batch.flat(), now],
+    });
   }
+  return writes;
 }
 
-async function upsertSyncState(
-  executor: DbExecutor,
+function syncStateWrites(
   payload: CalendarObservationSyncPayload,
   now: number,
-): Promise<void> {
+): DbStatement[] {
   const counts = new Map<string, number>();
   for (const observation of payload.observations) {
     counts.set(observation.sourceId, (counts.get(observation.sourceId) ?? 0) + 1);
   }
-  for (const source of payload.sources) {
-    const stateId = `${payload.collector.id}:${source.id}`;
-    await executor.execute({
+  return payload.sources.map((source) => ({
       sql: `INSERT INTO calendar_sync_state
             (id, collector_id, source_id, sync_mode, range_starts_at,
              range_ends_at, event_count, synced_at, updated_at)
@@ -476,7 +514,7 @@ async function upsertSyncState(
               synced_at = excluded.synced_at,
               updated_at = excluded.updated_at`,
       args: [
-        stateId,
+        `${payload.collector.id}:${source.id}`,
         payload.collector.id,
         source.id,
         payload.syncMode,
@@ -486,93 +524,51 @@ async function upsertSyncState(
         payload.observedAt,
         now,
       ],
-    });
-  }
-}
-
-async function readMirrorRows(
-  executor: DbExecutor,
-  table: CalendarMirrorTable,
-): Promise<Record<string, unknown>[]> {
-  const result = await executor.execute({
-    sql: `SELECT ${table.columns.join(", ")}
-          FROM ${table.name}
-          ORDER BY ${table.primaryKey} ASC`,
-  });
-  return result.rows;
+  }));
 }
 
 function buildMirrorUpsertSql(table: CalendarMirrorTable, rowCount: number): string {
-  const placeholders = Array.from(
-    { length: rowCount },
-    () => `(${Array.from({ length: table.columns.length }, () => "?").join(", ")})`,
-  ).join(", ");
+  const row = `(${placeholders(table.columns.length)})`;
+  const values = Array(rowCount).fill(row).join(", ");
   const updates = table.columns
     .filter((column) => column !== table.primaryKey)
     .map((column) => `${column} = excluded.${column}`)
     .join(", ");
   return `INSERT INTO ${table.name}
           (${table.columns.join(", ")})
-          VALUES ${placeholders}
+          VALUES ${values}
           ON CONFLICT(${table.primaryKey}) DO UPDATE SET ${updates}`;
 }
 
-async function upsertMirrorRows(
-  executor: DbExecutor,
+function mirrorRowWrites(
   table: CalendarMirrorTable,
   rows: Record<string, unknown>[],
-): Promise<void> {
-  for (let i = 0; i < rows.length; i += table.batchSize) {
-    const batch = rows.slice(i, i + table.batchSize);
-    const args = batch.flatMap((row) =>
-      table.columns.map((column) => row[column] ?? null),
-    );
-    await executor.execute({
+): DbStatement[] {
+  const writes: DbStatement[] = [];
+  for (const batch of chunks(rows, table.batchSize)) {
+    writes.push({
       sql: buildMirrorUpsertSql(table, batch.length),
-      args,
+      args: batch.flatMap((row) => table.columns.map((column) => row[column] ?? null)),
     });
   }
+  return writes;
 }
 
-function buildMirrorDeleteSql(table: CalendarMirrorTable, rowCount: number): string {
-  const placeholders = Array.from({ length: rowCount }, () => "?").join(", ");
-  return `DELETE FROM ${table.name}
-          WHERE ${table.primaryKey} IN (${placeholders})`;
-}
-
-async function pruneMirrorRows(
-  executor: DbExecutor,
-  table: CalendarMirrorTable,
-  activeIds: ReadonlySet<string>,
-): Promise<number> {
-  if (activeIds.size === 0) {
-    const result = await executor.execute({ sql: `DELETE FROM ${table.name}` });
-    return result.rowsAffected ?? 0;
-  }
-
-  const existing = await executor.execute({
-    sql: `SELECT ${table.primaryKey}
-          FROM ${table.name}`,
-  });
-  const staleIds = existing.rows
-    .map((row) => String(row[table.primaryKey] ?? ""))
-    .filter((id) => id && !activeIds.has(id));
-
-  let deleted = 0;
-  for (let i = 0; i < staleIds.length; i += ID_BATCH_SIZE) {
-    const batch = staleIds.slice(i, i + ID_BATCH_SIZE);
-    const result = await executor.execute({
-      sql: buildMirrorDeleteSql(table, batch.length),
+function deleteRows(table: string, key: string, ids: string[]): DbStatement[] {
+  const writes: DbStatement[] = [];
+  for (const batch of chunks(ids, ID_BATCH_SIZE)) {
+    writes.push({
+      sql: `DELETE FROM ${table} WHERE ${key} IN (${placeholders(batch.length)})`,
       args: batch,
     });
-    deleted += result.rowsAffected ?? 0;
   }
-  return deleted;
+  return writes;
 }
 
 export async function publishCalendarObservationsToLive(
   sourceExecutor = tryGetD1Executor("SITE_ADMIN_DB"),
   targetExecutor = tryGetD1Executor("SITE_ADMIN_DB_LIVE"),
+  minimumRevision = 0,
 ): Promise<CalendarObservationLivePublishResult> {
   if (!sourceExecutor) {
     return { ok: true, skipped: true, reason: "no_source_executor" };
@@ -582,40 +578,75 @@ export async function publishCalendarObservationsToLive(
   }
 
   try {
-    const tables: Array<{
-      name: string;
-      rowsWritten: number;
-      rowsDeleted: number;
-    }> = [];
-    let rowsWritten = 0;
-    let rowsDeleted = 0;
+    return await retryRevisionConflict(async () => {
+      const [liveRevision, ...liveRows] = await targetExecutor.batch([
+        READ_REVISION,
+        ...CALENDAR_OBSERVATION_MIRROR_TABLES.map(({ name, primaryKey }) => ({
+          sql: `SELECT ${primaryKey}, updated_at FROM ${name}`,
+        })),
+      ]);
+      const [stagingRevision, ...stagingRows] = await sourceExecutor.batch([
+        READ_REVISION,
+        ...CALENDAR_OBSERVATION_MIRROR_TABLES.map(({ name, columns }) => ({
+          sql: `SELECT ${columns.join(", ")} FROM ${name}`,
+        })),
+      ]);
+      const live = readRevision(liveRevision);
+      const staging = readRevision(stagingRevision);
+      if (staging.revision < minimumRevision) {
+        throw new Error("The saved calendar revision is no longer available in staging.");
+      }
+      if (live.revision > staging.revision) {
+        throw new Error("Live calendar revision is newer than staging; refusing to replace it.");
+      }
+      if (!staging.updatedAt && stagingRows.every(({ rows }) => !rows.length) &&
+          liveRows.some(({ rows }) => rows.length)) {
+        throw new Error("Staging has no observation snapshot; refusing to clear Live.");
+      }
 
-    for (const table of CALENDAR_OBSERVATION_MIRROR_TABLES) {
-      const rows = await readMirrorRows(sourceExecutor, table);
-      await upsertMirrorRows(targetExecutor, table, rows);
-      const activeIds = new Set(
-        rows
-          .map((row) => String(row[table.primaryKey] ?? ""))
-          .filter((id) => id.length > 0),
-      );
-      const deleted = await pruneMirrorRows(targetExecutor, table, activeIds);
-      tables.push({
-        name: table.name,
-        rowsWritten: rows.length,
-        rowsDeleted: deleted,
+      const writes: DbStatement[] = [];
+      const tables = CALENDAR_OBSERVATION_MIRROR_TABLES.map((table, index) => {
+        const incoming = stagingRows[index].rows;
+        const current = new Map(liveRows[index].rows.map((row) => [
+          String(row[table.primaryKey]), Number(row.updated_at),
+        ]));
+        const changed = incoming.filter((row) => {
+          const id = String(row[table.primaryKey]);
+          const version = current.get(id);
+          current.delete(id);
+          // No revision receipt means the legacy mirror may contain partial writes.
+          return !live.updatedAt || version !== Number(row.updated_at);
+        });
+        const staleIds = [...current.keys()];
+        writes.push(...mirrorRowWrites(table, changed));
+        writes.push(...deleteRows(table.name, table.primaryKey, staleIds));
+        return { name: table.name, rowsWritten: changed.length, rowsDeleted: staleIds.length };
       });
-      rowsWritten += rows.length;
-      rowsDeleted += deleted;
-    }
 
-    return {
-      ok: true,
-      skipped: false,
-      tables,
-      rowsWritten,
-      rowsDeleted,
-      publishedAt: new Date().toISOString(),
-    };
+      let publishedAt = live.updatedAt;
+      if (!publishedAt || live.revision !== staging.revision || writes.length) {
+        publishedAt = new Date().toISOString();
+        const results = await targetExecutor.batch([
+          ...writes,
+          advanceRevision(
+            live.revision,
+            staging.revision,
+            publishedAt,
+            stagingRows.map(({ rows }) => rows.length),
+          ),
+        ]);
+        confirmRevisionWrite(results[results.length - 1]);
+      }
+
+      return {
+        ok: true,
+        skipped: false,
+        tables,
+        rowsWritten: tables.reduce((sum, table) => sum + table.rowsWritten, 0),
+        rowsDeleted: tables.reduce((sum, table) => sum + table.rowsDeleted, 0),
+        publishedAt,
+      };
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logWarn({
@@ -627,39 +658,73 @@ export async function publishCalendarObservationsToLive(
   }
 }
 
+async function commitObservationSnapshot(
+  executor: TransactionalDbExecutor,
+  payload: CalendarObservationSyncPayload,
+  cleanup?: { sourceIds: string[]; expectedRevision: number },
+) {
+  const [current, observed, existingEntities] = await executor.batch([
+    READ_REVISION,
+    readActiveObservationsForRange(payload.range),
+    readEntityIdsForRange(payload.range),
+  ]);
+  const { revision } = readRevision(current);
+  const now = Math.max(Date.now(), revision + 1);
+  const incoming = new Map(payload.observations.map((observation) => [
+    observation.observationId, observation,
+  ]));
+  const active = [...incoming.values()].filter(({ startsAt, endsAt }) =>
+    startsAt < payload.range.endsAt && endsAt > payload.range.startsAt,
+  );
+  const staleIds: string[] = [];
+  for (const row of observed.rows) {
+    const id = String(row.observation_id);
+    if (incoming.has(id)) continue;
+    if (payload.syncMode === "snapshot" && row.collector_id === payload.collector.id) {
+      staleIds.push(id);
+    } else {
+      const observation = decodeObservation(row.body_json);
+      if (observation) active.push(observation);
+    }
+  }
+  const entities = mergeCalendarObservations(active);
+  const activeEntityIds = new Set(entities.map(({ id }) => id));
+  const staleEntityIds = existingEntities.rows.map(({ entity_id }) => String(entity_id))
+    .filter((id) => !activeEntityIds.has(id));
+
+  const [receipt] = await executor.batch([
+    advanceRevision(cleanup?.expectedRevision ?? revision, now, new Date(now).toISOString()),
+    ...sourceWrites(payload, now),
+    ...observationWrites(payload, now),
+    ...tombstoneWrites(staleIds, payload.observedAt, now),
+    ...entityWrites(entities, now),
+    ...deleteRows("calendar_event_entities", "entity_id", staleEntityIds),
+    ...observationEntityRefWrites(entities, now),
+    ...(cleanup
+      ? collectorCleanupStateWrites(payload, cleanup.sourceIds, now)
+      : syncStateWrites(payload, now)),
+  ]);
+  confirmRevisionWrite(receipt);
+  return { entitiesWritten: entities.length, staleObservations: staleIds.length, revision: now };
+}
+
 export async function writeCalendarObservationSync(
-  rawPayload: unknown,
+  payload: CalendarObservationSyncPayload,
   executor = tryGetD1Executor(),
 ): Promise<CalendarObservationSyncResult> {
   if (!executor) {
     return { ok: true, skipped: true, reason: "no_executor" };
   }
-  const payload = normalizeCalendarObservationSyncPayload(rawPayload);
-  const now = Date.now();
   try {
-    await upsertSources(executor, payload, now);
-    await upsertObservations(executor, payload, now);
-    const staleObservations = await markStaleSnapshotObservations(
-      executor,
-      payload,
-      now,
+    const result = await retryRevisionConflict(() =>
+      commitObservationSnapshot(executor, payload),
     );
-    const activeObservations = await readActiveObservationsForRange(
-      executor,
-      payload.range,
-    );
-    const entities = mergeCalendarObservations(activeObservations);
-    await upsertEntities(executor, entities, now);
-    await pruneStaleEntitiesInRange(executor, entities, payload.range);
-    await stampObservationEntityRefs(executor, entities, now);
-    await upsertSyncState(executor, payload, now);
     return {
       ok: true,
       skipped: false,
       sourcesWritten: payload.sources.length,
       observationsWritten: payload.observations.length,
-      entitiesWritten: entities.length,
-      staleObservations,
+      ...result,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -673,18 +738,14 @@ export async function writeCalendarObservationSync(
   }
 }
 
-async function readCollectorCleanupScope(
-  executor: DbExecutor,
+function readCollectorCleanupScope(
   input: CalendarCollectorCleanupCommand,
-): Promise<{
-  range: CalendarCollectorCleanupRange | null;
-  sourceIds: string[];
-}> {
+): DbStatement {
   const rangeFilter = input.range
     ? `AND starts_at < ?
        AND ends_at > ?`
     : "";
-  const result = await executor.execute({
+  return {
     sql: `SELECT source_id,
                  MIN(starts_at) AS starts_at,
                  MAX(ends_at) AS ends_at
@@ -696,19 +757,25 @@ async function readCollectorCleanupScope(
     args: input.range
       ? [input.collectorId, input.range.endsAt, input.range.startsAt]
       : [input.collectorId],
-  });
-  const sourceIds = result.rows
+  };
+}
+
+function collectorCleanupScope(
+  input: CalendarCollectorCleanupCommand,
+  { rows }: DbResult,
+) {
+  const sourceIds = rows
     .map((row) => (typeof row.source_id === "string" ? row.source_id : ""))
     .filter(Boolean);
   if (input.range) return { range: input.range, sourceIds };
-  if (!result.rows.length) return { range: null, sourceIds };
+  if (!rows.length) return { range: null, sourceIds };
 
-  const startsAt = result.rows.reduce<string | null>((earliest, row) => {
+  const startsAt = rows.reduce<string | null>((earliest, row) => {
     const value = typeof row.starts_at === "string" ? row.starts_at : "";
     if (!value) return earliest;
     return earliest === null || value < earliest ? value : earliest;
   }, null);
-  const endsAt = result.rows.reduce<string | null>((latest, row) => {
+  const endsAt = rows.reduce<string | null>((latest, row) => {
     const value = typeof row.ends_at === "string" ? row.ends_at : "";
     if (!value) return latest;
     return latest === null || value > latest ? value : latest;
@@ -718,66 +785,51 @@ async function readCollectorCleanupScope(
     : { range: null, sourceIds };
 }
 
-async function refreshCollectorCleanupSyncState(
-  executor: DbExecutor,
-  input: {
-    collectorId: string;
-    sourceIds: readonly string[];
-    range: CalendarCollectorCleanupRange;
-    syncedAt: string;
-    now: number;
-  },
-): Promise<void> {
-  for (const sourceId of input.sourceIds) {
-    const remaining = await executor.execute({
-      sql: `SELECT COUNT(*) AS event_count
-            FROM calendar_event_observations
-            WHERE collector_id = ?
-              AND source_id = ?
-              AND deleted_at IS NULL`,
-      args: [input.collectorId, sourceId],
-    });
-    const eventCount = Number(remaining.rows[0]?.event_count ?? 0);
-    const stateId = `${input.collectorId}:${sourceId}`;
-    await executor.execute({
+function collectorCleanupStateWrites(
+  payload: CalendarObservationSyncPayload,
+  sourceIds: readonly string[],
+  now: number,
+): DbStatement[] {
+  const collectorId = payload.collector.id;
+  return sourceIds.flatMap((sourceId) => [
+    {
       sql: `INSERT INTO calendar_sync_state
             (id, collector_id, source_id, sync_mode, range_starts_at,
              range_ends_at, event_count, synced_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, 'snapshot', ?, ?,
+              (SELECT COUNT(*) FROM calendar_event_observations
+               WHERE collector_id = ? AND source_id = ? AND deleted_at IS NULL), ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               event_count = excluded.event_count,
               synced_at = excluded.synced_at,
               updated_at = excluded.updated_at`,
       args: [
-        stateId,
-        input.collectorId,
+        `${collectorId}:${sourceId}`,
+        collectorId,
         sourceId,
-        "snapshot",
-        input.range.startsAt,
-        input.range.endsAt,
-        eventCount,
-        input.syncedAt,
-        input.now,
+        payload.range.startsAt,
+        payload.range.endsAt,
+        collectorId,
+        sourceId,
+        payload.observedAt,
+        now,
       ],
-    });
-    await executor.execute({
+    },
+    {
       sql: `UPDATE calendar_sync_sources
             SET last_synced_at = ?, updated_at = ?
             WHERE id = ? AND collector_id = ?`,
-      args: [input.syncedAt, input.now, sourceId, input.collectorId],
-    });
-  }
+      args: [payload.observedAt, now, sourceId, collectorId],
+    },
+  ]);
 }
 
 /**
  * Tombstone one collector's observations and rebuild the derived entity view.
  *
- * This deliberately reuses the empty-snapshot path used by normal sync rather
- * than maintaining a second deletion algorithm. `markStaleSnapshotObservations`
- * is collector + range scoped, so observations reported by another device are
- * never selected. Reading historical rows (including already-tombstoned rows)
- * makes a retry repair derived entities even if an earlier request stopped
- * between the tombstone and rebuild steps.
+ * An empty collector snapshot only tombstones that collector in the range.
+ * Include historical rows when finding the range so a retry can also repair
+ * derived entities left by an older, non-transactional cleanup.
  */
 export async function cleanupCalendarCollectorObservations(
   input: CalendarCollectorCleanupCommand,
@@ -787,56 +839,36 @@ export async function cleanupCalendarCollectorObservations(
     return { ok: true, skipped: true, reason: "no_executor" };
   }
   const syncedAt = new Date().toISOString();
-  const now = Date.now();
   try {
-    const scope = await readCollectorCleanupScope(executor, input);
-    if (!scope.range) {
+    return await retryRevisionConflict(async () => {
+      const [current, sources] = await executor.batch([
+        READ_REVISION,
+        readCollectorCleanupScope(input),
+      ]);
+      const expectedRevision = readRevision(current).revision;
+      const { range, sourceIds } = collectorCleanupScope(input, sources);
+      const sync = range
+        ? await commitObservationSnapshot(executor, {
+            schemaVersion: 1,
+            collector: { id: input.collectorId, kind: "manual" },
+            sources: [],
+            range,
+            syncMode: "snapshot",
+            observedAt: syncedAt,
+            observations: [],
+          }, { sourceIds, expectedRevision })
+        : null;
       return {
         ok: true,
         skipped: false,
         collectorId: input.collectorId,
-        range: null,
-        tombstonedObservations: 0,
-        entitiesWritten: 0,
+        range,
+        tombstonedObservations: sync?.staleObservations ?? 0,
+        entitiesWritten: sync?.entitiesWritten ?? 0,
         syncedAt,
+        revision: sync?.revision ?? expectedRevision,
       };
-    }
-
-    const syncResult = await writeCalendarObservationSync(
-      {
-        schemaVersion: 1,
-        collector: {
-          id: input.collectorId,
-          kind: "manual",
-          title: "Collector cleanup",
-        },
-        sources: [],
-        range: scope.range,
-        syncMode: "snapshot",
-        observedAt: syncedAt,
-        observations: [],
-      },
-      executor,
-    );
-    if (!syncResult.ok) return syncResult;
-    if (syncResult.skipped) return syncResult;
-
-    await refreshCollectorCleanupSyncState(executor, {
-      collectorId: input.collectorId,
-      sourceIds: scope.sourceIds,
-      range: scope.range,
-      syncedAt,
-      now,
     });
-    return {
-      ok: true,
-      skipped: false,
-      collectorId: input.collectorId,
-      range: scope.range,
-      tombstonedObservations: syncResult.staleObservations,
-      entitiesWritten: syncResult.entitiesWritten,
-      syncedAt,
-    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logWarn({
@@ -850,7 +882,7 @@ export async function cleanupCalendarCollectorObservations(
 }
 
 export async function readCalendarSyncHealth(
-  executor = tryGetD1Executor(),
+  executor: DbExecutor | null = tryGetD1Executor(),
 ): Promise<CalendarSyncHealth | null> {
   if (!executor) return null;
   try {

@@ -6,23 +6,31 @@
 // shim normalizes its result to the `{ rows, rowsAffected }` shape the store
 // expects. No `server-only` marker so node:test can import the type.
 
-import type { DbExecutor } from "./db-content-store.ts";
+import type {
+  DbResult,
+  DbStatement,
+  TransactionalDbExecutor,
+} from "./db-content-store.ts";
+
+type D1ResultLike<T> = {
+  results?: T[];
+  success?: boolean;
+  error?: string;
+  meta?: { changes?: number };
+};
+
+type D1StatementLike = {
+  bind(...values: unknown[]): D1StatementLike;
+  all<T = Record<string, unknown>>(): Promise<D1ResultLike<T>>;
+};
 
 // Structural type — avoids a runtime import of @cloudflare/workers-types.
 // Matches the D1 Workers runtime API (https://developers.cloudflare.com/d1/).
 export type D1DatabaseLike = {
-  prepare(query: string): {
-    bind(...values: unknown[]): {
-      all<T = Record<string, unknown>>(): Promise<{
-        results?: T[];
-        meta?: { changes?: number; rows_written?: number };
-      }>;
-    };
-    all<T = Record<string, unknown>>(): Promise<{
-      results?: T[];
-      meta?: { changes?: number; rows_written?: number };
-    }>;
-  };
+  prepare(query: string): D1StatementLike;
+  batch?<T = Record<string, unknown>>(
+    statements: D1StatementLike[],
+  ): Promise<D1ResultLike<T>[]>;
 };
 
 // D1's `bind` accepts: null | string | number | ArrayBuffer | boolean.
@@ -43,17 +51,31 @@ function toBindable(value: unknown): unknown {
   return value;
 }
 
-export function createD1Executor(db: D1DatabaseLike): DbExecutor {
+function toDbResult(result: D1ResultLike<Record<string, unknown>>): DbResult {
+  if (result.success === false) throw new Error(result.error ?? "D1 query failed.");
   return {
-    async execute({ sql, args }) {
-      const stmt = db.prepare(sql);
-      const bound =
-        args && args.length > 0 ? stmt.bind(...args.map(toBindable)) : stmt;
-      const result = await bound.all<Record<string, unknown>>();
-      return {
-        rows: result.results ?? [],
-        rowsAffected: result.meta?.changes ?? 0,
-      };
+    rows: result.results ?? [],
+    rowsAffected: result.meta?.changes ?? 0,
+  };
+}
+
+export function createD1Executor(db: D1DatabaseLike): TransactionalDbExecutor {
+  const prepare = ({ sql, args }: DbStatement) => {
+    const stmt = db.prepare(sql);
+    return args?.length ? stmt.bind(...args.map(toBindable)) : stmt;
+  };
+  return {
+    async execute(statement) {
+      return toDbResult(await prepare(statement).all());
+    },
+    async batch(statements) {
+      if (!statements.length) return [];
+      if (!db.batch) throw new Error("D1 transactional batching is not available.");
+      const results = await db.batch(statements.map(prepare));
+      if (results.length !== statements.length) {
+        throw new Error("D1 returned an incomplete batch result.");
+      }
+      return results.map(toDbResult);
     },
   };
 }

@@ -10,6 +10,7 @@ import {
 import { writeSiteAdminAuditLog } from "@/lib/server/site-admin-audit-log";
 import {
   cleanupCalendarCollectorObservations,
+  getCalendarObservationWriteDatabases,
   publishCalendarObservationsToLive,
   readCalendarSyncHealth,
   writeCalendarObservationSync,
@@ -33,11 +34,33 @@ const CLEANUP_RATE_LIMIT = {
 const CALENDAR_OBSERVATION_SYNC_MAX_BYTES = 4 * 1024 * 1024;
 const CALENDAR_OBSERVATION_CLEANUP_MAX_BYTES = 4 * 1024;
 
+type WriteDatabases = NonNullable<ReturnType<typeof getCalendarObservationWriteDatabases>>;
+
+function calendarWriteUnavailable() {
+  return apiError("Calendar sync requires the staging endpoint with a Live database binding.", {
+    status: 503,
+    code: "LIVE_DB_NOT_CONFIGURED",
+  });
+}
+
+function calendarPublishPending(action: "sync" | "cleanup") {
+  return apiError(
+    `Calendar ${action} was saved to staging, but Live has not been confirmed. Retry the Live update.`,
+    {
+      status: 502,
+      code: "LIVE_DB_WRITE_FAILED",
+      extras: { stagingSaved: true, livePublish: { status: "pending" } },
+    },
+  );
+}
+
 async function publishLiveAfterObservationMutation(
   actor: string,
   trigger: "sync" | "cleanup",
+  { staging, live }: WriteDatabases,
+  revision: number,
 ) {
-  const result = await publishCalendarObservationsToLive();
+  const result = await publishCalendarObservationsToLive(staging, live, revision);
   if (!result.ok || result.skipped) {
     const reason = result.ok ? result.reason : result.error;
     await writeSiteAdminAuditLog({
@@ -45,8 +68,8 @@ async function publishLiveAfterObservationMutation(
       action: "calendar.observations.publish-live",
       endpoint: "/api/site-admin/calendar-observations",
       method: trigger === "sync" ? "POST" : "DELETE",
-      status: result.ok ? 200 : 502,
-      result: result.ok ? "success" : "error",
+      status: 502,
+      result: "error",
       code: result.ok ? "LIVE_DB_NOT_CONFIGURED" : "LIVE_DB_WRITE_FAILED",
       message: reason,
       metadata: { trigger },
@@ -116,7 +139,9 @@ export async function POST(req: NextRequest) {
       );
       if (!parsed.ok) return parsed.res;
 
-      const result = await writeCalendarObservationSync(parsed.value);
+      const databases = getCalendarObservationWriteDatabases();
+      if (!databases) return calendarWriteUnavailable();
+      const result = await writeCalendarObservationSync(parsed.value, databases.staging);
       if (!result.ok || result.skipped) {
         const error = result.ok
           ? "Calendar sync database is not configured."
@@ -151,6 +176,7 @@ export async function POST(req: NextRequest) {
         result: "success",
         code: "OK",
         metadata: {
+          stage: "staging",
           collectorId: parsed.value.collector.id,
           sourceCount: result.sourcesWritten,
           eventCount: result.observationsWritten,
@@ -162,12 +188,11 @@ export async function POST(req: NextRequest) {
       const livePublish = await publishLiveAfterObservationMutation(
         ctx.login,
         "sync",
+        databases,
+        result.revision,
       );
-      if (!livePublish.ok) {
-        return apiError(
-          "Calendar observations reached staging, but the Live calendar update failed. Retrying is safe.",
-          { status: 502, code: "LIVE_DB_WRITE_FAILED" },
-        );
+      if (!livePublish.ok || livePublish.skipped) {
+        return calendarPublishPending("sync");
       }
       revalidatePublicCalendar();
 
@@ -177,14 +202,12 @@ export async function POST(req: NextRequest) {
         entitiesWritten: result.entitiesWritten,
         staleObservations: result.staleObservations,
         syncedAt: parsed.value.observedAt,
-        livePublish: livePublish.skipped
-          ? { status: "not_configured", reason: livePublish.reason }
-          : {
-              status: "published",
-              rowsWritten: livePublish.rowsWritten,
-              rowsDeleted: livePublish.rowsDeleted,
-              publishedAt: livePublish.publishedAt,
-            },
+        livePublish: {
+          status: "published",
+          rowsWritten: livePublish.rowsWritten,
+          rowsDeleted: livePublish.rowsDeleted,
+          publishedAt: livePublish.publishedAt,
+        },
       });
     },
     { rateLimit: RATE_LIMIT },
@@ -207,7 +230,9 @@ export async function DELETE(req: NextRequest) {
       );
       if (!parsed.ok) return parsed.res;
 
-      const result = await cleanupCalendarCollectorObservations(parsed.value);
+      const databases = getCalendarObservationWriteDatabases();
+      if (!databases) return calendarWriteUnavailable();
+      const result = await cleanupCalendarCollectorObservations(parsed.value, databases.staging);
       if (!result.ok || result.skipped) {
         const error = result.ok
           ? "Calendar sync database is not configured."
@@ -235,12 +260,11 @@ export async function DELETE(req: NextRequest) {
       const livePublish = await publishLiveAfterObservationMutation(
         ctx.login,
         "cleanup",
+        databases,
+        result.revision,
       );
-      if (!livePublish.ok) {
-        return apiError(
-          "Calendar cleanup reached staging, but the Live calendar update failed. Retrying is safe.",
-          { status: 502, code: "LIVE_DB_WRITE_FAILED" },
-        );
+      if (!livePublish.ok || livePublish.skipped) {
+        return calendarPublishPending("cleanup");
       }
       revalidatePublicCalendar();
 
@@ -266,14 +290,12 @@ export async function DELETE(req: NextRequest) {
         tombstonedObservations: result.tombstonedObservations,
         entitiesWritten: result.entitiesWritten,
         syncedAt: result.syncedAt,
-        livePublish: livePublish.skipped
-          ? { status: "not_configured", reason: livePublish.reason }
-          : {
-              status: "published",
-              rowsWritten: livePublish.rowsWritten,
-              rowsDeleted: livePublish.rowsDeleted,
-              publishedAt: livePublish.publishedAt,
-            },
+        livePublish: {
+          status: "published",
+          rowsWritten: livePublish.rowsWritten,
+          rowsDeleted: livePublish.rowsDeleted,
+          publishedAt: livePublish.publishedAt,
+        },
       });
     },
     { rateLimit: CLEANUP_RATE_LIMIT },
