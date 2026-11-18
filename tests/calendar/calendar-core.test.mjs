@@ -108,3 +108,23 @@ test("calendar-core: meeting URL can merge cross-source copies", () => {
   assert.equal(entities.length, 1);
   assert.equal(entities[0].sourceRefs.length, 2);
 });
+
+test("calendar-core: merge follows extended overlaps but not touching endpoints", () => {
+  const observations = [
+    ["13:00", "14:00"],
+    ["13:45", "15:00"],
+    ["14:30", "15:30"],
+    ["15:30", "16:00"],
+  ].map(([start, end], index) => ({
+    sourceId: `fixture-${index}`,
+    sourceEventId: `event-${index}`,
+    iCalUid: "shared-uid",
+    title: "Synthetic meeting",
+    startsAt: `2026-05-17T${start}:00Z`,
+    endsAt: `2026-05-17T${end}:00Z`,
+  }));
+  const payload = normalizeCalendarObservationSyncPayload({ observations });
+  const entities = mergeCalendarObservations(payload.observations);
+  assert.deepEqual(entities.map(({ sourceRefs }) => sourceRefs.length), [3, 1]);
+  assert.equal(entities[0].endsAt, "2026-05-17T15:30:00.000Z");
+});

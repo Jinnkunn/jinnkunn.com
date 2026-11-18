@@ -220,27 +220,28 @@ function toBusySupplementEvent(event: PublicCalendarEvent): PublicCalendarEvent 
   };
 }
 
-function overlapMs(left: PublicCalendarEvent, right: PublicCalendarEvent): number {
-  const startsAt = Math.max(timestampMs(left.startsAt), timestampMs(right.startsAt));
-  const endsAt = Math.min(timestampMs(left.endsAt), timestampMs(right.endsAt));
-  return Math.max(0, endsAt - startsAt);
-}
-
-function eventDurationMs(event: PublicCalendarEvent): number {
-  return Math.max(0, timestampMs(event.endsAt) - timestampMs(event.startsAt));
+function eventWindow(event: PublicCalendarEvent) {
+  return {
+    id: event.id,
+    isAllDay: event.isAllDay,
+    startsAt: timestampMs(event.startsAt),
+    endsAt: timestampMs(event.endsAt),
+  };
 }
 
 function isCoveredByPublicEvent(
-  publicEvent: PublicCalendarEvent,
-  observedBusy: PublicCalendarEvent,
+  publicEvent: ReturnType<typeof eventWindow>,
+  observedBusy: ReturnType<typeof eventWindow>,
 ): boolean {
   if (publicEvent.id === observedBusy.id) return true;
   if (publicEvent.isAllDay !== observedBusy.isAllDay) return false;
-  const overlap = overlapMs(publicEvent, observedBusy);
+  const overlap = Math.min(publicEvent.endsAt, observedBusy.endsAt) -
+    Math.max(publicEvent.startsAt, observedBusy.startsAt);
   if (overlap <= 0) return false;
-  const publicDuration = eventDurationMs(publicEvent);
-  const observedDuration = eventDurationMs(observedBusy);
-  const shortest = Math.min(publicDuration, observedDuration);
+  const shortest = Math.min(
+    publicEvent.endsAt - publicEvent.startsAt,
+    observedBusy.endsAt - observedBusy.startsAt,
+  );
   return shortest > 0 && overlap / shortest >= 0.8;
 }
 
@@ -283,9 +284,12 @@ export function supplementPublicCalendarWithObservedData({
   if (!observedData?.events.length) return publicData;
 
   const events = [...publicData.events];
+  const windows = events.map(eventWindow);
   for (const observed of observedData.events) {
     const busy = toBusySupplementEvent(observed);
-    if (events.some((event) => isCoveredByPublicEvent(event, busy))) continue;
+    const window = eventWindow(busy);
+    if (windows.some((event) => isCoveredByPublicEvent(event, window))) continue;
+    windows.push(window);
     events.push(busy);
   }
 

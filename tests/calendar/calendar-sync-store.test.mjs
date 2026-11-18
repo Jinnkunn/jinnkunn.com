@@ -5,12 +5,18 @@ import path from "node:path";
 
 import { createClient } from "@libsql/client";
 
+import { normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
+import { readObservedPublicCalendarFromDb } from "../../lib/server/public-calendar-db.ts";
 import {
   cleanupCalendarCollectorObservations,
   publishCalendarObservationsToLive,
   readCalendarSyncHealth,
-  writeCalendarObservationSync,
+  writeCalendarObservationSync as writeNormalizedSync,
 } from "../../lib/server/calendar-sync-store.ts";
+
+function writeCalendarObservationSync(raw, executor) {
+  return writeNormalizedSync(normalizeCalendarObservationSyncPayload(raw), executor);
+}
 
 async function makeCalendarSyncDb() {
   const client = createClient({ url: ":memory:" });
@@ -18,6 +24,7 @@ async function makeCalendarSyncDb() {
     "003_calendar_public.sql",
     "007_calendar_observations.sql",
     "008_calendar_collector_cleanup.sql",
+    "011_calendar_observation_revision.sql",
   ]) {
     const schema = await readFile(
       path.join(process.cwd(), "migrations", migration),
@@ -89,13 +96,14 @@ test("calendar-sync-store: writes observations and deduped entities", async () =
 test("calendar-sync-store: batches writes under D1 SQL variable limit", async () => {
   const client = await makeCalendarSyncDb();
   const maxVariables = 90;
+  let requests = 0;
   const limitedExecutor = {
-    async execute(opts) {
-      assert.ok(
-        (opts.args ?? []).length <= maxVariables,
-        `expected <=${maxVariables} SQL variables, got ${(opts.args ?? []).length}`,
-      );
-      return client.execute(opts);
+    async batch(statements) {
+      requests++;
+      for (const { args = [] } of statements) {
+        assert.ok(args.length <= maxVariables, `expected <=${maxVariables} SQL variables, got ${args.length}`);
+      }
+      return client.batch(statements);
     },
   };
   const sources = Array.from({ length: 12 }, (_, index) => ({
@@ -132,6 +140,7 @@ test("calendar-sync-store: batches writes under D1 SQL variable limit", async ()
   assert.equal(result.ok, true);
   assert.equal(result.skipped, false);
   assert.equal(result.observationsWritten, observations.length);
+  assert.equal(requests, 2);
 });
 
 test("calendar-sync-store: snapshot stale deletion is scoped to collector and range", async () => {
@@ -424,7 +433,7 @@ test("calendar-sync-store: collector cleanup is scoped, range-aware, and idempot
   ]);
 });
 
-test("calendar-sync-store: collector cleanup retry repairs a partial derived-state failure", async () => {
+test("calendar-sync-store: cleanup repairs a legacy tombstone with a stale entity", async () => {
   const client = await makeCalendarSyncDb();
   await writeCalendarObservationSync(
     {
@@ -447,31 +456,10 @@ test("calendar-sync-store: collector cleanup retry repairs a partial derived-sta
     client,
   );
 
-  let injected = false;
-  const flakyExecutor = {
-    async execute(opts) {
-      if (
-        !injected &&
-        /SELECT body_json[\s\S]*FROM calendar_event_observations/.test(opts.sql)
-      ) {
-        injected = true;
-        throw new Error("injected post-tombstone failure");
-      }
-      return client.execute(opts);
-    },
-  };
-  const failed = await cleanupCalendarCollectorObservations(
-    { collectorId: "mac-retry" },
-    flakyExecutor,
-  );
-  assert.deepEqual(failed, { ok: false, error: "injected post-tombstone failure" });
-
-  const partial = await client.execute({
-    sql: `SELECT deleted_at FROM calendar_event_observations
-          WHERE collector_id = ?`,
-    args: ["mac-retry"],
+  await client.execute({
+    sql: "UPDATE calendar_event_observations SET deleted_at = ? WHERE collector_id = ?",
+    args: ["2026-05-17T22:00:00.000Z", "mac-retry"],
   });
-  assert.equal(typeof partial.rows[0].deleted_at, "string");
   const staleEntities = await client.execute({
     sql: "SELECT COUNT(*) AS count FROM calendar_event_entities",
   });
@@ -546,4 +534,179 @@ test("calendar-sync-store: publishes only observation tables to live", async () 
     args: ["content/home.json"],
   });
   assert.equal(content.rows[0].content, "untouched");
+});
+
+function snapshot(collectorId, count, offset = 0) {
+  const start = Date.UTC(2026, 4, 17);
+  const sources = Array.from({ length: 10 }, (_, index) => ({
+    id: `${collectorId}:${index}`, provider: "apple", title: `Synthetic calendar ${index}`,
+  }));
+  return {
+    collector: { id: collectorId, kind: "tauri-macos" },
+    sources,
+    range: {
+      startsAt: new Date(start).toISOString(),
+      endsAt: new Date(start + 31 * 24 * 60 * 60_000).toISOString(),
+    },
+    observations: Array.from({ length: count }, (_, index) => {
+      const startsAt = start + (index + offset) * 45 * 60_000;
+      return {
+        sourceId: sources[index % sources.length].id,
+        sourceEventId: `${collectorId}:event-${index + offset}`,
+        title: `Private fixture ${index}`,
+        notes: "Private fixture notes",
+        startsAt: new Date(startsAt).toISOString(),
+        endsAt: new Date(startsAt + 30 * 60_000).toISOString(),
+      };
+    }),
+  };
+}
+
+async function eventCount(client) {
+  const { rows } = await client.execute("SELECT COUNT(*) AS count FROM calendar_event_entities");
+  return Number(rows[0].count);
+}
+
+async function revision(client) {
+  const { rows } = await client.execute("SELECT revision FROM calendar_observation_revision WHERE id = 1");
+  return Number(rows[0].revision);
+}
+
+test("calendar-sync-store: 420 observations sync and clean up below the D1 request cap", async () => {
+  const source = await makeCalendarSyncDb();
+  const target = await makeCalendarSyncDb();
+  let requests = 0;
+  let largestBatch = 0;
+  function capped(client) {
+    return {
+      execute() { throw new Error("Calendar mutation bypassed D1 batch"); },
+      async batch(statements) {
+        assert.ok(++requests <= 50, "D1 invocation limit exceeded");
+        largestBatch = Math.max(largestBatch, statements.length);
+        assert.ok(statements.every(({ args = [] }) => args.length <= 90));
+        return client.batch(statements);
+      },
+    };
+  }
+  const staged = capped(source);
+  const live = capped(target);
+  const result = await writeCalendarObservationSync(snapshot("large", 420), staged);
+  assert.equal(result.entitiesWritten, 420);
+  const published = await publishCalendarObservationsToLive(staged, live, result.revision);
+  assert.equal(published.ok, true, JSON.stringify(published));
+  assert.equal(requests, 5);
+  assert.ok(largestBatch > 50);
+  assert.equal(await revision(target), await revision(source));
+
+  const data = await readObservedPublicCalendarFromDb(target);
+  assert.equal(data.events.length, 420);
+  assert.ok(data.events.every((event) => event.title === "Busy" && event.description === null));
+  const repeated = await publishCalendarObservationsToLive(staged, live);
+  assert.equal(repeated.rowsWritten, 0);
+  assert.equal(repeated.rowsDeleted, 0);
+  assert.equal(repeated.publishedAt, published.publishedAt);
+
+  requests = 0;
+  const cleanup = await cleanupCalendarCollectorObservations({ collectorId: "large" }, staged);
+  assert.equal(cleanup.tombstonedObservations, 420);
+  const cleaned = await publishCalendarObservationsToLive(staged, live);
+  assert.equal(cleaned.rowsDeleted, 420);
+  assert.equal(requests, 6);
+  assert.equal(await eventCount(target), 0);
+  assert.equal(await revision(target), await revision(source));
+});
+
+test("calendar-sync-store: staging and Live roll back independently and Live can be retried", async () => {
+  const source = await makeCalendarSyncDb();
+  const target = await makeCalendarSyncDb();
+  const trigger = `CREATE TRIGGER fail_sync_state BEFORE INSERT ON calendar_sync_state
+                   BEGIN SELECT RAISE(ABORT, 'injected sync state failure'); END`;
+  await source.execute(trigger);
+  const stageFailure = await writeCalendarObservationSync(snapshot("first", 1), source);
+  assert.equal(stageFailure.ok, false);
+  assert.match(stageFailure.error, /injected sync state failure/);
+  assert.equal(await revision(source), 0);
+  assert.equal(await eventCount(source), 0);
+  assert.deepEqual((await readCalendarSyncHealth(source)).sources, []);
+
+  await source.execute("DROP TRIGGER fail_sync_state");
+  assert.equal((await writeCalendarObservationSync(snapshot("first", 1), source)).ok, true);
+  assert.equal((await publishCalendarObservationsToLive(source, target)).ok, true);
+  const previous = await revision(target);
+  assert.equal((await writeCalendarObservationSync(snapshot("second", 2, 2), source)).ok, true);
+  await target.execute(trigger);
+  const failed = await publishCalendarObservationsToLive(source, target);
+  assert.equal(failed.ok, false);
+  assert.match(failed.error, /injected sync state failure/);
+  assert.equal(await revision(target), previous);
+  assert.equal(await eventCount(target), 1);
+  assert.equal(await eventCount(source), 3);
+
+  await target.execute("DROP TRIGGER fail_sync_state");
+  const retried = await publishCalendarObservationsToLive(source, target);
+  assert.equal(retried.ok, true);
+  assert.equal(await eventCount(target), 3);
+  assert.equal(await revision(target), await revision(source));
+});
+
+test("calendar-sync-store: a Live batch without all expected rows cannot be confirmed", async () => {
+  const source = await makeCalendarSyncDb();
+  const target = await makeCalendarSyncDb();
+  assert.equal((await writeCalendarObservationSync(snapshot("ignored", 2), source)).ok, true);
+  await target.execute(`CREATE TRIGGER ignore_one_entity BEFORE INSERT ON calendar_event_entities
+                       WHEN NEW.title = 'Private fixture 0' BEGIN SELECT RAISE(IGNORE); END`);
+  const failed = await publishCalendarObservationsToLive(source, target);
+  assert.equal(failed.ok, false);
+  assert.match(failed.error, /calendar_observation_revision_guard/);
+  assert.equal(await revision(target), 0);
+  assert.equal(await eventCount(target), 0);
+});
+
+function interleaveBeforeRevisionWrite(client, interveningWrite) {
+  let interleaved = false;
+  return {
+    async batch(statements) {
+      if (!interleaved && statements.some(({ sql }) => sql.startsWith("UPDATE calendar_observation_revision"))) {
+        interleaved = true;
+        await interveningWrite();
+      }
+      return client.batch(statements);
+    },
+  };
+}
+
+test("calendar-sync-store: concurrent writers rebuild from the newest staging snapshot", async () => {
+  const source = await makeCalendarSyncDb();
+  const delayedSource = interleaveBeforeRevisionWrite(source, async () => {
+    assert.equal((await writeCalendarObservationSync(snapshot("other", 1, 3), source)).ok, true);
+  });
+  const result = await writeCalendarObservationSync(snapshot("delayed", 1), delayedSource);
+  assert.equal(result.entitiesWritten, 2);
+  assert.equal(await eventCount(source), 2);
+});
+
+test("calendar-sync-store: an older mirror cannot prune a newer Live revision", async () => {
+  const source = await makeCalendarSyncDb();
+  const target = await makeCalendarSyncDb();
+  assert.equal((await writeCalendarObservationSync(snapshot("old", 1), source)).ok, true);
+  const delayedTarget = interleaveBeforeRevisionWrite(target, async () => {
+    assert.equal((await writeCalendarObservationSync(snapshot("new", 2, 3), source)).ok, true);
+    assert.equal((await publishCalendarObservationsToLive(source, target)).ok, true);
+  });
+  const result = await publishCalendarObservationsToLive(source, delayedTarget);
+  assert.equal(result.ok, true);
+  assert.equal(result.rowsWritten, 0);
+  assert.equal(await eventCount(target), 3);
+  assert.equal(await revision(target), await revision(source));
+});
+
+test("calendar-sync-store: a sync cannot confirm an older snapshot after staging was restored", async () => {
+  const source = await makeCalendarSyncDb();
+  const target = await makeCalendarSyncDb();
+  const beforeRestore = await writeCalendarObservationSync(snapshot("old", 1), source);
+  const restored = await makeCalendarSyncDb();
+  const result = await publishCalendarObservationsToLive(restored, target, beforeRestore.revision);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /saved calendar revision is no longer available/);
+  assert.equal(await revision(target), 0);
 });
