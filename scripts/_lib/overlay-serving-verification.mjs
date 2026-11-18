@@ -3,6 +3,7 @@ import { pickStaticProtectedRule } from "../../cloudflare/static-shell-protectio
 import { shouldBypassStatic } from "../../cloudflare/worker-entry-guards.mjs";
 
 const digest = (body) => crypto.createHash("sha1").update(body).digest("hex");
+const waitForPropagation = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function overlayVerificationTargets(rows) {
   const policyRow = rows.find((row) => row.asset_path === "/__static/protected-routes-policy.json");
@@ -31,7 +32,7 @@ export function overlayVerificationTargets(rows) {
 
 export async function verifyOverlayContent({
   origin, rows, cookie = "", fetchImpl = fetch, attempts = 8,
-  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  wait = waitForPropagation,
   timeoutMs = 15_000,
 }) {
   const targets = overlayVerificationTargets(rows);
@@ -72,4 +73,34 @@ export async function verifyOverlayContent({
     if (attempt < attempts) await wait(2_000);
   }
   throw new Error(`Overlay content verification failed: ${JSON.stringify(failures)}`);
+}
+
+export async function verifyStaticAssetResponses({
+  origin, refs, expectedHashes = new Map(), cookie = "", fetchImpl = fetch,
+  attempts = 8, wait = waitForPropagation, timeoutMs = 15_000,
+}) {
+  const pending = new Map([...refs].map((ref) => [ref, "not checked"]));
+  const checked = pending.size;
+  // The deployment API switches before every edge has the new Worker.
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    for (const path of pending.keys()) {
+      try {
+        const response = await fetchImpl(`${origin}${path}`, {
+          redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(timeoutMs),
+          headers: { "cache-control": "no-cache", ...(cookie ? { cookie } : {}) },
+        });
+        const body = Buffer.from(await response.arrayBuffer());
+        const expectedSha = expectedHashes.get(path);
+        if (response.status !== 200) pending.set(path, `HTTP ${response.status}`);
+        else if (expectedSha && digest(body) !== expectedSha) pending.set(path, "fingerprint mismatch");
+        else pending.delete(path);
+      } catch (error) {
+        pending.set(path, error instanceof Error ? error.message : String(error));
+      }
+    }
+    if (!pending.size) return { checked, attempts: attempt };
+    if (attempt < attempts) await wait(2_000);
+  }
+  const sample = [...pending].slice(0, 12).map(([path, reason]) => `  - ${path} (${reason})`);
+  throw new Error(`Could not verify ${pending.size} referenced Next.js asset(s) after ${attempts} attempts:\n${sample.join("\n")}`);
 }
