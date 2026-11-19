@@ -84,3 +84,30 @@ any other collector's records.
   separate occurrence key from its public interval before time filtering.
   Already unique UIDs and the subscription URL stay unchanged; no source
   calendar identifiers, notes, or other private data are added.
+- `X-Calendar-Verified-At` on both feeds reports the Live mirror receipt for
+  the projected revision. The calendar retains its last accepted data on a
+  failed fetch and shows a warning if that receipt is absent or over six
+  hours old. Empty slots are not confirmed availability. A response time or
+  build timestamp is never a substitute for this receipt.
+- After production serves the header on both feeds, run **Public Calendar
+  Health** manually once, then set the GitHub repository Actions variable
+  `PUBLIC_CALENDAR_HEALTH_ENABLED=1` to enable the hourly schedule. The job
+  uses anonymous GET requests, checks semantic agreement after a cache grace
+  period, and fails if verification is over 24 hours old. It uses no secrets,
+  never retries a write, and never starts a sync or a publication.
+
+## Busy-Only Payload Prototype
+
+The isolated `compactBusyObservationInput` proof keeps source and occurrence
+identity, times, and complete calendar scope semantics. It drops the event's
+note body and calendar display name, and carries at most the matching URL
+token when it cannot be recovered from the location. The fixtures cover
+dedupe alongside legacy collectors, move/empty-range updates, and public
+JSON/ICS parity. Note that titles, locations, source identities, and URL
+query data can still be sensitive. This is not an anonymous wire format.
+
+Before adopting it on devices, compare mixed clients in an isolated
+environment using a dedicated test calendar. Evaluate a versioned, keyed
+matching token before dropping raw titles, locations, or links; keep the
+complete-scope safety checks. No installed app, accepted payload, hosted
+retention, or existing records change as part of this prototype.

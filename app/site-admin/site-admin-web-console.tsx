@@ -671,6 +671,11 @@ export function SiteAdminWebConsole({
     read: (signal) => readJson<PublicationReview>("/api/site-admin/publication-review", { signal }),
     onCountChange: setPendingPublishCount,
   });
+  const [publicationReviewScope, setPublicationReviewScope] = useState("all");
+  function openPublicationReview(scope = "all") {
+    setPublicationReviewScope(scope);
+    setPublishReviewOpen(true);
+  }
   const rawPageItems = useMemo(() => contentItems({ kind: "pages", pages, posts, components }), [components, pages, posts]);
   const rawPostItems = useMemo(() => contentItems({ kind: "posts", pages, posts, components }), [components, pages, posts]);
   const { documentKind, setDocumentKind, showCollectionIndex, setShowCollectionIndex, contentSearch, setContentSearch, contentTask, setContentTask, setCollapsedPageSlugs, contentPins, taskMetadata, pageItems, postItems, visibleItems, globalSearchItems, pageTree, collapsedPageSlugSet } = useSiteAdminContentLibrary({ actor, rawPages: rawPageItems, rawPosts: rawPostItems, review: publicationReview, pageTreeOrder });
@@ -2074,6 +2079,16 @@ export function SiteAdminWebConsole({
   }
 
 
+  function reviewSelectedContent(entryId?: string) {
+    if (!selected) return;
+    const activeEntry = entryId ?? (componentExpandedIds.length === 1 ? componentExpandedIds[0] : undefined);
+    if (selected.kind === "components" && activeEntry) {
+      openPublicationReview(`${selected.id}:${activeEntry}`);
+    } else {
+      openPublicationReview(selected.kind === "components" && selected.id === "news" ? "" : `document:${selectedPublicationPath}`);
+    }
+  }
+
   const collectionEditorActions = {
     canUndo: Boolean(collectionHistory?.past.length),
     canRedo: Boolean(collectionHistory?.future.length),
@@ -2085,7 +2100,7 @@ export function SiteAdminWebConsole({
       : selectedDirty ? (saving ? "Saving draft…" : "Autosave pending") : contentSavedAt ? `Saved ${formatWhen(contentSavedAt)}` : "Draft saved",
     onSave: () => void saveSelectedContent(),
     saveDisabled: saving || !selectedDirty || componentSaveBlocked || loading || Boolean(conflict),
-    onPublish: () => setPublishReviewOpen(true),
+    onPublish: reviewSelectedContent,
     publishDisabled: saving || releaseSaving || releaseIsRunning || componentSaveBlocked || loading || Boolean(conflict) || !contentPublishActionForBrowser() || (!selectedDirty && publishBlocked),
   };
 
@@ -2629,7 +2644,7 @@ export function SiteAdminWebConsole({
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
       {(area !== "content" || !selected) && (originatingAttempt || singletonDraftVersion) ? (
         <SiteAdminPublicationStatus draftVersion={singletonDraftVersion} liveVersion={verifiedReview?.baselineSha} attempt={originatingAttempt}
-          progress={originatingProgress} onReview={() => setPublishReviewOpen(true)} onActivity={() => changeArea("release")} />
+          progress={originatingProgress} onReview={() => openPublicationReview(area === "home" ? "document:home.json" : area === "now" ? "document:now.json" : area === "announcements" ? "document:filesystem/announcements.json" : "all")} onActivity={() => changeArea("release")} />
       ) : null}
 
       {area === "content" ? (
@@ -2710,7 +2725,7 @@ export function SiteAdminWebConsole({
                       {saving ? "Saving draft" : "Save draft"}
                     </Button>
                     <Button
-                      onClick={() => setPublishReviewOpen(true)}
+                      onClick={() => reviewSelectedContent()}
                       className={styles.editorPublishButton}
                       tone="accent"
                       size="sm"
@@ -2784,7 +2799,7 @@ export function SiteAdminWebConsole({
                 </div>
               </div>
                 <SiteAdminPublicationStatus draftVersion={selected.version} liveVersion={verifiedReview?.baselineSha}
-                  attempt={originatingAttempt} progress={originatingProgress} onReview={() => setPublishReviewOpen(true)}
+                  attempt={originatingAttempt} progress={originatingProgress} onReview={() => reviewSelectedContent()}
                   onActivity={() => changeArea("release")} />
                 {documentIssues.length ? <section className={styles.validationSummary} aria-label="Fields needing attention">
                   <strong>{documentIssues.length} {documentIssues.length === 1 ? "field needs" : "fields need"} attention before publication</strong>
@@ -3392,18 +3407,18 @@ export function SiteAdminWebConsole({
                       } not yet live`
                     : releaseIsRunning
                       ? "Release in progress"
-                      : "No pending content"}
+                      : liveSync.state === "unknown" ? "Draft comparison unavailable" : "No pending content"}
                 </small>
               </div>
               <div data-active={liveSync.state === "live" ? "true" : "false"}>
                 <strong>Live</strong>
-                <small>Public site is current</small>
+                <small>{liveSync.state === "live" ? "Public site is current" : "Published snapshot"}</small>
               </div>
             </div>
             <div className={styles.panelActions}>
               {liveSync.state !== "live" || releaseIsRunning ? (
                 <Button
-                  onClick={() => setPublishReviewOpen(true)}
+                  onClick={() => openPublicationReview()}
                   tone="accent"
                   disabled={publishBlocked}
                 >
@@ -3447,12 +3462,24 @@ export function SiteAdminWebConsole({
                     <dd>{shortSha(source?.codeSha)}</dd>
                   </div>
                   <div>
-                    <dt>Content</dt>
+                    <dt>Saved source</dt>
                     <dd>{shortSha(source?.contentSha)}</dd>
                   </div>
                   <div>
                     <dt>Deploy needed</dt>
-                    <dd>{source?.pendingDeploy === true ? "Yes" : "No"}</dd>
+                    <dd>{source?.pendingDeploy === true ? "Yes" : source?.pendingDeploy === false ? "No" : source?.storeKind === "db" ? "Reviewed separately" : "Unknown"}</dd>
+                  </div>
+                  <div>
+                    <dt>Live Worker</dt>
+                    <dd title={summary?.livePublication?.workerVersionId}>{summary?.livePublication ? shortSha(summary.livePublication.workerVersionId) : "Unknown"}</dd>
+                  </div>
+                  <div>
+                    <dt>Published snapshot</dt>
+                    <dd title={summary?.livePublication?.snapshotSha || undefined}>{summary?.livePublication?.snapshotSha ? shortSha(summary.livePublication.snapshotSha) : "Unknown"}</dd>
+                  </div>
+                  <div>
+                    <dt>Last verified</dt>
+                    <dd>{summary?.livePublication?.verifiedAt ? <time dateTime={summary.livePublication.verifiedAt}>{formatWhen(summary.livePublication.verifiedAt)}</time> : "Not confirmed"}</dd>
                   </div>
                 </dl>
                 <div className={styles.releaseRunnerSummary}>
@@ -3534,7 +3561,7 @@ export function SiteAdminWebConsole({
           <SiteAdminHomeEditor home={home} homePersistence={homePersistence}
             homeTitle={homeTitle} setHomeTitle={setHomeTitle} homeBody={homeBody} setHomeBody={setHomeBody}
             homeDirty={homeDirty} saving={saving} publicationState={publicationState} shortSha={shortSha}
-            onReview={() => setPublishReviewOpen(true)} beforeRestore={navigation.authorize}
+            onReview={() => openPublicationReview("document:home.json")} beforeRestore={navigation.authorize}
             onRestored={async () => { await refreshAll(); recordSavedContent(); setNotice("Earlier Home draft restored. Review publication when ready."); }}
             onRestoringChange={setVersionRestoring}
             actor={actor} blockingMutation={blockingMutation}
@@ -3548,7 +3575,7 @@ export function SiteAdminWebConsole({
           <SiteAdminAnnouncementsPanel
             actor={actor}
             {...publicationState("filesystem/announcements.json")}
-            onReview={() => setPublishReviewOpen(true)}
+            onReview={() => openPublicationReview("document:filesystem/announcements.json")}
             onDirtyChange={setAnnouncementDirty}
             onSavingChange={setAnnouncementSaving}
             beforeNavigate={navigation.authorize}
@@ -3571,7 +3598,7 @@ export function SiteAdminWebConsole({
           <SiteAdminNowEditor now={now} nowPersistence={nowPersistence}
             nowText={nowText} setNowText={setNowText} nowDate={nowDate} setNowDate={setNowDate} nowContext={nowContext} setNowContext={setNowContext} nowLocation={nowLocation} setNowLocation={setNowLocation} editingHistoryId={editingHistoryId} setEditingHistoryId={setEditingHistoryId} historyText={historyText} setHistoryText={setHistoryText} historyDate={historyDate} setHistoryDate={setHistoryDate}
             nowDirty={nowDirty} saving={saving} publicationState={publicationState} shortSha={shortSha}
-            onReview={() => setPublishReviewOpen(true)} beforeRestore={navigation.authorize}
+            onReview={() => openPublicationReview("document:now.json")} beforeRestore={navigation.authorize}
             onRestored={async () => { await refreshAll(); recordSavedContent(); setNotice("Earlier Now draft restored. Review publication when ready."); }}
             onRestoringChange={setVersionRestoring}
              formatWhen={formatWhen} saveHistoryEdit={saveHistoryEdit} startHistoryEdit={startHistoryEdit} deleteHistory={deleteHistory}
@@ -3601,6 +3628,7 @@ export function SiteAdminWebConsole({
 
       {publishReviewOpen ? <SiteAdminPublicationReviewDialog
         review={publicationReview} loading={publicationReviewLoading} error={publicationReviewError}
+        initialScope={publicationReviewScope}
         busy={releaseSaving} disabled={hasUnsavedChanges || saving || releaseSaving || releaseIsRunning || !contentPublishActionForBrowser()}
         hasUnsaved={hasUnsavedChanges}
         target={contentPublishActionForBrowser() === "publish-content-production" ? "Production" : contentPublishActionForBrowser() === "publish-content-staging" ? "Staging" : "Local preview"}

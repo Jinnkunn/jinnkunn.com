@@ -284,7 +284,7 @@ export async function readObservedPublicCalendarFromDb(
     if (!verified || data.events.length !== entities.rows.length) return data;
     return {
       ...data,
-      observationSnapshot: { revision, eventIds: data.events.map(({ id }) => id) },
+      observationSnapshot: { revision, verifiedAt: new Date(revisedAt).toISOString(), eventIds: data.events.map(({ id }) => id) },
       ...(exclusions?.rows.length ? { legacyExclusions: decodeLegacyExclusions(exclusions.rows) } : {}),
     };
   } catch (err) {

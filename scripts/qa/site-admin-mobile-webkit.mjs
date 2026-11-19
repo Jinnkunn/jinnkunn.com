@@ -126,6 +126,11 @@ async function main() {
     fixture.failures.delete(path);
     await saveDraft.tap();
     await eventually(() => assert.match(fixture.saved.get(path), /Mobile recovered title/), "restored post is saved without a publish");
+    await button("Publish updates").tap();
+    const postReview = page.getByRole("dialog", { name: "Review publication" });
+    assert.equal(await postReview.getByLabel("Changes to publish", { exact: true }).inputValue(), `document:${path}`);
+    await postReview.getByRole("link", { name: "/blog/mobile-fixture", exact: true }).waitFor();
+    await postReview.getByRole("button", { name: "Cancel", exact: true }).tap();
     assert.equal(fixture.jobs.length, 0);
     await button("Back to posts").tap();
 
@@ -140,13 +145,14 @@ async function main() {
     await body.dispatchEvent("compositionend", { data: news });
     await eventually(() => assert.ok(fixture.entries("news").some((item) => item.body.includes(news))), "composed News draft is saved");
     const entry = fixture.entries("news").find((item) => item.body.includes(news));
-    await editor().getByRole("button", { name: "Close entry editor", exact: true }).tap();
     fixture.setRunnerOnline(false);
-    await button("Publish updates").tap();
+    await editor().getByRole("button", { name: "Publish updates", exact: true }).tap();
     const review = page.getByRole("dialog", { name: "Review publication" });
-    await review.getByLabel("Changes to publish", { exact: true }).selectOption(`news:${entry.id}`);
+    assert.equal(await review.getByLabel("Changes to publish", { exact: true }).inputValue(), `news:${entry.id}`);
     await review.getByRole("heading", { name: "Selected changes", exact: true }).waitFor();
     await review.getByRole("button", { name: "Publish selection", exact: true }).tap();
+    await review.waitFor({ state: "detached" });
+    await editor().getByRole("button", { name: "Close entry editor", exact: true }).tap();
     const receipt = page.getByRole("region", { name: "Publication status" });
     await receipt.getByText("Wait for the runner to reconnect. Do not submit again.", { exact: true }).waitFor();
     assert.equal(await receipt.getByRole("button", { name: "Review and retry" }).count(), 0);

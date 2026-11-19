@@ -16,7 +16,8 @@ const calendarFixture = normalizePublicCalendarRuntimeData({
   }),
 });
 
-async function checkCalendar(page, origin, viewport) {
+async function checkCalendar(page, origin, viewport, setFeed) {
+  setFeed("stale");
   await page.goto(`${origin}/calendar?tz=UTC`);
   await page.waitForFunction(() => document.querySelector('select[aria-label="Time zone"]')?.value === "UTC");
   const defaultView = viewport.width <= 720 ? "Agenda" : "Month";
@@ -24,6 +25,15 @@ async function checkCalendar(page, origin, viewport) {
   await page.getByRole("button", { name: "Agenda", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Busy", exact: true });
   const slots = page.locator(".public-calendar__day").filter({ has: page.getByRole("button", { name: /Busy/ }) });
+  const freshness = page.getByText(/Unlisted times are not confirmed as free/);
+  await freshness.waitFor();
+  assert.equal(await freshness.locator("time").count(), 1, "Old Live data reports its true verification time");
+  setFeed("offline");
+  const offline = page.waitForResponse((response) => response.url() === `${origin}/api/public/calendar` && response.status() === 503);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await offline;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await slots.count(), 2, "Network failures do not discard the last known Busy slots");
   for (const [index, day] of ["20", "27"].entries()) {
     const slot = slots.nth(index).getByRole("button", { name: /Busy/ });
     await slot.click();
@@ -38,6 +48,9 @@ async function checkCalendar(page, origin, viewport) {
   await page.getByRole("button", { name: /Calendar fixture talk/ }).click();
   const talk = page.getByRole("dialog", { name: "Calendar fixture talk", exact: true });
   assert.equal(await talk.getByRole("link", { name: "Open event page" }).getAttribute("href"), "/calendar/existing-link");
+  setFeed("fresh");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await freshness.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
 }
 
@@ -46,7 +59,7 @@ async function main() {
   ensureNextBuild();
   const port = await findAvailablePort(), origin = `http://127.0.0.1:${port}`;
   const server = startNextServer({ port });
-  let browser, page, searchFailure = false;
+  let browser, page, searchFailure = false, calendarMode = "fresh";
   const errors = [], warnings = [];
   try {
     await waitForHttp(origin);
@@ -57,7 +70,14 @@ async function main() {
       if (url.origin !== origin) return route.abort("blockedbyclient");
       assert.equal(request.method(), "GET", "Public acceptance never writes data");
       if (url.pathname === "/api/search" && searchFailure) return route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"Isolated search failure"}' });
-      if (url.pathname === "/api/public/calendar") return route.fulfill({ json: calendarFixture, headers: { "X-Calendar-Served-At": calendarNow } });
+      if (url.pathname === "/api/public/calendar") {
+        const headers = { "X-Calendar-Served-At": calendarNow };
+        if (calendarMode === "offline") return route.fulfill({ status: 503, headers, json: { error: "Fixture unavailable" } });
+        const stale = calendarMode === "stale";
+        const verifiedAt = new Date(Date.now() - (stale ? 7 * 3_600_000 : 0)).toISOString();
+        const observationSnapshot = { ...calendarFixture.observationSnapshot, revision: stale ? 42 : 43, verifiedAt };
+        return route.fulfill({ json: { ...calendarFixture, observationSnapshot }, headers });
+      }
       return route.continue();
     });
     page = await context.newPage(); page.setDefaultTimeout(12_000);
@@ -153,11 +173,14 @@ async function main() {
       await page.goto(`${origin}/bio`);
       const reading = page.getByRole("region", { name: "Selected research reading" });
       assert.equal(await reading.getByRole("link", { name: paperTitle, exact: true }).getAttribute("href"), href);
+      assert.equal(await page.getByRole("link", { name: "Latest term", exact: true }).getAttribute("href"), "/teaching#latest-term");
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await reading.screenshot({ path: `/tmp/public-acceptance-bio-reading-${viewport.width}.png`, animations: "disabled" });
       await page.goto(`${origin}/teaching`);
       const latest = page.getByRole("region", { name: "Latest term", exact: true });
       await latest.getByRole("heading", { level: 3 }).waitFor();
+      assert.equal(await latest.getAttribute("id"), "latest-term");
+      assert.equal(await latest.getByRole("link", { name: /CSCI 4152\/6509.*Natural Language Processing/ }).getAttribute("href"), "https://vlado.cs.dal.ca/csci6509/");
       await page.getByRole("region", { name: "Past terms", exact: true }).waitFor();
       const teachingBody = page.locator(".mdx-post__body");
       assert.equal(await teachingBody.locator('a[href="/teaching/archive"]').count(), 1);
@@ -172,7 +195,7 @@ async function main() {
       await series.getByRole("link", { name: "Recognizing reasoning drift", exact: true }).click();
       await page.waitForURL("**/blog/when-ai-reasoning-starts-to-drift");
       assert.equal(await series.locator('[aria-current="page"]').innerText(), "Recognizing reasoning drift");
-      await checkCalendar(page, origin, viewport);
+      await checkCalendar(page, origin, viewport, (mode) => { calendarMode = mode; });
       await page.goto(origin);
     }
     const missing = await page.goto(`${origin}/qa-page-that-does-not-exist-291837`);

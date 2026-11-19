@@ -1,4 +1,6 @@
-import { PUBLIC_CALENDAR_REVISION_HEADER, publicCalendarEventKey } from "@jinnkunn/calendar-core/public";
+import {
+  PUBLIC_CALENDAR_REVISION_HEADER, PUBLIC_CALENDAR_VERIFIED_AT_HEADER, publicCalendarEventKey,
+} from "../../packages/calendar-core/src/public-calendar.ts";
 
 const jsonPath = "/api/public/calendar";
 const icsPath = "/api/public/calendar/calendar.ics";
@@ -57,8 +59,10 @@ function readEvents(ics) {
   return events;
 }
 
-export function assertPublicCalendarFeeds({ json, ics, jsonRevision, icsRevision, requireRevision = true }) {
+export function assertPublicCalendarFeeds({ json, ics, jsonRevision, icsRevision,
+  jsonVerifiedAt = null, icsVerifiedAt = null, requireRevision = true, requireVerifiedAt = false }) {
   const revision = json?.observationSnapshot?.revision ?? null;
+  const verifiedAt = json?.observationSnapshot?.verifiedAt ?? null;
   requireCalendar(revision === null || (Number.isSafeInteger(revision) && revision > 0),
     "Public calendar observation revision is invalid.");
   requireCalendar(json?.schemaVersion === 1 && Array.isArray(json.events), "Public calendar JSON is invalid.");
@@ -67,6 +71,12 @@ export function assertPublicCalendarFeeds({ json, ics, jsonRevision, icsRevision
   }
   requireCalendar(jsonRevision === (revision === null ? null : String(revision)),
     "Public calendar revision header does not describe the JSON body.");
+  if (jsonVerifiedAt !== icsVerifiedAt || (requireVerifiedAt && verifiedAt === null)) {
+    throw new CalendarFeedsPending("Public JSON and ICS have not reached a common verification time.");
+  }
+  requireCalendar(jsonVerifiedAt === verifiedAt && (verifiedAt === null || (revision !== null &&
+    typeof verifiedAt === "string" && Number.isFinite(Date.parse(verifiedAt)) && new Date(verifiedAt).toISOString() === verifiedAt)),
+  "Public calendar verification time does not describe the JSON body.");
   requireCalendar(!Object.hasOwn(json, "legacyExclusions"), "Public JSON exposes internal observation data.");
 
   const icsEvents = readEvents(ics);
@@ -119,12 +129,13 @@ export function assertPublicCalendarFeeds({ json, ics, jsonRevision, icsRevision
     requireCalendar(Array.isArray(keys) && new Set(keys).size === keys.length && keys.every((key) => busyKeys.has(key)),
       "Public observation receipt names a missing or non-Busy occurrence.");
   }
-  return { revision, events: seen.size, busy };
+  return { revision, events: seen.size, busy, ...(verifiedAt && { verifiedAt }) };
 }
 
 export async function verifyPublicCalendarFeeds(request, {
   retryDelays = [0, 1_000, 3_000, 6_000, 10_000, 20_000, 30_000],
   requireRevision = true,
+  requireVerifiedAt = false,
 } = {}) {
   let pending;
   for (const delay of retryDelays) {
@@ -150,7 +161,10 @@ export async function verifyPublicCalendarFeeds(request, {
         ics: await icsResponse.text(),
         jsonRevision: jsonResponse.headers.get(PUBLIC_CALENDAR_REVISION_HEADER),
         icsRevision: icsResponse.headers.get(PUBLIC_CALENDAR_REVISION_HEADER),
+        jsonVerifiedAt: jsonResponse.headers.get(PUBLIC_CALENDAR_VERIFIED_AT_HEADER),
+        icsVerifiedAt: icsResponse.headers.get(PUBLIC_CALENDAR_VERIFIED_AT_HEADER),
         requireRevision,
+        requireVerifiedAt,
       });
     } catch (error) {
       if (!(error instanceof CalendarFeedsPending)) throw error;

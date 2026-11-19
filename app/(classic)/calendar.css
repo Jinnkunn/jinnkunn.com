@@ -2,6 +2,15 @@
   padding-bottom: 96px;
 }
 
+.public-calendar__freshness {
+  border-inline-start: 2px solid var(--ds-text-secondary);
+  color: var(--ds-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 1rem 0;
+  padding-inline-start: 0.75rem;
+}
+
 .public-calendar {
   container-type: inline-size;
   display: flex;

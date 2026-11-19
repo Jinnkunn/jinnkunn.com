@@ -76,6 +76,19 @@ the recent content history. Do not manually deploy an unprepared Worker upload.
 `release:staging:sync-git` remains an explicit draft backup, not part of a
 normal code build. Production still requires manual approval and SHA checks.
 
+In **Publish → Release activity**, Live Worker and Published snapshot are
+serving identities. Last verified is the most recent successful receipt for
+that exact pair, not the deployment time or the time this page was loaded.
+An older release without a matching receipt is not confirmed. For D1
+workspaces, a missing Git deploy comparison is not a claim that the drafts
+are all published.
+
+When the visual comparison fails, `output/playwright/production-style-regression/`
+contains an evidence folder with the route, viewport, release identity,
+same-origin document/CSS/script response metadata, and available screenshots.
+Sign-in redirects are not captured. The command still fails and the normal
+release guard or rollback remains in effect.
+
 ## Content-Only Publish
 
 Review and publish in the environment where the content was saved. The
@@ -83,8 +96,13 @@ browser offers independent scopes or the full set of saved changes. Review
 shows the target, affected routes and field changes. The runner rechecks
 both the candidate and Live hashes under the release lock.
 
-`npm run publish:content:staging` and `npm run publish:content:prod` are explicit
-full-draft operations. `npm run publish:content:prod:from-staging` is an
+`npm run publish:content:staging` and `npm run publish:content:prod` without
+review parameters are explicit full-draft operations. For authorized recovery
+when the runner cannot start, pass the reviewed `CONTENT_PUBLICATION_SCOPE`,
+`CONTENT_PUBLICATION_EXPECT_BASELINE`, and `CONTENT_PUBLICATION_EXPECT_SNAPSHOT`
+to the same content-only command. Obtain the identities from a fresh review
+in that environment; never replace a failed scoped job with an unscoped command.
+`npm run publish:content:prod:from-staging` is an
 explicit import of verified staging content, not part of a code release.
 
 The versioned content path builds the reviewed snapshot against the active

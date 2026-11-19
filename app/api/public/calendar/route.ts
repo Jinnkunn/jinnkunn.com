@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import { getLatestPublicCalendarData } from "@/lib/server/public-calendar-data";
 import {
   PUBLIC_CALENDAR_CACHE_TAG,
-  PUBLIC_CALENDAR_REVISION_HEADER,
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
+  publicCalendarRevisionHeaders,
 } from "@jinnkunn/calendar-core/public";
 
 export const runtime = "nodejs";
@@ -18,7 +18,7 @@ export async function GET() {
       "Cache-Control": "public, max-age=30, stale-while-revalidate=300",
       "Cache-Tag": PUBLIC_CALENDAR_CACHE_TAG,
       [PUBLIC_CALENDAR_SERVED_AT_HEADER]: servedAt,
-      ...(data.observationSnapshot && { [PUBLIC_CALENDAR_REVISION_HEADER]: String(data.observationSnapshot.revision) }),
+      ...publicCalendarRevisionHeaders(data),
     },
   });
 }

@@ -1894,6 +1894,10 @@ async function main() {
       dirty: false,
       overlaySnapshotSha: snapshotSha,
       overlayBackupSnapshotId: upload.backupSnapshot?.id || "",
+      ...(serving?.searchSnapshotSha === publicationBaseline.sha && targetWorker.versionId ? {
+        deployedVersionId: targetWorker.versionId,
+        publicVerification: { snapshotSha: publicationBaseline.sha },
+      } : {}),
       note: upload.uploaded === 0 && upload.deleted === 0
         ? `content overlay unchanged (${fileCount} files)`
         : `content overlay published (${upload.uploaded} changed, ${upload.deleted} deleted)`,

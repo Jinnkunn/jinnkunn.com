@@ -1,6 +1,8 @@
 export const PUBLIC_CALENDAR_CACHE_TAG = "public-calendar";
 export const PUBLIC_CALENDAR_SERVED_AT_HEADER = "X-Calendar-Served-At";
 export const PUBLIC_CALENDAR_REVISION_HEADER = "X-Calendar-Revision";
+export const PUBLIC_CALENDAR_VERIFIED_AT_HEADER = "X-Calendar-Verified-At";
+export const PUBLIC_CALENDAR_STALE_AFTER_MS = 6 * 60 * 60_000;
 
 export type PublicCalendarVisibility = "busy" | "titleOnly" | "full";
 export type PublicCalendarAudience = "featured" | "all";
@@ -31,7 +33,7 @@ export type PublicCalendarData = {
     endsAt: string;
   };
   events: PublicCalendarEvent[];
-  observationSnapshot?: { revision: number; eventIds: string[]; busyComplete?: true };
+  observationSnapshot?: { revision: number; eventIds: string[]; verifiedAt?: string; busyComplete?: true };
 };
 
 export type LegacyCalendarExclusion = Pick<PublicCalendarEvent, "startsAt" | "endsAt" | "isAllDay"> & {
@@ -64,6 +66,21 @@ function normalizeIso(value: unknown, fallback: string): string {
   const ms = Date.parse(raw);
   if (!Number.isFinite(ms)) return fallback;
   return new Date(ms).toISOString();
+}
+
+export function publicCalendarFreshness(verifiedAt: unknown, now: number, maxAge = PUBLIC_CALENDAR_STALE_AFTER_MS) {
+  const timestamp = Date.parse(normalizeIso(verifiedAt, ""));
+  if (!Number.isFinite(now) || !Number.isFinite(timestamp) || timestamp > now + 5 * 60_000) return "unverified";
+  return now - timestamp > maxAge ? "stale" : "current";
+}
+
+export function publicCalendarRevisionHeaders(data: PublicCalendarData): Record<string, string> {
+  const snapshot = data.observationSnapshot;
+  if (!snapshot) return {};
+  return {
+    [PUBLIC_CALENDAR_REVISION_HEADER]: String(snapshot.revision),
+    ...(snapshot.verifiedAt && { [PUBLIC_CALENDAR_VERIFIED_AT_HEADER]: snapshot.verifiedAt }),
+  };
 }
 
 export function normalizePublicCalendarServedAt(
@@ -243,10 +260,12 @@ export function normalizePublicCalendarRuntimeData(raw: unknown): PublicCalendar
   if (!snapshot || !Number.isSafeInteger(snapshot.revision) || snapshot.revision <= 0 ||
       !Array.isArray(snapshot.eventIds)) return data;
   const busyIds = new Set(data.events.filter((event) => event.visibility === "busy").map(publicCalendarEventKey));
+  const verifiedAt = normalizeIso(snapshot.verifiedAt, "");
   return {
     ...data,
     observationSnapshot: {
       revision: snapshot.revision,
+      ...(verifiedAt ? { verifiedAt } : {}),
       eventIds: [...new Set(snapshot.eventIds.filter((id) => busyIds.has(id)))],
       ...(snapshot.busyComplete === true ? { busyComplete: true } : {}),
     },
@@ -424,6 +443,7 @@ export function supplementPublicCalendarWithObservedData({
     ...data,
     observationSnapshot: {
       revision: observedData.observationSnapshot.revision,
+      ...(observedData.observationSnapshot.verifiedAt ? { verifiedAt: observedData.observationSnapshot.verifiedAt } : {}),
       eventIds: data.events.filter((event) => observedSlots.has(slotId(event))).map(publicCalendarEventKey),
       ...(legacyExclusions?.length ? { busyComplete: true } : {}),
     },
@@ -470,6 +490,7 @@ export function selectPublicCalendarHydrationData({
   const received = refreshedData.observationSnapshot;
   // A cached or fallback response cannot roll back a confirmed observation view.
   if (known && (!received || received.revision < known.revision)) return currentData;
+  if (known?.verifiedAt && received?.revision === known.revision && !received.verifiedAt) return currentData;
   if (known?.busyComplete && !received?.busyComplete) return currentData;
   const refreshedGeneratedAt = timestampMs(refreshedData.generatedAt);
   const currentGeneratedAt = timestampMs(currentData.generatedAt);

@@ -840,6 +840,49 @@ function compareRoute(route, local, production, viewportName) {
   }
 }
 
+function observedResources(page, origin) {
+  const tracked = new Set(["document", "stylesheet", "script"]);
+  let responses = [];
+  let failures = [];
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    const type = response.request().resourceType();
+    if (url.origin !== origin || !tracked.has(type) || responses.length >= 100) return;
+    const headers = response.headers();
+    responses.push({ path: url.pathname, status: response.status(), type, etag: headers.etag,
+      staticShell: headers["x-static-shell"], staticOverlay: headers["x-static-overlay"], assetPath: headers["x-static-shell-path"],
+      publication: headers["x-publication-snapshot"] });
+  });
+  page.on("requestfailed", (request) => {
+    const url = new URL(request.url());
+    if (url.origin === origin && tracked.has(request.resourceType()) && failures.length < 50) {
+      failures.push({ path: url.pathname, type: request.resourceType() });
+    }
+  });
+  return { reset: () => { responses = []; failures = []; }, read: () => ({ responses, failures }) };
+}
+
+async function saveVisualFailure({ route, viewportName, error, pairs }) {
+  const root = path.join(ROOT, "output", "playwright", "production-style-regression");
+  fs.mkdirSync(root, { recursive: true });
+  const reportDir = fs.mkdtempSync(path.join(root, `${viewportName}-${route.replace(/[^a-z0-9-]/gi, "-")}-`));
+  const evidence = await Promise.all(pairs.map(async ({ label, page, origin, resources }) => {
+    const result = { label, origin, ...resources.read(), screenshot: false };
+    // Never persist a redirected sign-in page or any authentication data.
+    const pageUrl = new URL(page.url());
+    if (pageUrl.origin === origin && pageUrl.pathname === route) {
+      await page.screenshot({ path: path.join(reportDir, `${label}.png`), timeout: 5000, animations: "disabled" })
+        .then(() => { result.screenshot = true; }, () => {});
+    }
+    return result;
+  }));
+  const release = String(process.env.SITE_ADMIN_VISUAL_RELEASE || "");
+  fs.writeFileSync(path.join(reportDir, "evidence.json"), JSON.stringify({ route, viewport: viewportName,
+    release: /^[a-f0-9:-]+$/i.test(release) ? release : null,
+    reason: String(error?.message || error).split("\n")[0].slice(0, 500), evidence }, null, 2) + "\n");
+  console.error(`[production-style-regression] failure evidence: ${reportDir}`);
+}
+
 async function compareViewport({
   browser,
   viewport,
@@ -864,15 +907,26 @@ async function compareViewport({
   try {
     const productionPage = await productionContext.newPage();
     const localPage = await localContext.newPage();
+    const pairs = [
+      { label: "production", page: productionPage, origin: productionOrigin, resources: observedResources(productionPage, productionOrigin) },
+      { label: "candidate", page: localPage, origin: localOrigin, resources: observedResources(localPage, localOrigin) },
+    ];
     for (const route of ROUTES) {
-      const production = await readSnapshot(
-        productionPage,
-        route,
-        productionOrigin,
-        viewport.name,
-      );
-      const local = await readSnapshot(localPage, route, localOrigin, viewport.name);
-      compareRoute(route, local, production, viewport.name);
+      for (const pair of pairs) pair.resources.reset();
+      try {
+        const [production, local] = await Promise.allSettled([
+          readSnapshot(productionPage, route, productionOrigin, viewport.name),
+          readSnapshot(localPage, route, localOrigin, viewport.name),
+        ]);
+        if (production.status === "rejected") throw production.reason;
+        if (local.status === "rejected") throw local.reason;
+        compareRoute(route, local.value, production.value, viewport.name);
+      } catch (error) {
+        await saveVisualFailure({ route: route.path, viewportName: viewport.name, error, pairs }).catch((failure) => {
+          console.error(`[production-style-regression] could not save failure evidence: ${failure.message}`);
+        });
+        throw error;
+      }
     }
   } finally {
     await productionContext.close();

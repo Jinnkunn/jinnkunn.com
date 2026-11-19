@@ -40,8 +40,8 @@ export async function BioExperienceBlock({
       <div className="bio-experience__group">
         <header className="bio-experience__header">
           <h3>Teaching</h3>
-          <ClassicLink href="/teaching" className="bio-experience__all-link">
-            View all
+          <ClassicLink href="/teaching#latest-term" className="bio-experience__all-link">
+            Latest term
           </ClassicLink>
         </header>
         <ol className="bio-experience__list">

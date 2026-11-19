@@ -20,7 +20,9 @@ export function SiteAdminPublicationChanges({ changes, beforeLabel = "Published"
       <h3 className={styles.reviewHeading}>{item.title} <small>· {item.kind}</small></h3>
       {item.details ? <>
         <p className={styles.cardText}>{item.details.summary}</p>
-        <p className={styles.editorHint}>Affects: {item.details.siteWide ? "public pages across the site" : item.details.routes.join(", ") || "content layout"}</p>
+        <p className={styles.editorHint}>Affects: {item.details.siteWide ? "public pages across the site" : item.details.routes.length ? item.details.routes.map((route, index) => <span key={route}>
+          {index ? ", " : ""}{/^\/(?!\/)[^\s\\]*$/.test(route) ? <a href={route} target="_blank" rel="noopener noreferrer">{route}</a> : route}
+        </span>) : "content layout"}</p>
         <FieldChanges fields={item.details.fields} beforeLabel={beforeLabel} afterLabel={afterLabel} />
         <ul className={styles.publicationEntries}>
           {item.details.entries.map((entry, index) => <li key={`${entry.kind}-${index}`}>

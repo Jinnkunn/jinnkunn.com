@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { createClient } from "@libsql/client";
 
-import { normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
+import { compactBusyObservationInput, normalizeCalendarObservationSyncPayload } from "@jinnkunn/calendar-core/core";
 import { buildPublicCalendarIcs } from "@jinnkunn/calendar-core/ics";
 import {
   normalizePublicCalendarData,
@@ -69,7 +69,8 @@ test("a complete Docs snapshot supersedes only matching legacy occurrences, incl
   const docs = {
     collector: { id: "electron-macos:new", kind: "tauri-macos" }, range,
     sources: [{ ...currentSource, syncScope: { completeCalendarIds: ["selected", "empty"] } }],
-    syncMode: "snapshot", observedAt: "2026-11-17T21:00:00Z", observations: [replacement],
+    syncMode: "snapshot", observedAt: "2026-11-17T21:00:00Z",
+    observations: [compactBusyObservationInput({ ...replacement, notes: "Private fixture https://meeting.example.test/link" })],
   };
   const fallback = normalizePublicCalendarData({
     generatedAt: legacy.observedAt, range,
@@ -107,10 +108,12 @@ test("a complete Docs snapshot supersedes only matching legacy occurrences, incl
   const liveProjection = await project(live);
   assert.deepEqual(liveProjection.events, after.events);
   const revision = String(liveProjection.observationSnapshot.revision);
+  const verifiedAt = liveProjection.observationSnapshot.verifiedAt;
+  assert.ok(verifiedAt);
   assert.deepEqual(assertPublicCalendarFeeds({
     json: JSON.parse(JSON.stringify(liveProjection)), ics: buildPublicCalendarIcs(liveProjection),
-    jsonRevision: revision, icsRevision: revision,
-  }), { revision: Number(revision), events: 4, busy: 3 });
+    jsonRevision: revision, icsRevision: revision, jsonVerifiedAt: verifiedAt, icsVerifiedAt: verifiedAt,
+  }), { revision: Number(revision), events: 4, busy: 3, verifiedAt });
   staging.close();
   live.close();
 });
@@ -729,8 +732,10 @@ test("calendar-sync-store: move and remove Busy in open pages and ICS without dr
   const moved = snapshot("synthetic-qa", 1, 5);
   moved.observations[0].sourceEventId = payload.observations[0].sourceEventId;
   moved.observedAt = "2026-05-18T00:01:00Z";
-  await publish(moved);
+  moved.observations[0].notes = "Unneeded private note https://meet.example.test/fixture";
+  await publish({ ...moved, observations: moved.observations.map(compactBusyObservationInput) });
   const changed = await projected();
+  assert.doesNotMatch(JSON.stringify(changed), /Unneeded private note|meet\.example\.test/);
   const afterMove = selectPublicCalendarHydrationData({ currentData: first, refreshedData: changed });
   assert.equal(afterMove.events.length, 2);
   assert.ok(!afterMove.events.some(({ id }) => id === first.events[0].id));

@@ -113,6 +113,7 @@ async function main() {
       await page.getByRole("button", { name: trigger, exact: true }).filter({ visible: true }).click();
       const review = page.getByRole("dialog", { name: "Review publication" });
       await review.waitFor();
+      await review.getByLabel("Changes to publish", { exact: true }).selectOption("all");
       assert.match(await review.innerText(), /saved changes from all sessions/);
       assert.match(await review.innerText(), /Staging/);
       await page.screenshot({ path: "/tmp/collections-workflow-publish-review.png", animations: "disabled" });
@@ -370,6 +371,7 @@ async function main() {
     fixture.changeRemotely("works", remoteOriginal.replace("Recent body.", "Other session's work update."));
     await page.getByRole("button", { name: "Publish updates", exact: true }).click();
     const siteReview = page.getByRole("dialog", { name: "Review publication" });
+    await siteReview.getByLabel("Changes to publish", { exact: true }).selectOption("all");
     const worksReviewHeading = siteReview.getByRole("heading", { name: /^Works · changed$/ });
     await worksReviewHeading.waitFor();
     await worksReviewHeading.locator("..").locator("summary").filter({ hasText: /^Updated:/ }).first().click();
@@ -416,13 +418,13 @@ async function main() {
     const selected = fixture.entries("news").find((row) => row.body?.includes("Selected News update"));
     const liveWorks = fixture.published.get("works");
     fixture.changeRemotely("works", liveWorks.replace("Recent body.", "Do not publish this Works draft."));
-    await page.getByRole("button", { name: "Publish updates", exact: true }).click();
+    await panel().getByRole("button", { name: "Review entry", exact: true }).click();
     const scopedReview = page.getByRole("dialog", { name: "Review publication" });
     const scopeSelect = scopedReview.getByLabel("Changes to publish", { exact: true });
-    await eventually(async () => assert.ok((await scopeSelect.locator("option").allTextContents()).some((item) => item.includes("Selected News update"))), "scoped review options loaded");
-    await scopeSelect.selectOption(`news:${selected.id}`);
+    assert.equal(await scopeSelect.inputValue(), `news:${selected.id}`, "Current entry is selected without broadening scope");
     await scopedReview.getByRole("heading", { name: "Selected changes", exact: true }).waitFor();
     await scopedReview.getByRole("heading", { name: /^News · changed$/ }).waitFor();
+    assert.equal(await scopedReview.getByRole("link", { name: "/news", exact: true }).getAttribute("href"), "/news");
     assert.equal(await scopedReview.getByRole("heading", { name: /^Works · changed$/ }).count(), 0);
     await page.screenshot({ path: "/tmp/site-admin-scoped-publication.png", animations: "disabled" });
     await scopedReview.getByRole("button", { name: "Publish selection", exact: true }).click();
@@ -456,7 +458,8 @@ async function main() {
     const mobileReview = page.getByRole("dialog", { name: "Review publication", exact: true });
     const reviewBox = await mobileReview.boundingBox();
     assert.ok(reviewBox && reviewBox.x >= 0 && reviewBox.x + reviewBox.width <= 391 && reviewBox.y >= 0 && reviewBox.y + reviewBox.height <= 845, "Mobile publication dialog fits the viewport");
-    await mobileReview.getByRole("button", { name: "Publish all changes", exact: true }).focus();
+    await mobileReview.getByRole("heading", { name: /^News · changed$/ }).waitFor();
+    await mobileReview.getByRole("button", { name: "Publish selection", exact: true }).focus();
     await page.keyboard.press("Tab");
     assert.equal(await mobileReview.evaluate((el) => el.contains(document.activeElement)), true);
     await page.keyboard.press("Escape");

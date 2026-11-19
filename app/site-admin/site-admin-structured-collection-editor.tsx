@@ -45,7 +45,7 @@ type StructuredCollectionEditorProps = {
   statusDetail: string;
   onSave: () => void;
   saveDisabled: boolean;
-  onPublish: () => void;
+  onPublish: (entryId: string) => void;
   publishDisabled: boolean;
   issueCount: number;
   onReviewIssues: () => void;
@@ -505,8 +505,11 @@ export function StructuredCollectionEntry({
                 <div className={styles.collectionPanelStatus} role="status"><strong>{panel.status}</strong><small>{panel.statusDetail}</small></div>
                 {panel.compact ? <>
                   <Button onClick={panel.onSave} disabled={panel.saveDisabled} variant="ghost" size="sm">Save draft</Button>
-                  <Button onClick={panel.onPublish} disabled={panel.publishDisabled} tone="accent" size="sm">Publish updates</Button>
-                </> : <Button onClick={onToggle} variant="subtle" size="sm">Done</Button>}
+                  <Button onClick={() => panel.onPublish(id)} disabled={panel.publishDisabled} tone="accent" size="sm">Publish updates</Button>
+                </> : <>
+                  <Button onClick={() => panel.onPublish(id)} disabled={panel.publishDisabled} variant="subtle" size="sm">Review entry</Button>
+                  <Button onClick={onToggle} variant="subtle" size="sm">Done</Button>
+                </>}
               </footer>
             </aside>
           </>, panel.compact ? document.body : panel.host

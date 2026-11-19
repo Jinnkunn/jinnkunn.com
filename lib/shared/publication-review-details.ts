@@ -130,6 +130,9 @@ export function describePublicationChange(change: PublicationReview["changes"][n
           (["works", "teaching"].includes(definition.name) && /<BioExperienceBlock\b/.test(body))) details.routes.push(route);
     }
   }
+  // BIO also reads the featured papers through its page presenter, not MDX.
+  if ((definition?.name === "publications" || change.path === "pages/publications.mdx" || change.oldPath === "pages/publications.mdx") &&
+      (current.sources["pages/bio.mdx"] || baseline.sources["pages/bio.mdx"])) details.routes.push("/bio");
   details.routes = [...new Set(details.routes)].sort();
   return details;
 }

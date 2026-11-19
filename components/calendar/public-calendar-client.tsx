@@ -13,6 +13,7 @@ import {
   PUBLIC_CALENDAR_SERVED_AT_HEADER,
   normalizePublicCalendarRuntimeData,
   normalizePublicCalendarServedAt,
+  publicCalendarFreshness,
   selectPublicCalendarHydrationData,
   type PublicCalendarData,
 } from "@jinnkunn/calendar-core/public";
@@ -141,6 +142,7 @@ export function PublicCalendarClient({
   const [data, setData] = useState<PublicCalendarData>(initialData);
   const [viewChoice, setView] = useState<PublicCalendarViewMode | null>(null);
   const [currentDateIso, setCurrentDateIso] = useState<string | null>(null);
+  const [freshnessCheckedAt, setFreshnessCheckedAt] = useState<number | null>(null);
   const [anchorIso, setAnchorIso] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] =
     useState<SelectedCalendarEvent | null>(null);
@@ -242,12 +244,20 @@ export function PublicCalendarClient({
 
   useEffect(() => {
     let cancelled = false;
+    let pending: AbortController | null = null;
+    let lastAttempt = 0;
 
     async function refresh() {
+      if (document.hidden || pending) return;
+      lastAttempt = Date.now();
+      const controller = new AbortController();
+      pending = controller;
+      const timeout = window.setTimeout(() => controller.abort(), 10_000);
       try {
         const res = await fetch("/api/public/calendar", {
           headers: { accept: "application/json" },
           cache: "no-store",
+          signal: controller.signal,
         });
         const servedAtIso = readResponseTimestampIso(res);
         if (!res.ok) {
@@ -270,19 +280,43 @@ export function PublicCalendarClient({
         if (!cancelled) {
           setCurrentDateIso(normalizePublicCalendarServedAt(null));
         }
+      } finally {
+        window.clearTimeout(timeout);
+        pending = null;
+        if (!cancelled) setFreshnessCheckedAt(Date.now());
       }
     }
 
     void refresh();
+    const refreshAfterResume = () => {
+      if (Date.now() - lastAttempt >= 10_000) void refresh();
+    };
+    document.addEventListener("visibilitychange", refreshAfterResume);
+    window.addEventListener("focus", refreshAfterResume);
+    window.addEventListener("online", refresh);
     const id = window.setInterval(refresh, 60_000);
     return () => {
       cancelled = true;
+      pending?.abort();
+      document.removeEventListener("visibilitychange", refreshAfterResume);
+      window.removeEventListener("focus", refreshAfterResume);
+      window.removeEventListener("online", refresh);
       window.clearInterval(id);
     };
   }, []);
 
+  const verifiedAt = data.observationSnapshot?.verifiedAt;
+  const freshness = freshnessCheckedAt === null ? "checking" : publicCalendarFreshness(verifiedAt, freshnessCheckedAt);
   return (
     <div className="public-calendar__shell">
+      {freshness === "stale" || freshness === "unverified" ? (
+        <p className="public-calendar__freshness" role="status">
+          Availability may be out of date. Unlisted times are not confirmed as free.
+          {freshness === "stale" && verifiedAt ? <> Last verified <time dateTime={verifiedAt}>{new Intl.DateTimeFormat("en", {
+            dateStyle: "medium", timeStyle: "short", timeZone,
+          }).format(new Date(verifiedAt))}</time> ({timeZone}).</> : null}
+        </p>
+      ) : null}
       <PublicCalendarView
         data={data}
         view={view}

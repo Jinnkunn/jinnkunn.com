@@ -20,6 +20,7 @@ interface TeachingEntryProps {
   instructor?: string;
   /** Grouped TeachingBlock entries put their shared term above the list. */
   showTerm?: boolean;
+  linkCourseName?: boolean;
 }
 
 /** One row on the teaching page. Lives as a self-closing
@@ -39,7 +40,10 @@ export function TeachingEntry({
   courseUrl,
   instructor,
   showTerm = true,
+  linkCourseName = false,
 }: TeachingEntryProps): ReactElement {
+  const nameIsLinked = Boolean(courseUrl && linkCourseName && courseName);
+  const label = nameIsLinked ? [courseCode, courseName].filter(Boolean).join(" - ") : courseCode || courseName;
   const courseLabel =
     courseUrl ? (
       <span className="highlighted-background bg-yellow">
@@ -50,12 +54,12 @@ export function TeachingEntry({
               ? { target: "_blank", rel: "noopener noreferrer" }
               : {})}
           >
-            {courseCode}
+            {label}
           </ClassicLink>
         </strong>
       </span>
     ) : (
-      <span className="highlighted-color color-gray">{courseCode}</span>
+      <span className="highlighted-color color-gray">{label}</span>
     );
 
   return (
@@ -65,7 +69,7 @@ export function TeachingEntry({
       <strong>{role}</strong>
       <span className="highlighted-color color-gray"> for </span>
       {courseLabel}
-      {courseName && (
+      {courseName && courseCode && !nameIsLinked && (
         <span className="highlighted-color color-gray">
           {" "}
           ({courseName}
@@ -77,6 +81,7 @@ export function TeachingEntry({
           )
         </span>
       )}
+      {(nameIsLinked || !courseCode) && instructor ? <span className="highlighted-color color-gray"> ({instructor})</span> : null}
     </li>
   );
 }
