@@ -17,7 +17,7 @@ async function buildBreadcrumbTrail(entry: PageEntry): Promise<DocumentBreadcrum
 }
 
 export async function PageView({ entry, source }: { entry: PageEntry; source: string }) {
-  const [{ Content }, trail] = await Promise.all([compilePostMdx(source), buildBreadcrumbTrail(entry)]);
+  const [{ Content }, trail] = await Promise.all([compilePostMdx(source, { teachingPage: entry.slug === "teaching" }), buildBreadcrumbTrail(entry)]);
   return <PageArticle entry={entry} trail={trail}>
     <Content components={postMdxComponents} />
     {entry.slug === "bio" ? <BioResearchReading /> : null}

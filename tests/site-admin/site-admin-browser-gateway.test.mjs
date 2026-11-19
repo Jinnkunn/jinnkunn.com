@@ -73,6 +73,7 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   const editor = fs.readFileSync("app/site-admin/site-admin-markdown-editor.tsx", "utf8");
   const visual = fs.readFileSync("app/site-admin/site-admin-visual-editor.tsx", "utf8");
   const sourceEditor = fs.readFileSync("app/site-admin/site-admin-source-editor.tsx", "utf8");
+  const publicationStatus = fs.readFileSync("app/site-admin/site-admin-publication-status.tsx", "utf8");
   const compatibility = fs.readFileSync(
     "lib/site-admin/mdx-visual-compatibility.ts",
     "utf8",
@@ -113,7 +114,9 @@ test("site-admin browser console uses the visual-first MDX editor", () => {
   assert.ok(source.includes("buildSiteAdminReleaseProgress"));
   assert.ok(source.includes("SiteAdminPublishingProgress"));
   assert.ok(source.includes("Runner offline"));
-  assert.ok(source.includes("release runner did not wake"));
+  assert.ok(source.includes("SiteAdminPublicationStatus"));
+  assert.ok(publicationStatus.includes("Wait for the runner to reconnect"));
+  assert.ok(publicationStatus.includes("Review and retry"));
   assert.ok(source.includes("saveSelectedContentRef"));
   assert.ok(source.includes("quiet: true"));
   assert.ok(source.includes("newerLocalEdits"));

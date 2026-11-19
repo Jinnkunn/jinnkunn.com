@@ -120,6 +120,15 @@ jobs:
         timeout-minutes: 6
         run: npm run smoke:site-admin:followup
 
+      - name: Install WebKit for Mobile Admin Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        run: npx --no-install playwright-core install --with-deps webkit
+
+      - name: Admin Mobile WebKit Regression
+        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
+        timeout-minutes: 6
+        run: npm run smoke:site-admin:mobile
+
       - name: Public Acceptance
         if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
         timeout-minutes: 3

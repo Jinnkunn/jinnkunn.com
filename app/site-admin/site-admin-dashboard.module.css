@@ -1227,6 +1227,30 @@ button.statusPill:disabled {
   flex-wrap: wrap;
 }
 
+.publicationReceipt {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin-block: 8px 12px;
+  font-size: 0.82rem;
+  color: var(--ds-text-muted);
+}
+
+.publicationVersions,
+.publicationAttempt,
+.publicationAttempt > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 4px 12px;
+}
+
+.publicationAttempt {
+  padding-block-start: 6px;
+  border-block-start: 1px solid var(--ds-border-subtle);
+}
+
 .publishingProgress {
   display: grid;
   flex: 1 0 100%;

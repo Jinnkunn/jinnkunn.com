@@ -91,7 +91,7 @@ test("calendar receipts and revision-pinned retries require authentication and d
   async function isolatedBinding() {
     const client = createClient({ url: ":memory:" });
     t.after(() => client.close());
-    for (const name of ["007_calendar_observations.sql", "011_calendar_observation_revision.sql"]) {
+    for (const name of ["007_calendar_observations.sql", "011_calendar_observation_revision.sql", "012_calendar_projection_exclusions.sql"]) {
       await client.executeMultiple(await readFile(new URL("../../migrations/" + name, import.meta.url), "utf8"));
     }
     const prepare = (sql, args = []) => ({

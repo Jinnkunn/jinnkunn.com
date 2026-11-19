@@ -2,8 +2,8 @@
 
 The collector writes to staging. That request only reports success after the
 same observation revision, or a newer staging revision, is confirmed in Live.
-The mirror updates only the four calendar observation tables and the revision
-receipt. The public projection still exposes those observations as `Busy`.
+The mirror updates only calendar observation state, projection exclusions,
+and the revision receipt. The public projection still exposes those observations as `Busy`.
 
 ## Rollout
 
@@ -13,6 +13,29 @@ to **both** the staging and production `SITE_ADMIN_DB` databases. Use the
 normal D1 migration and [release](./production-promotion.md) procedures. The
 migration is additive and idempotent; it does not change existing events.
 The first verified mirror reconciles data left by the old publisher.
+
+For scoped Docs snapshots, apply [`012_calendar_projection_exclusions.sql`](../../migrations/012_calendar_projection_exclusions.sql)
+to both databases before deploying the website code that writes exclusions.
+Update Docs after the website rollout and verify one full sync. Existing clients
+can keep sending snapshots without scope declarations; those do not supersede
+any other collector's records.
+
+## Complete Calendar Scope
+
+- Docs includes `sources[].syncScope.completeCalendarIds` on complete snapshots
+  after EventKit confirms all selected calendars were readable. Selected IDs are
+  included even if they returned no events. An omitted calendar is not an empty scan.
+- A complete scope can supersede an old Workspace/iOS observation only when its
+  provider, account ID, and calendar ID match and its whole interval was covered.
+  The old observation remains in the database. Exclusions persist when the sync
+  window rolls forward or an older collector replays the same occurrence.
+- The same projection also removes exact Busy copies in older public snapshots.
+  A match requires a known old event ID, start, end, and all-day flag. Overlap by
+  itself does not remove an occurrence, and explicitly published detail is not
+  affected. Exclusion evidence stays server-side.
+- Test a reschedule and an empty selected calendar, with an overlapping event
+  from a separate calendar. Confirm the same changes on the website, JSON, and
+  ICS before retiring any old collector. Do not bulk-delete unverified events.
 
 ## Diagnose and Retry
 

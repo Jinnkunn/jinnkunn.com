@@ -115,6 +115,15 @@ async function main() {
       assert.equal(await reading.getByRole("link", { name: paperTitle, exact: true }).getAttribute("href"), href);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await reading.screenshot({ path: `/tmp/public-acceptance-bio-reading-${viewport.width}.png`, animations: "disabled" });
+      await page.goto(`${origin}/teaching`);
+      const latest = page.getByRole("region", { name: "Latest term", exact: true });
+      await latest.getByRole("heading", { level: 3 }).waitFor();
+      await page.getByRole("region", { name: "Past terms", exact: true }).waitFor();
+      const teachingBody = page.locator(".mdx-post__body");
+      assert.equal(await teachingBody.locator('a[href="/teaching/archive"]').count(), 1);
+      assert.equal(await teachingBody.getByRole("link", { name: "CSCI3141", exact: true }).getAttribute("href"), "/teaching/archive/2024-25-fall/csci3141");
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.screenshot({ path: `/tmp/public-acceptance-teaching-${viewport.width}.png`, animations: "disabled" });
       await page.goto(`${origin}/blog`);
       const series = page.getByRole("navigation", { name: "Reasoning Drift", exact: true });
       assert.deepEqual(await series.getByRole("link").allTextContents(), ["Recognizing reasoning drift", "Measuring drift at the token level", "Testing context order"]);
@@ -132,7 +141,7 @@ async function main() {
     await page.waitForURL(`${origin}/`);
     assert.deepEqual(errors, []);
     assert.deepEqual(warnings.filter((message) => !/ERR_BLOCKED_BY_CLIENT|status of (503|404)/.test(message)), []);
-    console.log("[public-acceptance] PASS: desktop/mobile bilingual search, paper links and keyboard disclosure, BIO reading, blog series, retry, More dismissal, 404 recovery, zero writes");
+    console.log("[public-acceptance] PASS: desktop/mobile bilingual search, paper links and keyboard disclosure, BIO reading, Teaching terms, blog series, retry, More dismissal, 404 recovery, zero writes");
   } catch (error) {
     console.error({ errors, warnings });
     console.error(server.getLogs());

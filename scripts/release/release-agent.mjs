@@ -566,11 +566,13 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
   const started = Date.now();
   let eventQueue = Promise.resolve();
   let runningPhase = "running";
+  let lastPhase = "starting";
   const pushLine = (phase) => (stream, line) => {
     if (phase === "running") {
       runningPhase = releasePhaseForOutput(action, line) || runningPhase;
     }
     const nextPhase = phase === "running" ? runningPhase : phase;
+    lastPhase = nextPhase;
     eventQueue = eventQueue.then(() =>
       safePostEvent(baseUrl, token, agentId, id, {
         phase: nextPhase,
@@ -583,6 +585,7 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
   let cleanupExecutionRepo = () => undefined;
   try {
     if (!noSync) {
+      lastPhase = "sync";
       const execution = syncRepo({
         repo,
         jobId: id,
@@ -616,6 +619,7 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
         command: `npm ${command.args.join(" ")}`,
         durationMs,
         exitCode: result.code,
+        ...(!ok && !result.aborted ? { failurePhase: lastPhase } : {}),
         ...(result.verifiedPublicationSha ? { verifiedPublicationSha: result.verifiedPublicationSha } : {}),
         stdoutTail: result.tail.slice(-80).map(redact).join("\n"),
       },
@@ -638,6 +642,7 @@ async function runJob({ baseUrl, token, agentId, repo, dryRun, noSync, job }) {
         command: `npm ${command.args.join(" ")}`,
         durationMs,
         exitCode: 1,
+        failurePhase: lastPhase,
         stdoutTail: redact(message),
       },
     });

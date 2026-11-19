@@ -71,7 +71,7 @@ export function useSiteAdminReleaseMonitor(options: {
   releaseRunning: boolean;
   readJobs: () => Promise<ReleaseJobsPayload>;
   refreshSummary: () => Promise<{ release: { recommendedAction: { kind: string } } } | null>;
-  onFinished: (outcome: FinishedOutcome, coveredRevision: number) => void;
+  onFinished: (outcome: FinishedOutcome, coveredRevision: number, jobId: string) => void;
   onError: (message: string) => void;
   onActivity: () => void;
 }) {
@@ -87,7 +87,7 @@ export function useSiteAdminReleaseMonitor(options: {
       readJobs: () => callbacks.current.readJobs(),
       refreshSummary: () => callbacks.current.refreshSummary(),
       onActivity: (payload) => { setActivity(payload); if (payload) callbacks.current.onActivity(); },
-      onFinished: (outcome) => { setWatch({ jobId: "", deadline: 0, coveredRevision: 0 }); callbacks.current.onFinished(outcome, watch.coveredRevision); },
+      onFinished: (outcome) => { setWatch({ jobId: "", deadline: 0, coveredRevision: 0 }); callbacks.current.onFinished(outcome, watch.coveredRevision, watch.jobId); },
       onStop: () => setWatch({ jobId: "", deadline: 0, coveredRevision: 0 }),
       onError: (error) => callbacks.current.onError(error),
     });

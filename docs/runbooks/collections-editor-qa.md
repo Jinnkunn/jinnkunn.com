@@ -9,6 +9,8 @@ CONTENT_SYNC_MODE=stubs npm run build
 npm run smoke:site-admin:collections
 npm run smoke:site-admin:drafts
 npm run smoke:site-admin:followup
+npx --no-install playwright-core install webkit
+npm run smoke:site-admin:mobile
 ```
 
 The test starts a local Next production server with a synthetic administrator session. It simulates the staging hostname to exercise environment-specific publish buttons, but never contacts staging: documents and assets come from localhost, and every admin API request is intercepted by an in-memory transport. Unconfigured API requests and non-GET requests outside that transport fail closed. No real D1 writes, publishing jobs, or production sessions are used.
@@ -28,6 +30,12 @@ The follow-up workflow also covers byte-preserving document round trips, unknown
 frontmatter and comments, empty descriptions, Save/Discard/Stay navigation,
 failed and in-flight saves, semantic version comparisons and explicit restore
 confirmation on desktop and mobile. Restoring a revision must not queue a release.
+
+The WebKit suite uses an iPhone viewport and the same isolated transport. It
+checks a News composition and scoped publish while the runner is offline,
+editing a Blog draft across Back and reload, and creating a Teaching term in a
+reduced viewport. Synthetic composition and viewport resizing are regression
+checks, not a substitute for a physical iPhone keyboard or Safari session.
 
 ## Real Staging Write Test
 

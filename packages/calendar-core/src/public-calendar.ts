@@ -28,8 +28,15 @@ export type PublicCalendarData = {
     endsAt: string;
   };
   events: PublicCalendarEvent[];
-  observationSnapshot?: { revision: number; eventIds: string[] };
+  observationSnapshot?: { revision: number; eventIds: string[]; busyComplete?: true };
 };
+
+export type LegacyCalendarExclusion = Pick<PublicCalendarEvent, "startsAt" | "endsAt" | "isAllDay"> & {
+  legacyIds: string[];
+};
+
+// Server-only inputs to the public projection, never included in its response.
+export type ObservedPublicCalendarData = PublicCalendarData & { legacyExclusions?: LegacyCalendarExclusion[] };
 
 const PUBLIC_BUSY_COLOR = "#9B9A97";
 const BUSY_ROUND_MINUTES = 15;
@@ -145,7 +152,7 @@ export function filterStalePublicCalendarEvents(
     events: filtered,
     ...(retainedIds && data.observationSnapshot && {
       observationSnapshot: {
-        revision: data.observationSnapshot.revision,
+        ...data.observationSnapshot,
         eventIds: data.observationSnapshot.eventIds.filter((id) => retainedIds.has(id)),
       },
     }),
@@ -191,6 +198,7 @@ export function normalizePublicCalendarRuntimeData(raw: unknown): PublicCalendar
     observationSnapshot: {
       revision: snapshot.revision,
       eventIds: [...new Set(snapshot.eventIds.filter((id) => busyIds.has(id)))],
+      ...(snapshot.busyComplete === true ? { busyComplete: true } : {}),
     },
   };
 }
@@ -305,18 +313,33 @@ function mergeBusyRuntimeEvents(
   return out;
 }
 
+export function isExcludedLegacyCalendarEvent(event: PublicCalendarEvent, exclusion: LegacyCalendarExclusion): boolean {
+  return event.visibility === "busy" && event.isAllDay === exclusion.isAllDay &&
+    event.startsAt === exclusion.startsAt && event.endsAt === exclusion.endsAt && exclusion.legacyIds.includes(event.id);
+}
+
+function occurrenceKey(id: string, startsAt: string, endsAt: string, allDay: boolean): string {
+  return JSON.stringify([id, startsAt, endsAt, allDay]);
+}
+
 export function supplementPublicCalendarWithObservedData({
   publicData,
   observedData,
 }: {
   publicData: PublicCalendarData;
-  observedData: PublicCalendarData | null | undefined;
+  observedData: ObservedPublicCalendarData | null | undefined;
 }): PublicCalendarData {
   if (!observedData || (!observedData.events.length && !observedData.observationSnapshot)) {
     return publicData;
   }
 
-  const events = [...publicData.events];
+  const legacyExclusions = observedData.observationSnapshot ? observedData.legacyExclusions : undefined;
+  const excludedKeys = legacyExclusions?.length ? new Set(legacyExclusions.flatMap(({ legacyIds, startsAt, endsAt, isAllDay }) =>
+    legacyIds.map((id) => occurrenceKey(id, startsAt, endsAt, isAllDay)),
+  )) : null;
+  const events = excludedKeys
+    ? publicData.events.filter((event) => event.visibility !== "busy" || !excludedKeys.has(occurrenceKey(event.id, event.startsAt, event.endsAt, event.isAllDay)))
+    : [...publicData.events];
   const windows = events.map(eventWindow);
   const observedIds = new Set<string>();
   for (const observed of observedData.events) {
@@ -343,6 +366,7 @@ export function supplementPublicCalendarWithObservedData({
     observationSnapshot: {
       revision: observedData.observationSnapshot.revision,
       eventIds: data.events.filter(({ id }) => observedIds.has(id)).map(({ id }) => id),
+      ...(legacyExclusions?.length ? { busyComplete: true } : {}),
     },
   };
 }
@@ -354,7 +378,7 @@ export function selectPublicCalendarRuntimeData({
 }: {
   dbData: PublicCalendarData | null | undefined;
   sourceData: PublicCalendarData;
-  observedData?: PublicCalendarData | null | undefined;
+  observedData?: ObservedPublicCalendarData | null | undefined;
 }): PublicCalendarData {
   if (!dbData) {
     return supplementPublicCalendarWithObservedData({ publicData: sourceData, observedData });
@@ -390,6 +414,7 @@ export function selectPublicCalendarHydrationData({
   const received = refreshedData.observationSnapshot;
   // A cached or fallback response cannot roll back a confirmed observation view.
   if (known && (!received || received.revision < known.revision)) return currentData;
+  if (known?.busyComplete && !received?.busyComplete) return currentData;
   const refreshedGeneratedAt = timestampMs(refreshedData.generatedAt);
   const currentGeneratedAt = timestampMs(currentData.generatedAt);
   const responseIsNotNewer = refreshedGeneratedAt <= currentGeneratedAt;
@@ -409,7 +434,8 @@ export function selectPublicCalendarHydrationData({
   // remove previously observed Busy blocks, including ones merged with a
   // manual block whose original interval is now present in the response.
   const replaceableIds = new Set(received ? known?.eventIds : []);
-  const carried = currentData.events.filter(({ id }) => !refreshedIds.has(id) && !replaceableIds.has(id));
+  const carried = currentData.events.filter(({ id, visibility }) => !refreshedIds.has(id) &&
+    !replaceableIds.has(id) && !(received?.busyComplete && visibility === "busy"));
   return normalizePublicCalendarRuntimeData({
     ...refreshedData,
     events: [...refreshedData.events, ...carried],

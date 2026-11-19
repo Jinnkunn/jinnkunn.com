@@ -257,6 +257,17 @@ export function normalizeCalendarSource(raw: unknown): CalendarSourceDescriptor 
   };
 }
 
+export function isDocsCalendarCollector(id: string): boolean {
+  return id.startsWith("electron-macos:") && id.length > "electron-macos:".length;
+}
+
+export function completeCalendarIds(scope: Record<string, unknown> | undefined): string[] {
+  const ids = scope?.completeCalendarIds;
+  if (!Array.isArray(ids) || !ids.length || ids.length > 512 ||
+      !ids.every((id): id is string => typeof id === "string" && !!id.trim() && id.length <= 1024)) return [];
+  return [...new Set(ids.map((id) => id.trim()))];
+}
+
 export function normalizeCalendarObservation(
   raw: unknown,
   collectorId: string,
@@ -333,16 +344,26 @@ export function normalizeCalendarObservationSyncPayload(
   const rangeObj = asRecord(obj.range);
   const rangeStartsAt = normalizeIso(rangeObj.startsAt, now);
   const rangeEndsAt = normalizeIso(rangeObj.endsAt, rangeStartsAt);
-  const sources = Array.isArray(obj.sources)
-    ? obj.sources
-        .map(normalizeCalendarSource)
-        .filter((source): source is CalendarSourceDescriptor => source !== null)
-    : [];
+  const rawSources: unknown[] = Array.isArray(obj.sources) ? obj.sources : [];
+  const sources = rawSources.map(normalizeCalendarSource)
+    .filter((source): source is CalendarSourceDescriptor => source !== null);
   const observations = Array.isArray(obj.observations)
     ? obj.observations
         .map((entry) => normalizeCalendarObservation(entry, collector.id))
         .filter((entry): entry is CalendarObservation => entry !== null)
     : [];
+  if (rawSources.some((source) => Object.hasOwn(asRecord(asRecord(source).syncScope), "completeCalendarIds"))) {
+    const scoped = new Map(sources.map((source) => [source.id, new Set(completeCalendarIds(source.syncScope))]));
+    // A dropped or out-of-scope observation must never turn into proof of an empty calendar.
+    if (!isDocsCalendarCollector(collector.id) || collector.kind !== "tauri-macos" || obj.syncMode !== "snapshot" ||
+        !normalizeIso(rangeObj.startsAt, "") || !normalizeIso(rangeObj.endsAt, "") || rangeEndsAt <= rangeStartsAt ||
+        !normalizeIso(obj.observedAt, "") || !Array.isArray(obj.observations) || observations.length !== obj.observations.length ||
+        scoped.size !== rawSources.length || sources.some((source) => !source.externalSourceId || !scoped.get(source.id)?.size) ||
+        observations.some((item) => item.collectorId !== collector.id || !item.calendarId || !scoped.get(item.sourceId)?.has(item.calendarId) ||
+          item.startsAt >= rangeEndsAt || item.endsAt <= rangeStartsAt)) {
+      throw new Error("Invalid complete calendar snapshot.");
+    }
+  }
   const sourceIds = new Set(sources.map((source) => source.id));
   for (const observation of observations) {
     if (!sourceIds.has(observation.sourceId)) {

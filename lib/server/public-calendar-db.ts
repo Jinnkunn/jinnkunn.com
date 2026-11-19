@@ -5,6 +5,8 @@ import type { DbExecutor, TransactionalDbExecutor } from "./db-content-store.ts"
 import { logWarn } from "./error-log.ts";
 import {
   normalizePublicCalendarData,
+  type LegacyCalendarExclusion,
+  type ObservedPublicCalendarData,
   type PublicCalendarData,
   type PublicCalendarEvent,
 } from "../shared/public-calendar.ts";
@@ -206,16 +208,19 @@ const OBSERVED_ENTITIES_QUERY = {
 
 async function readObservedRows(executor: DbExecutor) {
   if ("batch" in executor && typeof executor.batch === "function") {
+    const transactional = executor as TransactionalDbExecutor;
+    const readers = [OBSERVED_STATE_QUERY, OBSERVED_ENTITIES_QUERY,
+      { sql: "SELECT revision, updated_at FROM calendar_observation_revision WHERE id = 1" }];
     try {
-      return await (executor as TransactionalDbExecutor).batch([
-        OBSERVED_STATE_QUERY,
-        OBSERVED_ENTITIES_QUERY,
-        { sql: "SELECT revision, updated_at FROM calendar_observation_revision WHERE id = 1" },
+      return await transactional.batch([
+        ...readers,
+        { sql: "SELECT starts_at, ends_at, is_all_day, legacy_ids_json FROM calendar_projection_exclusions" },
       ]);
     } catch (error) {
       // Older local/preview databases can still provide observations, but
       // without a receipt they cannot prove a removed event is really gone.
       const details = error instanceof Error ? [error.message, error.cause].join(" ") : String(error);
+      if (/no such table:\s*calendar_projection_exclusions/i.test(details)) return transactional.batch(readers);
       if (!/no such table:\s*calendar_observation_revision/i.test(details)) throw error;
     }
   }
@@ -225,12 +230,22 @@ async function readObservedRows(executor: DbExecutor) {
   ]);
 }
 
+function decodeLegacyExclusions(rows: Record<string, unknown>[]): LegacyCalendarExclusion[] {
+  return rows.flatMap((row) => {
+    const ids: unknown = JSON.parse(stringField(row.legacy_ids_json));
+    return Array.isArray(ids) ? [{
+      startsAt: stringField(row.starts_at), endsAt: stringField(row.ends_at), isAllDay: numberField(row.is_all_day) === 1,
+      legacyIds: ids.filter((id): id is string => typeof id === "string" && !!id),
+    }] : [];
+  });
+}
+
 export async function readObservedPublicCalendarFromDb(
   executor = tryGetD1Executor(),
-): Promise<PublicCalendarData | null> {
+): Promise<ObservedPublicCalendarData | null> {
   if (!executor) return null;
   try {
-    const [state, entities, receipt] = await readObservedRows(executor);
+    const [state, entities, receipt, exclusions] = await readObservedRows(executor);
     const firstState = state.rows[0] ?? {};
     const revision = numberField(receipt?.rows[0]?.revision);
     const revisedAt = stringField(receipt?.rows[0]?.updated_at);
@@ -270,6 +285,7 @@ export async function readObservedPublicCalendarFromDb(
     return {
       ...data,
       observationSnapshot: { revision, eventIds: data.events.map(({ id }) => id) },
+      ...(exclusions?.rows.length ? { legacyExclusions: decodeLegacyExclusions(exclusions.rows) } : {}),
     };
   } catch (err) {
     logWarn({

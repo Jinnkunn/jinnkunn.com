@@ -1,6 +1,11 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import { createD1Executor, type D1DatabaseLike } from "./d1-executor.ts";
+import {
+  legacyCalendarProjection,
+  READ_CALENDAR_COVERAGE,
+  readCalendarProjectionExclusions,
+} from "./calendar-projection-exclusions.ts";
 import type {
   DbExecutor,
   DbResult,
@@ -281,6 +286,12 @@ const CALENDAR_OBSERVATION_MIRROR_TABLES: CalendarMirrorTable[] = [
     ],
     batchSize: rowsPerStatement(9),
   },
+  {
+    name: "calendar_projection_exclusions",
+    primaryKey: "id",
+    columns: ["id", "starts_at", "ends_at", "is_all_day", "legacy_ids_json", "updated_at"],
+    batchSize: rowsPerStatement(6),
+  },
 ];
 
 export type CalendarObservationLivePublishResult =
@@ -450,13 +461,29 @@ function readActiveObservationsForRange(
   range: CalendarObservationSyncPayload["range"],
 ): DbStatement {
   return {
-    sql: `SELECT observation_id, collector_id, body_json
-          FROM calendar_event_observations
-          WHERE deleted_at IS NULL
-            AND starts_at < ?
-            AND ends_at > ?`,
+    sql: `SELECT o.observation_id, o.collector_id, o.body_json, s.provider, s.external_source_id
+          FROM calendar_event_observations o LEFT JOIN calendar_sync_sources s ON s.id = o.source_id
+          WHERE o.deleted_at IS NULL AND o.starts_at < ? AND o.ends_at > ?`,
     args: [range.endsAt, range.startsAt],
   };
+}
+
+function readDeletedLegacyObservationsForRange(range: CalendarObservationSyncPayload["range"]): DbStatement {
+  return {
+    sql: `SELECT o.body_json, s.provider, s.external_source_id
+          FROM calendar_event_observations o JOIN calendar_sync_sources s ON s.id = o.source_id
+          WHERE o.deleted_at IS NOT NULL AND o.starts_at >= ? AND o.ends_at <= ?
+            AND (o.collector_id LIKE 'tauri-macos:%' OR o.collector_id LIKE 'ios:%')`,
+    args: [range.startsAt, range.endsAt],
+  };
+}
+
+function clearExcludedEntityRefs(ids: string[], now: number): DbStatement[] {
+  return [...chunks(ids, ID_BATCH_SIZE - 1)].map((batch) => ({
+    sql: `UPDATE calendar_event_observations SET entity_id = NULL, updated_at = ?
+          WHERE entity_id IS NOT NULL AND observation_id IN (${placeholders(batch.length)})`,
+    args: [now, ...batch],
+  }));
 }
 
 function entityWrites(
@@ -706,30 +733,50 @@ async function commitObservationSnapshot(
   payload: CalendarObservationSyncPayload,
   cleanup?: { sourceIds: string[]; expectedRevision: number },
 ) {
-  const [current, observed, existingEntities] = await executor.batch([
+  const [current, observed, existingEntities, scopes, exclusions] = await executor.batch([
     READ_REVISION,
     readActiveObservationsForRange(payload.range),
     readEntityIdsForRange(payload.range),
+    READ_CALENDAR_COVERAGE,
+    readCalendarProjectionExclusions(payload.range),
   ]);
   const { revision } = readRevision(current);
   const now = Math.max(Date.now(), revision + 1);
+  const projection = legacyCalendarProjection(payload, scopes.rows, exclusions.rows);
   const incoming = new Map(payload.observations.map((observation) => [
     observation.observationId, observation,
   ]));
-  const active = [...incoming.values()].filter(({ startsAt, endsAt }) =>
-    startsAt < payload.range.endsAt && endsAt > payload.range.startsAt,
-  );
+  const incomingSources = new Map(payload.sources.map((source) => [source.id, source]));
+  const active = [...incoming.values()].filter((observation) =>
+    observation.startsAt < payload.range.endsAt && observation.endsAt > payload.range.startsAt &&
+    projection.includes(observation, incomingSources.get(observation.sourceId)));
   const staleIds: string[] = [];
   for (const row of observed.rows) {
     const id = String(row.observation_id);
     if (incoming.has(id)) continue;
-    if (payload.syncMode === "snapshot" && row.collector_id === payload.collector.id) {
+    const observation = decodeObservation(row.body_json);
+    const included = observation && projection.includes(observation, {
+      provider: row.provider, externalSourceId: row.external_source_id,
+    });
+    if (payload.syncMode === "snapshot" && row.collector_id === payload.collector.id && projection.canTombstoneOwn(observation)) {
       staleIds.push(id);
-    } else {
-      const observation = decodeObservation(row.body_json);
-      if (observation) active.push(observation);
+    } else if (included && observation) {
+      active.push(observation);
     }
   }
+  if (projection.hasNewCoverage) {
+    // Old maintenance tombstones may still have an exact copy in a bundled calendar.
+    const deleted = await executor.batch([readDeletedLegacyObservationsForRange(payload.range)]);
+    for (const row of deleted[0].rows) {
+      const observation = decodeObservation(row.body_json);
+      if (observation) projection.includes(observation, { provider: row.provider, externalSourceId: row.external_source_id });
+    }
+  }
+  const exclusionTable = CALENDAR_OBSERVATION_MIRROR_TABLES.find((table) => table.name === "calendar_projection_exclusions")!;
+  const exclusionWrites = [...chunks([...projection.newRows.values()], exclusionTable.batchSize)].map((batch) => ({
+    sql: buildMirrorUpsertSql(exclusionTable, batch.length),
+    args: batch.flatMap((row) => [...row, now]),
+  }));
   const entities = mergeCalendarObservations(active);
   const activeEntityIds = new Set(entities.map(({ id }) => id));
   const staleEntityIds = existingEntities.rows.map(({ entity_id }) => String(entity_id))
@@ -740,6 +787,8 @@ async function commitObservationSnapshot(
     ...sourceWrites(payload, now),
     ...observationWrites(payload, now),
     ...tombstoneWrites(staleIds, payload.observedAt, now),
+    ...exclusionWrites,
+    ...clearExcludedEntityRefs([...projection.excludedObservationIds], now),
     ...entityWrites(entities, now),
     ...deleteRows("calendar_event_entities", "entity_id", staleEntityIds),
     ...observationEntityRefWrites(entities, now),
@@ -860,7 +909,8 @@ function collectorCleanupStateWrites(
     },
     {
       sql: `UPDATE calendar_sync_sources
-            SET last_synced_at = ?, updated_at = ?
+            SET last_synced_at = ?, updated_at = ?,
+                sync_scope_json = json_remove(sync_scope_json, '$.completeCalendarIds')
             WHERE id = ? AND collector_id = ?`,
       args: [payload.observedAt, now, sourceId, collectorId],
     },
