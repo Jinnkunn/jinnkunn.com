@@ -21,16 +21,21 @@ const ROOT = process.cwd();
 test("ci: isolated admin regressions run serially without mutating a remote environment", () => {
   const yaml = read(".github/workflows/ci.yml");
   const steps = readStepBlocks(yaml);
-  for (const [name, command] of [["Admin Browser Regression", "npm run smoke:site-admin:collections"], ["Admin Draft Regression", "npm run smoke:site-admin:drafts"], ["Admin Followup Regression", "npm run smoke:site-admin:followup"], ["Public Acceptance", "node scripts/qa/public-acceptance-workflow.mjs"]]) {
+  const adminGate = "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'";
+  for (const [name, command] of [["Admin Browser Regression", "npm run smoke:site-admin:collections"], ["Admin Draft Regression", "npm run smoke:site-admin:drafts"], ["Admin Followup Regression", "npm run smoke:site-admin:followup"], ["Admin Mobile WebKit Regression", "npm run smoke:site-admin:mobile"], ["Public Acceptance", "node scripts/qa/public-acceptance-workflow.mjs"]]) {
     const step = steps.get(name).lines.join("\n");
     assert.ok(step.includes(command));
     assert.doesNotMatch(step, /--execute|--publisher|--env=production|secrets\./);
-    assert.equal(stepGate(yaml, name), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'");
+    assert.equal(stepGate(yaml, name), adminGate);
     assert.match(step, /timeout-minutes: \d+/);
   }
-  assert.match(yaml, /playwright-core install --with-deps chromium/);
+  const installer = steps.get("Install Browsers for Regression").lines.join("\n");
+  assert.ok(installer.includes(`RUN_ADMIN_BROWSER: \${{ ${adminGate} }}`));
+  assert.match(installer, /browsers=\(chromium\)/);
+  assert.match(installer, /if \[ "\$RUN_ADMIN_BROWSER" = "true" \]; then browsers\+=\(webkit\); fi/);
+  assert.match(installer, /playwright-core install --with-deps "\$\{browsers\[@\]\}"/);
   assert.match(yaml, /PLAYWRIGHT_CHANNEL: chromium/);
-  assert.equal(stepGate(yaml, "Install Chromium for Browser Regression"), "github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' || steps.changes.outputs.ui_quality == 'true'");
+  assert.equal(stepGate(yaml, "Install Browsers for Regression"), `${adminGate} || steps.changes.outputs.ui_quality == 'true'`);
 });
 
 // The four steps the dead `event_name == 'push'` gate silently disabled.
