@@ -264,7 +264,7 @@ async function main() {
     const titleInput = page.getByRole("textbox", { name: "Title", exact: true });
     await titleInput.fill("");
     await eventually(async () => assert.equal(matter(docs.get("posts/pending.mdx"), {}).data.title, ""), "Blank title is saved as an incomplete draft");
-    await page.getByRole("button", { name: "Publish updates", exact: true }).first().click();
+    await page.getByRole("button", { name: "Review changes", exact: true }).click();
     const reviewDialog = page.getByRole("dialog", { name: "Review publication", exact: true });
     assert.equal(await reviewDialog.getByLabel("Changes to publish", { exact: true }).inputValue(), "document:posts/pending.mdx");
     await reviewDialog.getByRole("heading", { name: "Needs attention before publishing" }).waitFor();

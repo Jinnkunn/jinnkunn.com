@@ -1227,6 +1227,17 @@ button.statusPill:disabled {
   flex-wrap: wrap;
 }
 
+.editorPublicationAction {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.editorPublicationAction small {
+  color: var(--ds-text-secondary);
+}
+
 .publicationReceipt {
   display: grid;
   gap: 6px;
@@ -3149,7 +3160,7 @@ button.statusPill:disabled {
 .editorChrome .cardLabel { margin-bottom: 4px; font-size: 10px; }
 .editorChrome .cardText { margin-top: 3px; font-size: 12px; }
 :global(body):has(.collectionEntryDrawer[role="dialog"]) .editorSaveButton,
-:global(body):has(.collectionEntryDrawer[role="dialog"]) .editorPublishButton { display: none; }
+:global(body):has(.collectionEntryDrawer) .editorPublicationAction { display: none; }
 
 .editorStatusBar {
   min-height: 38px;
@@ -3357,9 +3368,8 @@ button.statusPill:disabled {
 .collectionWorkspace[data-editing="true"] .collectionEntryTrigger { grid-template-columns: 1fr; gap: 5px; }
 .newsEntryCard[data-selected="true"] { border-color: var(--ds-accent); box-shadow: inset 3px 0 var(--ds-accent); }
 .collectionPanelNav { display: flex; flex: 0 0 auto; gap: 2px; }
-.collectionPanelStatus { display: grid; flex: 1 1 160px; gap: 3px; min-width: 0; }
-.collectionPanelStatus strong { font-size: 12px; }
-.collectionPanelStatus small { font-size: 11px; color: var(--ds-text-secondary); line-height: 1.4; }
+.collectionDeleteEntry { margin-inline-end: auto; }
+.collectionPanelStatus { flex: 1 0 100%; min-width: 0; font-size: 12px; color: var(--ds-text-secondary); line-height: 1.4; }
 .collectionFormSection { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .collectionFormSection h4 { margin: 4px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--ds-border-subtle); font-size: 13px; }
 .collectionFieldGroup { display: grid; min-width: 0; padding: 0; margin: 0; gap: 8px; border: 0; }
@@ -3432,14 +3442,6 @@ button.statusPill:disabled {
   .componentCollectionTools { grid-template-columns: minmax(0, 1fr) auto; }
   .componentViewControls { grid-column: 1 / -1; justify-content: flex-start; }
   .componentCollectionTools .panelActions { grid-column: 1 / -1; }
-}
-
-.collectionEntryDrawerFooter > small {
-  margin-left: auto;
-  color: var(--ds-text-faint);
-  font-size: 11px;
-  line-height: 1.35;
-  text-align: right;
 }
 
 .collectionEntryDrawer .componentEntryGrid {
@@ -4054,13 +4056,6 @@ button.statusPill:disabled {
 
   .collectionEntryDrawerFooter {
     flex-wrap: wrap;
-  }
-
-  .collectionEntryDrawerFooter > small {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-    text-align: left;
   }
 
   .collectionEntryDrawerBody {

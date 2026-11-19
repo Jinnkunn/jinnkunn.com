@@ -20,7 +20,6 @@ import {
 import {
   DEFAULT_CALENDAR_TIME_ZONE,
   normalizeCalendarTimeZone,
-  zonedStartOfDay,
 } from "@jinnkunn/calendar-core/timezone";
 
 // Tag filter persists in the URL search param `tag` (`?tag=foo&tag=bar`)
@@ -130,8 +129,8 @@ export function PublicCalendarClient({
 }: {
   initialData: PublicCalendarData;
 }) {
-  // Hydrate the static shell with its server defaults, then apply URL and
-  // device preferences without regenerating the HTML on the first render.
+  // The prerendered shell has no current date. Use the browser clock until
+  // the first server timestamp arrives, not the age of the bundled events.
   const hydrated = useSyncExternalStore(subscribeToHydration, clientSnapshot, serverSnapshot);
   const preferences = useMemo(() => hydrated ? {
     view: window.matchMedia("(max-width: 720px)").matches ? "agenda" as const : "month" as const,
@@ -141,7 +140,7 @@ export function PublicCalendarClient({
   } : serverPreferences, [hydrated]);
   const [data, setData] = useState<PublicCalendarData>(initialData);
   const [viewChoice, setView] = useState<PublicCalendarViewMode | null>(null);
-  const [currentDateIso, setCurrentDateIso] = useState<string | null>(null);
+  const [currentDateIso, setCurrentDateIso] = useState(() => new Date().toISOString());
   const [freshnessCheckedAt, setFreshnessCheckedAt] = useState<number | null>(null);
   const [anchorIso, setAnchorIso] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] =
@@ -234,14 +233,6 @@ export function PublicCalendarClient({
     };
   }, [selectedEvent]);
 
-  const automaticAnchorIso = useMemo(
-    () =>
-      currentDateIso
-        ? zonedStartOfDay(new Date(currentDateIso), timeZone).toISOString()
-        : null,
-    [currentDateIso, timeZone],
-  );
-
   useEffect(() => {
     let cancelled = false;
     let pending: AbortController | null = null;
@@ -307,6 +298,9 @@ export function PublicCalendarClient({
 
   const verifiedAt = data.observationSnapshot?.verifiedAt;
   const freshness = freshnessCheckedAt === null ? "checking" : publicCalendarFreshness(verifiedAt, freshnessCheckedAt);
+  if (!hydrated) {
+    return <p className="public-calendar__loading" role="status">Loading calendar...</p>;
+  }
   return (
     <div className="public-calendar__shell">
       {freshness === "stale" || freshness === "unverified" ? (
@@ -319,8 +313,9 @@ export function PublicCalendarClient({
       ) : null}
       <PublicCalendarView
         data={data}
+        loadingEvents={freshness === "checking"}
         view={view}
-        anchorIso={anchorIso ?? automaticAnchorIso ?? initialData.generatedAt}
+        anchorIso={anchorIso ?? undefined}
         currentDateIso={currentDateIso}
         agendaDays={agendaDays}
         audience={audience}
@@ -330,6 +325,10 @@ export function PublicCalendarClient({
         onAudienceChange={handleAudienceChange}
         onViewChange={handleViewChange}
         onAnchorChange={handleAnchorChange}
+        onToday={() => {
+          setAnchorIso(null);
+          setSelectedEvent(null);
+        }}
         onAgendaDaysChange={setAgendaDays}
         onTimeZoneChange={handleTimeZoneChange}
         expandedEventId={expandedEventId}

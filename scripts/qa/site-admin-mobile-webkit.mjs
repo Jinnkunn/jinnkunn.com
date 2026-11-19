@@ -126,7 +126,7 @@ async function main() {
     fixture.failures.delete(path);
     await saveDraft.tap();
     await eventually(() => assert.match(fixture.saved.get(path), /Mobile recovered title/), "restored post is saved without a publish");
-    await button("Publish updates").tap();
+    await button("Review changes").tap();
     const postReview = page.getByRole("dialog", { name: "Review publication" });
     assert.equal(await postReview.getByLabel("Changes to publish", { exact: true }).inputValue(), `document:${path}`);
     await postReview.getByRole("link", { name: "/blog/mobile-fixture", exact: true }).waitFor();
@@ -146,7 +146,7 @@ async function main() {
     await eventually(() => assert.ok(fixture.entries("news").some((item) => item.body.includes(news))), "composed News draft is saved");
     const entry = fixture.entries("news").find((item) => item.body.includes(news));
     fixture.setRunnerOnline(false);
-    await editor().getByRole("button", { name: "Publish updates", exact: true }).tap();
+    await editor().getByRole("button", { name: "Review entry", exact: true }).tap();
     const review = page.getByRole("dialog", { name: "Review publication" });
     assert.equal(await review.getByLabel("Changes to publish", { exact: true }).inputValue(), `news:${entry.id}`);
     await review.getByRole("heading", { name: "Selected changes", exact: true }).waitFor();

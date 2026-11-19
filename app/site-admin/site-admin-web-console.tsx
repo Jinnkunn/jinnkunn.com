@@ -83,7 +83,8 @@ import { SiteAdminPublicationReviewDialog } from "./site-admin-publication-revie
 import { documentFieldProblems, documentDraftProblems } from "@/lib/shared/document-fields";
 import { SiteAdminAnnouncementsPanel } from "./site-admin-announcements-panel";
 import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
-import { SiteAdminPublicationStatus, type PublicationAttempt } from "./site-admin-publication-status";
+import { SiteAdminEditorPublicationControl, SiteAdminPublicationStatus, type PublicationAttempt } from "./site-admin-publication-status";
+import { changedCollectionEntries, editorPublicationAction } from "./site-admin-editor-publication";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
 import { SiteAdminVersionHistory } from "./site-admin-version-history";
 import styles from "./site-admin-dashboard.module.css";
@@ -939,12 +940,23 @@ export function SiteAdminWebConsole({
     releaseIsRunning;
   const selectedPublicationPath = selected ? versionPathFor(selected.kind, selected.id).slice("content/".length) : "";
   const verifiedReview = !publicationReviewLoading && !publicationReviewError ? publicationReview : null;
-  const selectedPending = verifiedReview?.changes.some(({ path, oldPath, details }) =>
-    path === selectedPublicationPath || oldPath === selectedPublicationPath || Boolean(selected?.href && details?.routes?.includes(selected.href)),
+  // Keep the review trigger mounted while its modal revalidates the snapshot.
+  const reviewForControls = verifiedReview ?? (publishReviewOpen ? publicationReview : null);
+  const selectedPublicationChange = reviewForControls?.changes.find(({ path, oldPath }) =>
+    path === selectedPublicationPath || oldPath === selectedPublicationPath,
   );
+  const relatedPublicationChange = !selectedPublicationChange && verifiedReview?.changes.some(
+    ({ details }) => selected?.href && details?.routes?.includes(selected.href),
+  );
+  const selectedEntryChanges = useMemo(() => selectedComponentName && selectedPublicationChange
+    ? changedCollectionEntries(selectedComponentName, selectedPublicationChange) : null,
+  [selectedComponentName, selectedPublicationChange]);
+  const reviewScopes = useMemo(() => new Set(reviewForControls?.availableScopes?.map(({ id }) => id)), [reviewForControls]);
+  const retryScope = originatingAttempt?.outcome?.state === "failed" || originatingAttempt?.outcome?.state === "canceled"
+    ? originatingAttempt.scope : undefined;
   const documentLiveSync = selected && area === "content" ? liveSyncStatus({
-    releaseActionKind: verifiedReview && !selectedPending ? "noop" : undefined,
-    pendingSaves: selectedPending ? 1 : 0,
+    releaseActionKind: verifiedReview && !selectedPublicationChange ? "noop" : undefined,
+    pendingSaves: selectedPublicationChange ? 1 : 0,
     releaseRunning: Boolean(originatingProgress),
   }) : liveSync;
   const documentStatus = editorialStatus({
@@ -954,6 +966,8 @@ export function SiteAdminWebConsole({
     runnerOffline: area === "content" ? originatingProgress?.stage === "queued" && originatingProgress.runnerState === "offline" : releaseRunnerOffline,
     liveSync: documentLiveSync,
   });
+  const editorStatusLabel = documentStatus.state === "unknown" && publicationReviewLoading
+    ? "Checking live status" : documentStatus.label;
   const liveStatusLabel = selectedDirty
     ? "Save before publishing"
     : releaseRunnerOffline
@@ -973,14 +987,9 @@ export function SiteAdminWebConsole({
       : "Autosave pending"
     : originatingProgress
       ? originatingProgress.detail
-    : documentLiveSync.state === "pending"
-      ? contentSavedAt
-        ? `Draft saved ${formatWhen(contentSavedAt)} · not yet live`
-        : "Saved content is not yet live"
-      : contentSavedAt
-        ? `Saved ${formatWhen(contentSavedAt)}`
-        : documentLiveSync.state === "live" ? (selectedIsStructured && contentForm.draft ? "This draft is hidden from the public site" : "Saved content matches the public site")
-          : publicationReviewLoading ? "Checking the live snapshot" : "Publish status unavailable";
+    : relatedPublicationChange
+      ? "A collection on this page has unpublished changes."
+      : contentSavedAt ? `Saved ${formatWhen(contentSavedAt)}` : "";
   const selectedVisibility = visibilityLabel(contentForm.draft);
   async function refreshAll() {
     setLoading(true);
@@ -1087,6 +1096,7 @@ export function SiteAdminWebConsole({
     }
     setLoading(false);
     setHasLoadedOnce(true);
+    if (hasLoadedOnce) void refreshPublicationReview();
   }
 
   useEffect(() => {
@@ -1746,7 +1756,7 @@ export function SiteAdminWebConsole({
       if (!payload.job?.id) {
         throw new Error("The release API did not return a job to track.");
       }
-      setPublicationAttempt({ origin: publicationOrigin, job: payload.job, wakePending: Boolean(payload.wake?.configured && !payload.wake.ok) });
+      setPublicationAttempt({ origin: publicationOrigin, job: payload.job, scope: reviewed.scope || "all", wakePending: Boolean(payload.wake?.configured && !payload.wake.ok) });
       watchRelease(payload.job.id, coveredRevision);
       const jobId = ` Job ${payload.job.id}.`;
       return action === "publish-content-production"
@@ -2079,29 +2089,36 @@ export function SiteAdminWebConsole({
   }
 
 
-  function reviewSelectedContent(entryId?: string) {
-    if (!selected) return;
-    const activeEntry = entryId ?? (componentExpandedIds.length === 1 ? componentExpandedIds[0] : undefined);
-    if (selected.kind === "components" && activeEntry) {
-      openPublicationReview(`${selected.id}:${activeEntry}`);
-    } else {
-      openPublicationReview(selected.kind === "components" && selected.id === "news" ? "" : `document:${selectedPublicationPath}`);
-    }
+  function publicationActionForEditor(entryId?: string) {
+    if (!selected || !reviewForControls?.baselineSha || selectedDirty || saving || componentSaveBlocked || loading || conflict) return null;
+    return editorPublicationAction({
+      path: selectedPublicationPath,
+      href: selectedIsStructured && contentForm.draft ? "" : selected.href,
+      change: selectedPublicationChange,
+      scopes: reviewScopes,
+      entry: entryId ? { scope: `${selected.id}:${entryId}`, changed: selectedEntryChanges?.get(entryId) } : undefined,
+      retryScope,
+    });
   }
 
+  const editorPublication = publicationActionForEditor();
   const collectionEditorActions = {
     canUndo: Boolean(collectionHistory?.past.length),
     canRedo: Boolean(collectionHistory?.future.length),
     onUndo: undoCollection,
     onRedo: redoCollection,
     onCheckpoint: checkpointCollectionEdit,
-    status: documentStatus.label,
-    statusDetail: componentSaveBlocked ? "Recovery copy kept locally"
-      : selectedDirty ? (saving ? "Saving draft…" : "Autosave pending") : contentSavedAt ? `Saved ${formatWhen(contentSavedAt)}` : "Draft saved",
+    draftStatus: componentSaveBlocked || conflict ? "Draft needs attention"
+      : saving ? "Saving draft"
+        : selectedDirty ? "Unsaved changes"
+          : originatingProgress ? originatingProgress.label
+            : verifiedReview ? "" : publicationReviewLoading ? "Checking the live snapshot" : "Publish status unavailable",
     onSave: () => void saveSelectedContent(),
     saveDisabled: saving || !selectedDirty || componentSaveBlocked || loading || Boolean(conflict),
-    onPublish: reviewSelectedContent,
-    publishDisabled: saving || releaseSaving || releaseIsRunning || componentSaveBlocked || loading || Boolean(conflict) || !contentPublishActionForBrowser() || (!selectedDirty && publishBlocked),
+    showSave: selectedDirty || saving,
+    publicationActionForEntry: publicationActionForEditor,
+    onReviewPublication: openPublicationReview,
+    reviewDisabled: publishBlocked || !contentPublishActionForBrowser(),
   };
 
 
@@ -2710,11 +2727,6 @@ export function SiteAdminWebConsole({
                     >
                       Inspector
                     </Button>
-                    {selected.href ? (
-                      <Button href={selected.href} external variant="ghost" size="sm">
-                        Open
-                      </Button>
-                    ) : null}
                     <Button
                       onClick={() => void saveSelectedContent()}
                       className={styles.editorSaveButton}
@@ -2723,15 +2735,6 @@ export function SiteAdminWebConsole({
                       disabled={saving || !selectedDirty || componentSaveBlocked || Boolean(conflict)}
                     >
                       {saving ? "Saving draft" : "Save draft"}
-                    </Button>
-                    <Button
-                      onClick={() => reviewSelectedContent()}
-                      className={styles.editorPublishButton}
-                      tone="accent"
-                      size="sm"
-                      disabled={collectionEditorActions.publishDisabled}
-                    >
-                      {originatingProgress ? "Publishing" : "Publish updates"}
                     </Button>
                   </div>
                 </div>
@@ -2755,7 +2758,7 @@ export function SiteAdminWebConsole({
                 ) : null}
                 <div className={styles.editorStatusBar}>
                   <span className={styles.statusPill} data-state={documentStatus.tone}>
-                    {documentStatus.label}
+                    {editorStatusLabel}
                   </span>
                   {selectedIsStructured ? (
                     <button
@@ -2769,9 +2772,7 @@ export function SiteAdminWebConsole({
                       {selectedVisibility.label}
                     </button>
                   ) : null}
-                  <span className={styles.editorHint}>
-                    {editorStatusHint}
-                  </span>
+                  {editorStatusHint ? <span className={styles.editorHint}>{editorStatusHint}</span> : null}
                   <div className={styles.editorStatusActions}>
                     {localDraftSnapshot ? (
                       <Button
@@ -2792,14 +2793,25 @@ export function SiteAdminWebConsole({
                         View release
                       </Button>
                     ) : null}
+                    {publicationReviewError && !originatingProgress ? (
+                      <Button onClick={() => void refreshPublicationReview()} variant="subtle" size="sm">Retry status</Button>
+                    ) : null}
+                    {editorPublication ? (
+                      <div className={styles.editorPublicationAction}>
+                        {editorPublication.kind === "review" && editorPublication.detail ? (
+                          <small>{editorPublication.detail}</small>
+                        ) : null}
+                        <SiteAdminEditorPublicationControl action={editorPublication} disabled={collectionEditorActions.reviewDisabled} onReview={openPublicationReview} />
+                      </div>
+                    ) : null}
                   </div>
                   {originatingProgress ? (
                     <SiteAdminPublishingProgress progress={originatingProgress} />
                   ) : null}
                 </div>
               </div>
-                <SiteAdminPublicationStatus draftVersion={selected.version} liveVersion={verifiedReview?.baselineSha}
-                  attempt={originatingAttempt} progress={originatingProgress} onReview={() => reviewSelectedContent()}
+                <SiteAdminPublicationStatus
+                  attempt={originatingAttempt} progress={originatingProgress}
                   onActivity={() => changeArea("release")} />
                 {documentIssues.length ? <section className={styles.validationSummary} aria-label="Fields needing attention">
                   <strong>{documentIssues.length} {documentIssues.length === 1 ? "field needs" : "fields need"} attention before publication</strong>
@@ -2987,7 +2999,7 @@ export function SiteAdminWebConsole({
                   <p className={styles.inspectorLabel}>State</p>
                   <div className={styles.inspectorPills}>
                     <span className={styles.statusPill} data-state={documentStatus.tone}>
-                      {documentStatus.label}
+                      {editorStatusLabel}
                     </span>
                     {selectedIsStructured ? (
                       <button
@@ -3002,7 +3014,7 @@ export function SiteAdminWebConsole({
                       </button>
                     ) : null}
                   </div>
-                  <p className={styles.editorHint}>{editorStatusHint}</p>
+                  {editorStatusHint ? <p className={styles.editorHint}>{editorStatusHint}</p> : null}
                   {originatingProgress ? (
                     <SiteAdminPublishingProgress progress={originatingProgress} compact />
                   ) : null}
@@ -3162,7 +3174,11 @@ export function SiteAdminWebConsole({
                   <p className={styles.inspectorLabel}>Version</p>
                   <div className={styles.inspectorStat}>
                     <span>Saved version</span>
-                    <strong>{shortSha(selected.version)}</strong>
+                    <strong title={selected.version}>{shortSha(selected.version)}</strong>
+                  </div>
+                  <div className={styles.inspectorStat}>
+                    <span>Live snapshot</span>
+                    <strong title={verifiedReview?.baselineSha}>{verifiedReview ? shortSha(verifiedReview.baselineSha) : "Not confirmed"}</strong>
                   </div>
                   <SiteAdminVersionHistory
                     path={versionPathFor(selected.kind, selected.id)}

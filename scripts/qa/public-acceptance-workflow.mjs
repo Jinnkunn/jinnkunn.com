@@ -12,22 +12,81 @@ const calendarFixture = normalizePublicCalendarRuntimeData({
     startsAt: `2026-11-${day}T14:00:00Z`, endsAt: `2026-11-${day}T15:00:00Z`,
   })).concat({
     id: "existing-link", title: "Calendar fixture talk", visibility: "full", isAllDay: false,
+    description: "#talk",
     startsAt: "2026-11-28T14:00:00Z", endsAt: "2026-11-28T15:00:00Z",
   }),
 });
 
-async function checkCalendar(page, origin, viewport, setFeed) {
+async function checkCalendar(page, origin, viewport, setFeed, delayFeed) {
+  const mobile = viewport.width <= 720;
   setFeed("stale");
-  await page.goto(`${origin}/calendar?tz=UTC`);
+  const releaseFeed = delayFeed();
+  try {
+    const response = await page.goto(`${origin}/calendar?tz=UTC`);
+    assert.match(await page.title(), /Calendar/);
+    assert.doesNotMatch(await response.text(), /class="public-calendar__range-title"/, "Prerendered HTML does not present an outdated date");
+    await page.getByRole("button", { name: mobile ? "Agenda" : "Month", exact: true, pressed: true }).waitFor();
+    const range = page.locator(".public-calendar__range-title");
+    assert.equal(await range.innerText(), mobile ? "Nov 19 - Dec 18, 2026" : "November 2026", "The first date renders without waiting for the feed");
+  } finally {
+    releaseFeed();
+  }
   await page.waitForFunction(() => document.querySelector('select[aria-label="Time zone"]')?.value === "UTC");
-  const defaultView = viewport.width <= 720 ? "Agenda" : "Month";
-  await page.getByRole("button", { name: defaultView, exact: true, pressed: true }).waitFor();
   await page.getByRole("button", { name: "Agenda", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Busy", exact: true });
   const slots = page.locator(".public-calendar__day").filter({ has: page.getByRole("button", { name: /Busy/ }) });
   const freshness = page.getByText(/Unlisted times are not confirmed as free/);
   await freshness.waitFor();
   assert.equal(await freshness.locator("time").count(), 1, "Old Live data reports its true verification time");
+  const previous = page.getByRole("button", { name: "Previous calendar range" });
+  const next = page.getByRole("button", { name: "Next calendar range" });
+  const today = page.getByRole("button", { name: "Today", exact: true });
+  const options = page.getByRole("button", { name: "Calendar options", exact: true });
+  const timeZone = page.getByLabel("Time zone", { exact: true });
+  const subscribe = page.getByRole("link", { name: "Subscribe", exact: true });
+  if (mobile) {
+    assert.equal(await options.getAttribute("aria-expanded"), "false");
+    assert.equal(await timeZone.isVisible(), false);
+    assert.equal(await subscribe.isVisible(), false);
+    for (const control of [previous, today, next, options]) {
+      const box = await control.boundingBox();
+      assert.ok(box?.width >= 44 && box.height >= 44, "Calendar touch targets are at least 44 by 44 CSS pixels");
+    }
+    await options.click();
+    assert.equal(await options.getAttribute("aria-expanded"), "true");
+  }
+  await timeZone.selectOption("America/Toronto");
+  assert.equal(new URL(page.url()).searchParams.get("tz"), "America/Toronto");
+  await timeZone.selectOption("UTC");
+  assert.equal(await subscribe.getAttribute("href"), "webcal://jinkunchen.com/api/public/calendar/calendar.ics");
+  await page.getByRole("button", { name: "90 days", exact: true }).click();
+  assert.equal(await page.locator(".public-calendar__range-title").innerText(), "Nov 19, 2026 - Feb 16, 2027");
+  await page.getByRole("button", { name: "30 days", exact: true }).click();
+  await page.getByRole("button", { name: "Featured", exact: true }).click();
+  assert.equal(new URL(page.url()).searchParams.get("scope"), "featured");
+  const tag = page.getByRole("button", { name: "#talk", exact: true });
+  await tag.click();
+  assert.equal(new URL(page.url()).searchParams.get("tag"), "talk");
+  assert.equal(await slots.count(), 0);
+  if (mobile) {
+    await page.keyboard.press("Escape");
+    assert.equal(await options.getAttribute("aria-expanded"), "false");
+    assert.equal(await options.getAttribute("data-filtered"), "true");
+    assert.equal(await options.evaluate((button) => button === document.activeElement), true);
+    await options.click();
+  }
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  if (mobile) await options.click();
+  await next.click();
+  await page.getByText("No public events in this range.", { exact: true }).waitFor();
+  assert.equal(await slots.count(), 0);
+  await previous.click();
+  await slots.first().waitFor();
+  assert.equal(await slots.count(), 2);
+  await next.click();
+  await today.click();
+  await slots.first().waitFor();
   setFeed("offline");
   const offline = page.waitForResponse((response) => response.url() === `${origin}/api/public/calendar` && response.status() === 503);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
@@ -51,7 +110,18 @@ async function checkCalendar(page, origin, viewport, setFeed) {
   setFeed("fresh");
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await freshness.waitFor({ state: "hidden" });
+  await talk.getByRole("button", { name: "Close event details" }).click();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  if (mobile) {
+    const firstDay = await page.locator(".public-calendar__day-title").first().boundingBox();
+    assert.ok(firstDay?.y < 420, `Agenda content starts near the top (first date y=${firstDay?.y})`);
+  }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: `/tmp/calendar-toolbar-${viewport.width}.png`, animations: "disabled" });
+  if (mobile) {
+    await options.click();
+    await page.screenshot({ path: `/tmp/calendar-options-${viewport.width}.png`, animations: "disabled" });
+  }
 }
 
 async function main() {
@@ -59,7 +129,13 @@ async function main() {
   ensureNextBuild();
   const port = await findAvailablePort(), origin = `http://127.0.0.1:${port}`;
   const server = startNextServer({ port });
-  let browser, page, searchFailure = false, calendarMode = "fresh";
+  let browser, page, searchFailure = false, calendarMode = "fresh", calendarGate;
+  const setFeed = (mode) => { calendarMode = mode; };
+  const delayFeed = () => {
+    let resolve;
+    calendarGate = new Promise((done) => { resolve = done; });
+    return () => { resolve(); calendarGate = undefined; };
+  };
   const errors = [], warnings = [];
   try {
     await waitForHttp(origin);
@@ -71,18 +147,37 @@ async function main() {
       assert.equal(request.method(), "GET", "Public acceptance never writes data");
       if (url.pathname === "/api/search" && searchFailure) return route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"Isolated search failure"}' });
       if (url.pathname === "/api/public/calendar") {
+        if (calendarGate) await calendarGate;
         const headers = { "X-Calendar-Served-At": calendarNow };
         if (calendarMode === "offline") return route.fulfill({ status: 503, headers, json: { error: "Fixture unavailable" } });
         const stale = calendarMode === "stale";
-        const verifiedAt = new Date(Date.now() - (stale ? 7 * 3_600_000 : 0)).toISOString();
+        const verifiedAt = new Date(Date.parse(calendarNow) - (stale ? 7 * 3_600_000 : 0)).toISOString();
         const observationSnapshot = { ...calendarFixture.observationSnapshot, revision: stale ? 42 : 43, verifiedAt };
         return route.fulfill({ json: { ...calendarFixture, observationSnapshot }, headers });
       }
       return route.continue();
     });
-    page = await context.newPage(); page.setDefaultTimeout(12_000);
-    page.on("pageerror", (error) => errors.push(error.message));
-    page.on("console", (message) => { if (message.type() === "error") warnings.push(message.text()); });
+    const watchPage = (target) => {
+      target.setDefaultTimeout(12_000);
+      target.on("pageerror", (error) => errors.push({ path: new URL(target.url()).pathname, message: error.message }));
+      target.on("console", (message) => { if (message.type() === "error") warnings.push(message.text()); });
+    };
+    const checkCalendarInViewport = async (viewport) => {
+      const calendar = await context.newPage();
+      watchPage(calendar);
+      await calendar.setViewportSize(viewport);
+      await calendar.clock.setFixedTime(new Date(calendarNow));
+      try {
+        await checkCalendar(calendar, origin, viewport, setFeed, delayFeed);
+      } catch (error) {
+        await calendar.screenshot({ path: `/tmp/calendar-failure-${viewport.width}.png` }).catch(() => {});
+        throw error;
+      } finally {
+        await calendar.close();
+      }
+    };
+    page = await context.newPage();
+    watchPage(page);
     await page.goto(`${origin}/blog`);
     assert.match(await page.title(), /Blog/);
     await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link", { name: "Blog", exact: true }).waitFor();
@@ -143,11 +238,21 @@ async function main() {
       await authors.waitFor({ state: "visible" });
       assert.match(await authors.innerText(), /G\. Spadon/);
       assert.equal(await authors.getByRole("link").count(), 0);
+      assert.deepEqual(await row.locator(".pub-type-tag").allTextContents(), ["Journal"]);
+      assert.deepEqual(await row.getByRole("group", { name: "Publication resources" }).getByRole("link").allTextContents(), ["DOI", "arXiv"]);
       assert.equal(await row.evaluate((element) => {
         const badges = element.querySelector(".pub-meta-line")?.getBoundingClientRect();
         const venue = element.querySelector(".pub-venue-line")?.getBoundingClientRect();
         return Boolean(badges && venue && venue.top >= badges.bottom - 1);
       }), true);
+      const preprint = page.locator(".publication-toggle").filter({
+        has: page.locator(".pub-title-text").filter({ hasText: /^Static Sandboxes/ }),
+      });
+      assert.deepEqual(await preprint.locator(".pub-type-tag").allTextContents(), ["Preprint"]);
+      assert.equal(await preprint.locator(".pub-venue-line").count(), 0, "A repository is not repeated as a venue for a link-only preprint");
+      const preprintLinks = preprint.getByRole("group", { name: "Publication resources" }).getByRole("link");
+      assert.deepEqual(await preprintLinks.allTextContents(), ["arXiv"]);
+      assert.equal(await preprintLinks.first().getAttribute("href"), "https://arxiv.org/abs/2510.13982");
       assert.equal(await row.getByRole("link", { name: `Link to ${paperTitle}` }).getAttribute("href"), `#${anchor}`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await page.screenshot({ path: `/tmp/public-acceptance-publication-${viewport.width}.png`, animations: "disabled" });
@@ -163,7 +268,10 @@ async function main() {
         const box = document.getElementById(id)?.getBoundingClientRect();
         return box && box.top >= -4 && box.top < window.innerHeight / 2;
       }, samePageHref.split("#")[1]);
-      const longTitle = page.locator(`[id="${samePageHref.split("#")[1]}"] .pub-title-line`);
+      const cab = page.locator(`[id="${samePageHref.split("#")[1]}"]`);
+      assert.deepEqual(await cab.locator(".pub-type-tag").allTextContents(), ["Conference", "Journal"]);
+      assert.match((await cab.locator(".pub-venue-line").allTextContents())[1], /Lecture Notes in Computer Science/);
+      const longTitle = cab.locator(".pub-title-line");
       assert.equal(await longTitle.evaluate((element) => {
         const title = element.querySelector(".pub-title-text")?.getBoundingClientRect();
         const link = element.querySelector(".pub-permalink")?.getBoundingClientRect();
@@ -195,9 +303,11 @@ async function main() {
       await series.getByRole("link", { name: "Recognizing reasoning drift", exact: true }).click();
       await page.waitForURL("**/blog/when-ai-reasoning-starts-to-drift");
       assert.equal(await series.locator('[aria-current="page"]').innerText(), "Recognizing reasoning drift");
-      await checkCalendar(page, origin, viewport, (mode) => { calendarMode = mode; });
+      await checkCalendarInViewport(viewport);
       await page.goto(origin);
     }
+    const narrowViewport = { width: 320, height: 740 };
+    await checkCalendarInViewport(narrowViewport);
     const missing = await page.goto(`${origin}/qa-page-that-does-not-exist-291837`);
     assert.equal(missing.status(), 404);
     await page.getByRole("heading", { name: /not found/i }).waitFor();

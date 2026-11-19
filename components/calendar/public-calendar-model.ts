@@ -199,6 +199,7 @@ export function formatToolbarTitle(
   view: PublicCalendarViewMode,
   anchor: Date,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+  agendaDays = 30,
 ): string {
   if (view === "day") {
     return formatInTimeZone(anchor, timeZone, {
@@ -208,12 +209,15 @@ export function formatToolbarTitle(
       year: "numeric",
     });
   }
-  if (view === "week") {
-    const start = startOfWeek(anchor, timeZone);
-    const end = addCalendarDays(start, 6, timeZone);
+  if (view === "week" || view === "agenda") {
+    const start = view === "week" ? startOfWeek(anchor, timeZone) : anchor;
+    const end = addCalendarDays(start, view === "week" ? 6 : agendaDays - 1, timeZone);
+    const startYear = getZonedDateParts(start, timeZone).year;
+    const endYear = getZonedDateParts(end, timeZone).year;
     return `${formatInTimeZone(start, timeZone, {
       month: "short",
       day: "numeric",
+      ...(startYear !== endYear ? { year: "numeric" } : {}),
     })} - ${formatInTimeZone(end, timeZone, {
       month: "short",
       day: "numeric",
@@ -228,10 +232,12 @@ export function shiftAnchor(
   view: PublicCalendarViewMode,
   direction: -1 | 1,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
+  agendaDays = 30,
 ): Date {
-  if (view === "month" || view === "agenda") {
+  if (view === "month") {
     return addZonedMonths(anchor, direction, timeZone);
   }
+  if (view === "agenda") return addCalendarDays(anchor, direction * agendaDays, timeZone);
   if (view === "week") return addCalendarDays(anchor, direction * 7, timeZone);
   return addCalendarDays(anchor, direction, timeZone);
 }
@@ -320,16 +326,17 @@ export function eventsForDay(
 export function buildAgendaGroups(
   events: DecoratedPublicCalendarEvent[],
   windowDays: number,
-  currentDate: Date,
+  anchor: Date,
   timeZone = DEFAULT_CALENDAR_TIME_ZONE,
 ): Array<[string, DecoratedPublicCalendarEvent[]]> {
-  const agendaStart = startOfCalendarDay(currentDate, timeZone);
+  const agendaStart = startOfCalendarDay(anchor, timeZone);
   const startMs = agendaStart.getTime();
   const endMs = addCalendarDays(agendaStart, windowDays, timeZone).getTime();
   const buckets = new Map<string, DecoratedPublicCalendarEvent[]>();
 
   for (const event of events) {
-    if (event.endTimestamp < startMs || event.startTimestamp > endMs) continue;
+    if (event.startTimestamp >= endMs ||
+      (event.endTimestamp <= startMs && event.startTimestamp < startMs)) continue;
     const bucket = buckets.get(event.startDayKey);
     if (bucket) bucket.push(event);
     else buckets.set(event.startDayKey, [event]);

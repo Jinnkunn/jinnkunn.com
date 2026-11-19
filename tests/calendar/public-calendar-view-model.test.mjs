@@ -13,6 +13,7 @@ import {
   isPublicCalendarDataStale,
   keyForDate,
   monthGridDays,
+  shiftAnchor,
   startOfCalendarDay,
 } from "../../components/calendar/public-calendar-model.ts";
 import { normalizePublicCalendarData } from "../../lib/shared/public-calendar.ts";
@@ -113,6 +114,27 @@ test("public-calendar-view-model: week navigation remains Sunday-first across DS
     ],
   );
   assert.match(formatToolbarTitle("week", start, timeZone), /^Mar 8 - Mar 14, 2026$/);
+});
+
+test("public-calendar-view-model: agenda navigation advances by the displayed range", () => {
+  const timeZone = "America/Halifax";
+  const today = startOfCalendarDay(new Date("2026-10-25T12:00:00Z"), timeZone);
+  const next = shiftAnchor(today, "agenda", 1, timeZone, 30);
+  assert.equal(formatToolbarTitle("agenda", today, timeZone, 30), "Oct 25 - Nov 23, 2026");
+  assert.equal(keyForDate(next, timeZone), "2026-11-24");
+  assert.equal(shiftAnchor(next, "agenda", -1, timeZone, 30).toISOString(), today.toISOString());
+  assert.equal(formatToolbarTitle("agenda", today, timeZone, 90), "Oct 25, 2026 - Jan 22, 2027");
+  const boundary = decoratePublicCalendarEvent(normalizePublicCalendarData({
+    events: [{
+      id: "boundary",
+      title: "First event on the next page",
+      startsAt: next.toISOString(),
+      endsAt: new Date(next.getTime() + 3_600_000).toISOString(),
+      visibility: "titleOnly",
+    }],
+  }).events[0], timeZone);
+  assert.deepEqual(buildAgendaGroups([boundary], 30, today, timeZone), []);
+  assert.deepEqual(buildAgendaGroups([boundary], 30, next, timeZone), [["2026-11-24", [boundary]]]);
 });
 
 test("public-calendar-view-model: agenda groups start from the live current date", () => {

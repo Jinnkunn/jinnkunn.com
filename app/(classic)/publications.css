@@ -71,8 +71,21 @@
   overflow-wrap: anywhere;
 }
 
-.pub-meta-line {
-  --ds-meta-row-margin-top: 2px;
+.pub-meta-line.ds-meta-row {
+  display: flex;
+  --ds-meta-row-margin-top: 3px;
+  --ds-meta-row-gap: 4px 8px;
+}
+
+.pub-type-tag.ds-badge {
+  max-inline-size: 100%;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-weight: var(--ds-weight-semibold);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .pub-venue-line {
@@ -86,7 +99,7 @@
 
 .pub-highlight-badge {
   --ds-status-marker-gap: 4px;
-  --ds-status-marker-font-size: 0.85em;
+  --ds-status-marker-font-size: var(--ds-text-xs);
   --ds-status-marker-font-weight: 600;
   --ds-status-marker-line-height: 1;
 }
