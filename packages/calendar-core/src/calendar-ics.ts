@@ -1,7 +1,7 @@
 // RFC 5545 generator for the public calendar feed. Reads the same
 // PublicCalendarData the JSON endpoint serves, emits a `text/calendar`
 // document any iCal/Outlook/Google Calendar client can subscribe to
-// via `webcal://jinkunchen.com/calendar.ics`.
+// via the site's public calendar subscription endpoint.
 //
 // Why hand-roll instead of pulling in `ical-generator`:
 //   - Output is tiny (one VCALENDAR + N VEVENTs); no need for a 30 KB
@@ -13,10 +13,12 @@
 //     url; full passes through) without trusting a third party to
 //     respect it.
 
-import type {
-  PublicCalendarData,
-  PublicCalendarEvent,
-} from "./public-calendar";
+import {
+  identifyPublicCalendarOccurrences,
+  publicCalendarEventKey,
+  type PublicCalendarData,
+  type PublicCalendarEvent,
+} from "./public-calendar.ts";
 
 const PRODID = "-//jinkunchen.com//Public Calendar//EN";
 
@@ -50,18 +52,24 @@ function escapeIcsText(value: string): string {
 }
 
 function foldLine(line: string): string {
-  // RFC 5545 §3.1 — content lines must not exceed 75 octets. Continued
-  // lines start with a single space. We fold on character count rather
-  // than UTF-8 byte count, which is conservative (some clients are
-  // strict; over-folding is harmless, under-folding gets parsed as
-  // malformed). 70-char chunks leave headroom for multi-byte glyphs.
-  if (line.length <= 70) return line;
-  const out: string[] = [];
-  for (let i = 0; i < line.length; i += 70) {
-    const chunk = line.slice(i, i + 70);
-    out.push(i === 0 ? chunk : ` ${chunk}`);
+  // The continuation space counts toward the 75-byte UTF-8 limit.
+  if (line.length <= 75 && /^[\x00-\x7f]*$/.test(line)) return line;
+  const lines: string[] = [];
+  let part = "";
+  let bytes = 0;
+  for (const char of line) {
+    const code = char.codePointAt(0)!;
+    const width = code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+    if (bytes + width > 75) {
+      lines.push(part);
+      part = " ";
+      bytes = 1;
+    }
+    part += char;
+    bytes += width;
   }
-  return out.join("\r\n");
+  lines.push(part);
+  return lines.join("\r\n");
 }
 
 function formatProperty(name: string, value: string): string {
@@ -72,8 +80,8 @@ function buildEventBlock(event: PublicCalendarEvent): string {
   const lines: string[] = ["BEGIN:VEVENT"];
   // UID must be globally unique + stable across re-publishes so a
   // subscribed client updates the existing entry instead of stacking
-  // duplicates. Use the event id namespaced by the host.
-  lines.push(formatProperty("UID", `${event.id}@jinkunchen.com`));
+  // duplicates. Legacy IDs reused by distinct occurrences get separate UIDs.
+  lines.push(formatProperty("UID", escapeIcsText(`${publicCalendarEventKey(event)}@jinkunchen.com`)));
   lines.push(
     formatProperty("DTSTAMP", formatIcsDateTime(new Date().toISOString(), false)),
   );
@@ -147,7 +155,7 @@ export function buildPublicCalendarIcs(
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
   ];
-  for (const event of data.events) {
+  for (const event of identifyPublicCalendarOccurrences(data.events)) {
     lines.push(buildEventBlock(event));
   }
   lines.push("END:VCALENDAR");

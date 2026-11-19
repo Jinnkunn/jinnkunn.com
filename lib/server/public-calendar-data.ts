@@ -5,8 +5,10 @@ import path from "node:path";
 
 import {
   filterStalePublicCalendarEvents,
+  identifyPublicCalendarOccurrences,
   isExcludedLegacyCalendarEvent,
   normalizePublicCalendarData,
+  repeatedPublicCalendarIds,
   selectPublicCalendarRuntimeData,
   type PublicCalendarData,
   type PublicCalendarEvent,
@@ -21,6 +23,9 @@ import {
 
 const CALENDAR_PUBLIC_PATH = path.join(process.cwd(), "content", "calendar-public.json");
 const CALENDAR_PUBLIC_REL_PATH = "content/calendar-public.json";
+// Keep legacy families disambiguated even when a newer source has only one
+// of their remaining occurrences or the rolling public window trims the rest.
+const bundledRepeatedIds = repeatedPublicCalendarIds(bundledPublicCalendarSnapshot.events);
 
 // Time-decay archive: events older than the default 30-day window are
 // dropped before the public surfaces (page, JSON endpoint, ICS feed)
@@ -45,7 +50,8 @@ function readFromDisk(): PublicCalendarData {
 }
 
 export function getPublicCalendarData(): PublicCalendarData {
-  return withDecay(readFromDisk());
+  const data = readFromDisk();
+  return withDecay({ ...data, events: identifyPublicCalendarOccurrences(data.events, bundledRepeatedIds) });
 }
 
 async function readFromSourceStoreOrDisk(): Promise<PublicCalendarData> {
@@ -66,7 +72,7 @@ export async function getLatestPublicCalendarData(): Promise<PublicCalendarData>
     readObservedPublicCalendarFromDb(),
   ]);
   return withDecay(
-    selectPublicCalendarRuntimeData({ dbData, sourceData, observedData }),
+    selectPublicCalendarRuntimeData({ dbData, sourceData, observedData, knownRepeatedIds: bundledRepeatedIds }),
   );
 }
 
@@ -101,5 +107,5 @@ export async function getLatestPublicCalendarDataWithArchive(): Promise<PublicCa
     readFromSourceStoreOrDisk(),
     readObservedPublicCalendarFromDb(),
   ]);
-  return selectPublicCalendarRuntimeData({ dbData, sourceData, observedData });
+  return selectPublicCalendarRuntimeData({ dbData, sourceData, observedData, knownRepeatedIds: bundledRepeatedIds });
 }

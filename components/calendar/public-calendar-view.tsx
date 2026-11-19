@@ -37,7 +37,7 @@ import {
   type PublicCalendarDayIndex,
   type PublicCalendarViewMode,
 } from "./public-calendar-model";
-import type { PublicCalendarData } from "@jinnkunn/calendar-core/public";
+import { publicCalendarEventKey, type PublicCalendarData } from "@jinnkunn/calendar-core/public";
 
 export type { PublicCalendarViewMode } from "./public-calendar-model";
 export type { PublicCalendarAudienceMode } from "./public-calendar-model";
@@ -283,7 +283,7 @@ export function PublicCalendarView({
   const timeZoneLabel = calendarTimeZoneLabel(timeZone);
 
   const selectedEvent = useMemo(
-    () => decoratedEvents.find((event) => event.id === expandedEventId) ?? null,
+    () => decoratedEvents.find((event) => publicCalendarEventKey(event) === expandedEventId) ?? null,
     [decoratedEvents, expandedEventId],
   );
 
@@ -661,8 +661,8 @@ function MonthCalendar({
                 {dayEvents.slice(0, 3).map((event) => (
                   <EventPill
                     event={event}
-                    key={`${event.id}-${event.startTimestamp}`}
-                    selected={selectedEventId === event.id}
+                    key={publicCalendarEventKey(event)}
+                    selected={selectedEventId === publicCalendarEventKey(event)}
                     onEventToggle={onEventToggle}
                   />
                 ))}
@@ -750,9 +750,9 @@ function WeekCalendar({
                 {weekEvents[index].map((event) => (
                   <EventCard
                     event={event}
-                    key={`${event.id}-${event.startTimestamp}`}
+                    key={publicCalendarEventKey(event)}
                     compact
-                    selected={expandedEventId === event.id}
+                    selected={expandedEventId === publicCalendarEventKey(event)}
                     onEventToggle={onEventToggle}
                   />
                 ))}
@@ -785,8 +785,8 @@ function DayCalendar({
         dayEvents.map((event) => (
           <EventCard
             event={event}
-            key={`${event.id}-${event.startTimestamp}`}
-            selected={expandedEventId === event.id}
+            key={publicCalendarEventKey(event)}
+            selected={expandedEventId === publicCalendarEventKey(event)}
             onEventToggle={onEventToggle}
           />
         ))
@@ -832,11 +832,11 @@ function AgendaCalendar({
             {dayEvents.map((event) => (
               <li
                 className="public-calendar__event"
-                key={`${event.id}-${event.startTimestamp}`}
+                key={publicCalendarEventKey(event)}
               >
                 <EventCard
                   event={event}
-                  selected={expandedEventId === event.id}
+                  selected={expandedEventId === publicCalendarEventKey(event)}
                   onEventToggle={onEventToggle}
                 />
               </li>
@@ -865,7 +865,7 @@ function EventPill({
       title={`${event.formattedTime} ${event.title}`}
       onClick={(e) => {
         e.stopPropagation();
-        onEventToggle?.(event.id, anchorFromClick(e));
+        onEventToggle?.(publicCalendarEventKey(event), anchorFromClick(e));
       }}
       aria-pressed={selected}
       style={{ "--calendar-color": event.colorHex ?? "#9b9a97" } as CSSProperties}
@@ -1003,7 +1003,7 @@ function EventCard({
         <button
           type="button"
           className="public-calendar__event-toggle"
-          onClick={(e) => onEventToggle?.(event.id, anchorFromClick(e))}
+          onClick={(e) => onEventToggle?.(publicCalendarEventKey(event), anchorFromClick(e))}
           aria-pressed={selected}
           aria-haspopup="dialog"
         >

@@ -1,11 +1,14 @@
 export const PUBLIC_CALENDAR_CACHE_TAG = "public-calendar";
 export const PUBLIC_CALENDAR_SERVED_AT_HEADER = "X-Calendar-Served-At";
+export const PUBLIC_CALENDAR_REVISION_HEADER = "X-Calendar-Revision";
 
 export type PublicCalendarVisibility = "busy" | "titleOnly" | "full";
 export type PublicCalendarAudience = "featured" | "all";
 
 export type PublicCalendarEvent = {
   id: string;
+  /** Public projection key for reused IDs. The original id still owns permalinks. */
+  occurrenceId?: string;
   calendarId?: string;
   calendarTitle?: string;
   colorHex?: string;
@@ -40,6 +43,7 @@ export type ObservedPublicCalendarData = PublicCalendarData & { legacyExclusions
 
 const PUBLIC_BUSY_COLOR = "#9B9A97";
 const BUSY_ROUND_MINUTES = 15;
+const OCCURRENCE_PREFIX = "occ-v1:";
 const VISIBILITIES = new Set<PublicCalendarVisibility>([
   "busy",
   "titleOnly",
@@ -80,7 +84,47 @@ function normalizeAudience(value: unknown): PublicCalendarAudience | undefined {
   return raw === "featured" || raw === "all" ? raw : undefined;
 }
 
-function normalizeEvent(raw: unknown): PublicCalendarEvent | null {
+type CalendarSlot = Pick<PublicCalendarEvent, "id" | "startsAt" | "endsAt" | "isAllDay">;
+
+function slotId({ id, startsAt, endsAt, isAllDay }: CalendarSlot): string {
+  // Only use fields already visible in the public feed, never source IDs or details.
+  return `${OCCURRENCE_PREFIX}${isAllDay ? "d" : "t"}:${Date.parse(startsAt).toString(36)}:${Date.parse(endsAt).toString(36)}:${id}`;
+}
+
+export function publicCalendarEventKey(event: Pick<PublicCalendarEvent, "id" | "occurrenceId">): string {
+  return event.occurrenceId ?? event.id;
+}
+
+export function repeatedPublicCalendarIds(events: readonly CalendarSlot[]): Set<string> {
+  const first = new Map<string, CalendarSlot>();
+  const repeated = new Set<string>();
+  for (const event of events) {
+    const previous = first.get(event.id);
+    if (!previous) first.set(event.id, event);
+    else if (previous.startsAt !== event.startsAt || previous.endsAt !== event.endsAt || previous.isAllDay !== event.isAllDay) repeated.add(event.id);
+  }
+  return repeated;
+}
+
+export function identifyPublicCalendarOccurrences(
+  events: readonly PublicCalendarEvent[],
+  knownRepeatedIds?: ReadonlySet<string>,
+): PublicCalendarEvent[] {
+  const repeats = repeatedPublicCalendarIds(events);
+  const seen = new Set<string>();
+  const result: PublicCalendarEvent[] = [];
+  for (const event of events) {
+    const needsKey = event.occurrenceId !== undefined || event.id.startsWith(OCCURRENCE_PREFIX) ||
+      repeats.has(event.id) || knownRepeatedIds?.has(event.id);
+    const key = needsKey ? slotId(event) : event.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(needsKey && event.occurrenceId !== key ? { ...event, occurrenceId: key } : event);
+  }
+  return result;
+}
+
+function normalizeEvent(raw: unknown, preserveOccurrenceId: boolean): PublicCalendarEvent | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   const id = normalizeString(obj.id);
@@ -90,6 +134,9 @@ function normalizeEvent(raw: unknown): PublicCalendarEvent | null {
   const visibility = VISIBILITIES.has(visibilityRaw) ? visibilityRaw : null;
   if (!id || !startsAt || !endsAt || !visibility) return null;
   if (Date.parse(endsAt) <= Date.parse(startsAt)) return null;
+  const slot = { id, startsAt, endsAt, isAllDay: Boolean(obj.isAllDay) };
+  const occurrenceId = preserveOccurrenceId && typeof obj.occurrenceId === "string" &&
+    obj.occurrenceId === slotId(slot) ? obj.occurrenceId : undefined;
 
   const title =
     visibility === "busy"
@@ -97,14 +144,12 @@ function normalizeEvent(raw: unknown): PublicCalendarEvent | null {
       : normalizeString(obj.title) || "(No title)";
 
   return {
-    id,
+    ...slot,
+    ...(occurrenceId ? { occurrenceId } : {}),
     calendarId: visibility === "busy" ? undefined : normalizeString(obj.calendarId) || undefined,
     calendarTitle: visibility === "busy" ? undefined : normalizeString(obj.calendarTitle) || undefined,
     colorHex: visibility === "busy" ? "#9B9A97" : normalizeColorHex(obj.colorHex),
     title,
-    startsAt,
-    endsAt,
-    isAllDay: Boolean(obj.isAllDay),
     visibility,
     audience: normalizeAudience(obj.audience),
     description:
@@ -146,7 +191,7 @@ export function filterStalePublicCalendarEvents(
     return endsMs >= cutoff;
   });
   if (filtered.length === data.events.length) return data;
-  const retainedIds = data.observationSnapshot ? new Set(filtered.map(({ id }) => id)) : null;
+  const retainedIds = data.observationSnapshot ? new Set(filtered.map(publicCalendarEventKey)) : null;
   return {
     ...data,
     events: filtered,
@@ -159,7 +204,7 @@ export function filterStalePublicCalendarEvents(
   };
 }
 
-export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
+function normalizeCalendarData(raw: unknown, preserveOccurrenceId: boolean): PublicCalendarData {
   const obj =
     raw && typeof raw === "object" && !Array.isArray(raw)
       ? (raw as Record<string, unknown>)
@@ -169,7 +214,7 @@ export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
   const endsAt = normalizeIso((obj.range as Record<string, unknown> | undefined)?.endsAt, startsAt);
   const events = Array.isArray(obj.events)
     ? obj.events
-        .map(normalizeEvent)
+        .map((event) => normalizeEvent(event, preserveOccurrenceId))
         .filter((event): event is PublicCalendarEvent => Boolean(event))
         .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title))
     : [];
@@ -185,14 +230,19 @@ export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
   };
 }
 
+export function normalizePublicCalendarData(raw: unknown): PublicCalendarData {
+  return normalizeCalendarData(raw, false);
+}
+
 // Only the public runtime response carries a verified observation snapshot.
 // The general normalizer intentionally strips it from editable payloads.
 export function normalizePublicCalendarRuntimeData(raw: unknown): PublicCalendarData {
-  const data = normalizePublicCalendarData(raw);
+  const base = normalizeCalendarData(raw, true);
+  const data = { ...base, events: identifyPublicCalendarOccurrences(base.events) };
   const snapshot = (raw as Partial<PublicCalendarData> | null)?.observationSnapshot;
   if (!snapshot || !Number.isSafeInteger(snapshot.revision) || snapshot.revision <= 0 ||
       !Array.isArray(snapshot.eventIds)) return data;
-  const busyIds = new Set(data.events.filter((event) => event.visibility === "busy").map(({ id }) => id));
+  const busyIds = new Set(data.events.filter((event) => event.visibility === "busy").map(publicCalendarEventKey));
   return {
     ...data,
     observationSnapshot: {
@@ -258,7 +308,6 @@ function toBusySupplementEvent(event: PublicCalendarEvent): PublicCalendarEvent 
 
 function eventWindow(event: PublicCalendarEvent) {
   return {
-    id: event.id,
     isAllDay: event.isAllDay,
     startsAt: timestampMs(event.startsAt),
     endsAt: timestampMs(event.endsAt),
@@ -269,7 +318,6 @@ function isCoveredByPublicEvent(
   publicEvent: ReturnType<typeof eventWindow>,
   observedBusy: ReturnType<typeof eventWindow>,
 ): boolean {
-  if (publicEvent.id === observedBusy.id) return true;
   if (publicEvent.isAllDay !== observedBusy.isAllDay) return false;
   const overlap = Math.min(publicEvent.endsAt, observedBusy.endsAt) -
     Math.max(publicEvent.startsAt, observedBusy.startsAt);
@@ -281,34 +329,41 @@ function isCoveredByPublicEvent(
   return shortest > 0 && overlap / shortest >= 0.8;
 }
 
-function mergeBusyRuntimeEvents(
-  events: readonly PublicCalendarEvent[],
-  observedIds: Set<string>,
-): PublicCalendarEvent[] {
-  const sorted = [...events].sort((a, b) =>
+type ProjectionRow = { event: PublicCalendarEvent; observed: boolean; repeatedId: boolean };
+
+function mergeBusyRuntimeEvents(rows: readonly ProjectionRow[]): ProjectionRow[] {
+  const sorted = [...rows].sort(({ event: a }, { event: b }) =>
     a.startsAt.localeCompare(b.startsAt) ||
     a.endsAt.localeCompare(b.endsAt) ||
     a.title.localeCompare(b.title),
   );
-  const out: PublicCalendarEvent[] = [];
-  for (const event of sorted) {
-    const previous = out[out.length - 1];
+  const out: ProjectionRow[] = [];
+  let joinedIds = new Set<string>();
+  for (const row of sorted) {
+    const { event } = row;
+    const previousRow = out.at(-1);
+    const previous = previousRow?.event;
     if (
-      previous &&
+      previousRow && previous &&
       previous.visibility === "busy" &&
       event.visibility === "busy" &&
       previous.isAllDay === event.isAllDay &&
       timestampMs(event.startsAt) <= timestampMs(previous.endsAt)
     ) {
-      const includesObservation = observedIds.has(previous.id) || observedIds.has(event.id);
       if (timestampMs(event.endsAt) > timestampMs(previous.endsAt)) {
         previous.endsAt = event.endsAt;
       }
-      if (!previous.id.includes(event.id)) previous.id = `${previous.id}+${event.id}`;
-      if (includesObservation) observedIds.add(previous.id);
+      if (!joinedIds.has(event.id)) {
+        previous.id = `${previous.id}+${event.id}`;
+        joinedIds.add(event.id);
+      }
+      previousRow.observed ||= row.observed;
+      // A merged block with a unique member doesn't reuse its composite ID.
+      previousRow.repeatedId &&= row.repeatedId;
       continue;
     }
-    out.push({ ...event });
+    joinedIds = new Set([event.id]);
+    out.push({ ...row, event: { ...event } });
   }
   return out;
 }
@@ -318,39 +373,41 @@ export function isExcludedLegacyCalendarEvent(event: PublicCalendarEvent, exclus
     event.startsAt === exclusion.startsAt && event.endsAt === exclusion.endsAt && exclusion.legacyIds.includes(event.id);
 }
 
-function occurrenceKey(id: string, startsAt: string, endsAt: string, allDay: boolean): string {
-  return JSON.stringify([id, startsAt, endsAt, allDay]);
-}
-
 export function supplementPublicCalendarWithObservedData({
   publicData,
   observedData,
+  knownRepeatedIds,
 }: {
   publicData: PublicCalendarData;
   observedData: ObservedPublicCalendarData | null | undefined;
+  knownRepeatedIds?: ReadonlySet<string>;
 }): PublicCalendarData {
+  const repeatedIds = repeatedPublicCalendarIds(publicData.events);
+  for (const id of knownRepeatedIds ?? []) repeatedIds.add(id);
   if (!observedData || (!observedData.events.length && !observedData.observationSnapshot)) {
-    return publicData;
+    return { ...publicData, events: identifyPublicCalendarOccurrences(publicData.events, repeatedIds) };
   }
 
   const legacyExclusions = observedData.observationSnapshot ? observedData.legacyExclusions : undefined;
   const excludedKeys = legacyExclusions?.length ? new Set(legacyExclusions.flatMap(({ legacyIds, startsAt, endsAt, isAllDay }) =>
-    legacyIds.map((id) => occurrenceKey(id, startsAt, endsAt, isAllDay)),
+    legacyIds.map((id) => slotId({ id, startsAt, endsAt, isAllDay })),
   )) : null;
   const events = excludedKeys
-    ? publicData.events.filter((event) => event.visibility !== "busy" || !excludedKeys.has(occurrenceKey(event.id, event.startsAt, event.endsAt, event.isAllDay)))
-    : [...publicData.events];
+    ? publicData.events.filter((event) => event.visibility !== "busy" || !excludedKeys.has(slotId(event)))
+    : publicData.events;
   const windows = events.map(eventWindow);
-  const observedIds = new Set<string>();
+  for (const id of repeatedPublicCalendarIds(observedData.events)) repeatedIds.add(id);
+  const projected: ProjectionRow[] = events.map((event) => ({ event, observed: false, repeatedId: repeatedIds.has(event.id) }));
   for (const observed of observedData.events) {
     const busy = toBusySupplementEvent(observed);
     const window = eventWindow(busy);
     if (windows.some((event) => isCoveredByPublicEvent(event, window))) continue;
     windows.push(window);
-    events.push(busy);
-    observedIds.add(busy.id);
+    projected.push({ event: busy, observed: true, repeatedId: repeatedIds.has(busy.id) });
   }
 
+  const merged = mergeBusyRuntimeEvents(projected);
+  const inheritedRepeats = new Set(merged.filter(({ repeatedId }) => repeatedId).map(({ event }) => event.id));
   const data = normalizePublicCalendarData({
     schemaVersion: 1,
     generatedAt: laterIso(publicData.generatedAt, observedData.generatedAt),
@@ -358,14 +415,16 @@ export function supplementPublicCalendarWithObservedData({
       startsAt: earlierIso(publicData.range.startsAt, observedData.range.startsAt),
       endsAt: laterIso(publicData.range.endsAt, observedData.range.endsAt),
     },
-    events: mergeBusyRuntimeEvents(events, observedIds),
+    events: merged.map(({ event }) => event),
   });
+  data.events = identifyPublicCalendarOccurrences(data.events, inheritedRepeats);
   if (!observedData.observationSnapshot) return data;
+  const observedSlots = new Set(merged.filter(({ observed }) => observed).map(({ event }) => slotId(event)));
   return {
     ...data,
     observationSnapshot: {
       revision: observedData.observationSnapshot.revision,
-      eventIds: data.events.filter(({ id }) => observedIds.has(id)).map(({ id }) => id),
+      eventIds: data.events.filter((event) => observedSlots.has(slotId(event))).map(publicCalendarEventKey),
       ...(legacyExclusions?.length ? { busyComplete: true } : {}),
     },
   };
@@ -375,31 +434,28 @@ export function selectPublicCalendarRuntimeData({
   dbData,
   sourceData,
   observedData,
+  knownRepeatedIds,
 }: {
   dbData: PublicCalendarData | null | undefined;
   sourceData: PublicCalendarData;
   observedData?: ObservedPublicCalendarData | null | undefined;
+  knownRepeatedIds?: ReadonlySet<string>;
 }): PublicCalendarData {
-  if (!dbData) {
-    return supplementPublicCalendarWithObservedData({ publicData: sourceData, observedData });
+  let publicData = sourceData;
+  if (dbData) {
+    const dbGeneratedAt = timestampMs(dbData.generatedAt);
+    const sourceGeneratedAt = timestampMs(sourceData.generatedAt);
+    // A same-version D1 projection may already have collapsed reused IDs.
+    if (dbGeneratedAt > sourceGeneratedAt ||
+        (dbGeneratedAt === sourceGeneratedAt && dbData.events.length >= sourceData.events.length)) publicData = dbData;
   }
 
-  const dbGeneratedAt = timestampMs(dbData.generatedAt);
-  const sourceGeneratedAt = timestampMs(sourceData.generatedAt);
-  if (dbGeneratedAt > sourceGeneratedAt) {
-    return supplementPublicCalendarWithObservedData({ publicData: dbData, observedData });
-  }
-  if (sourceGeneratedAt > dbGeneratedAt) {
-    return supplementPublicCalendarWithObservedData({ publicData: sourceData, observedData });
-  }
-
-  // When a full release embeds a richer calendar JSON snapshot but an
-  // older live D1 projection has the same generatedAt with fewer rows,
-  // prefer the complete source snapshot. That keeps static HTML and the
-  // hydration refresh from showing different event sets.
+  const repeatedIds = new Set(knownRepeatedIds);
+  if (publicData !== sourceData) for (const id of repeatedPublicCalendarIds(sourceData.events)) repeatedIds.add(id);
   return supplementPublicCalendarWithObservedData({
-    publicData: sourceData.events.length > dbData.events.length ? sourceData : dbData,
+    publicData,
     observedData,
+    knownRepeatedIds: repeatedIds,
   });
 }
 
@@ -418,10 +474,12 @@ export function selectPublicCalendarHydrationData({
   const refreshedGeneratedAt = timestampMs(refreshedData.generatedAt);
   const currentGeneratedAt = timestampMs(currentData.generatedAt);
   const responseIsNotNewer = refreshedGeneratedAt <= currentGeneratedAt;
-  const refreshedIds = new Set(refreshedData.events.map((event) => event.id));
-  const refreshedContainsCurrent = currentData.events.every((event) =>
-    refreshedIds.has(event.id),
-  );
+  const refreshedIds = new Set(refreshedData.events.map(publicCalendarEventKey));
+  const refreshedSlots = new Set(refreshedData.events.map(slotId));
+  // The slot match also handles a cached response from before occurrence IDs.
+  const hasRefreshed = (event: PublicCalendarEvent) =>
+    refreshedIds.has(publicCalendarEventKey(event)) || refreshedSlots.has(slotId(event));
+  const refreshedContainsCurrent = currentData.events.every(hasRefreshed);
 
   if (responseIsNotNewer && !refreshedContainsCurrent && !received) {
     return currentData;
@@ -434,8 +492,8 @@ export function selectPublicCalendarHydrationData({
   // remove previously observed Busy blocks, including ones merged with a
   // manual block whose original interval is now present in the response.
   const replaceableIds = new Set(received ? known?.eventIds : []);
-  const carried = currentData.events.filter(({ id, visibility }) => !refreshedIds.has(id) &&
-    !replaceableIds.has(id) && !(received?.busyComplete && visibility === "busy"));
+  const carried = currentData.events.filter((event) => !hasRefreshed(event) &&
+    !replaceableIds.has(publicCalendarEventKey(event)) && !(received?.busyComplete && event.visibility === "busy"));
   return normalizePublicCalendarRuntimeData({
     ...refreshedData,
     events: [...refreshedData.events, ...carried],

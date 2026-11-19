@@ -14,7 +14,7 @@ const overlay = {
   status: { ok: true, env: "staging", workerCodeSha: worker.workerCodeSha,
     snapshotSha: "d".repeat(40), publicationSnapshotSha: "c".repeat(64) },
 };
-const checks = ["verify:cf:staging", "verify:staging:authenticated", "check:staging-visual"];
+const checks = ["verify:cf:staging", "verify:staging:authenticated", "verify:calendar:staging", "check:staging-visual"];
 
 function temporaryRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "staging-release-"));
@@ -71,8 +71,8 @@ test("skipped or failed checks and concurrent publication changes do not mint ac
     root, expected: { codeSha: identity.codeSha }, runCheck: () => {},
     readIdentity: async () => observed, ...options,
   });
-  assert.deepEqual((await verify({ skipVisual: true })).checks, checks.slice(0, 2));
-  await assert.rejects(verify({ runCheck(check) { if (check === checks[2]) throw new Error("failed visual check"); } }), /failed visual/);
+  assert.deepEqual((await verify({ skipVisual: true })).checks, checks.filter((check) => check !== "check:staging-visual"));
+  await assert.rejects(verify({ runCheck(check) { if (check === "verify:calendar:staging") throw new Error("failed calendar check"); } }), /failed calendar/);
   await assert.rejects(verify({ runCheck() { observed = { ...identity, overlaySha: "new overlay" }; } }), /changed during/);
   observed = identity;
   assert.equal((await verify()).cached, false);

@@ -1,6 +1,45 @@
 import assert from "node:assert/strict";
+import { normalizePublicCalendarRuntimeData } from "@jinnkunn/calendar-core/public";
 import { ensureNextBuild, findAvailablePort, startNextServer, waitForHttp } from "../_lib/local-next.mjs";
 import { launchBrowser } from "../_lib/playwright.mjs";
+
+const calendarNow = "2026-11-19T12:00:00.000Z";
+const calendarFixture = normalizePublicCalendarRuntimeData({
+  generatedAt: calendarNow,
+  observationSnapshot: { revision: 42, eventIds: [], busyComplete: true },
+  events: ["20", "27"].map((day) => ({
+    id: "same-legacy-id", visibility: "busy", isAllDay: false,
+    startsAt: `2026-11-${day}T14:00:00Z`, endsAt: `2026-11-${day}T15:00:00Z`,
+  })).concat({
+    id: "existing-link", title: "Calendar fixture talk", visibility: "full", isAllDay: false,
+    startsAt: "2026-11-28T14:00:00Z", endsAt: "2026-11-28T15:00:00Z",
+  }),
+});
+
+async function checkCalendar(page, origin, viewport) {
+  await page.goto(`${origin}/calendar?tz=UTC`);
+  await page.waitForFunction(() => document.querySelector('select[aria-label="Time zone"]')?.value === "UTC");
+  const defaultView = viewport.width <= 720 ? "Agenda" : "Month";
+  await page.getByRole("button", { name: defaultView, exact: true, pressed: true }).waitFor();
+  await page.getByRole("button", { name: "Agenda", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Busy", exact: true });
+  const slots = page.locator(".public-calendar__day").filter({ has: page.getByRole("button", { name: /Busy/ }) });
+  for (const [index, day] of ["20", "27"].entries()) {
+    const slot = slots.nth(index).getByRole("button", { name: /Busy/ });
+    await slot.click();
+    await dialog.waitFor();
+    assert.match(await dialog.innerText(), new RegExp(`November ${day}, 2026`));
+    assert.equal(await slot.getAttribute("aria-pressed"), "true");
+    assert.equal(await slots.nth(1 - index).getByRole("button", { name: /Busy/ }).getAttribute("aria-pressed"), "false");
+    assert.equal(await dialog.getByRole("link").count(), 0);
+    if (index === 1) await page.screenshot({ path: `/tmp/public-acceptance-calendar-${viewport.width}.png`, animations: "disabled" });
+    await dialog.getByRole("button", { name: "Close event details" }).click();
+  }
+  await page.getByRole("button", { name: /Calendar fixture talk/ }).click();
+  const talk = page.getByRole("dialog", { name: "Calendar fixture talk", exact: true });
+  assert.equal(await talk.getByRole("link", { name: "Open event page" }).getAttribute("href"), "/calendar/existing-link");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+}
 
 async function main() {
   Object.assign(process.env, { SITE_ADMIN_STORAGE: "local", CONTENT_SYNC_MODE: "stubs", NEXTAUTH_SECRET: "public-acceptance-fixture", CLOUDFLARE_API_TOKEN: "", CLOUDFLARE_ACCOUNT_ID: "" });
@@ -18,6 +57,7 @@ async function main() {
       if (url.origin !== origin) return route.abort("blockedbyclient");
       assert.equal(request.method(), "GET", "Public acceptance never writes data");
       if (url.pathname === "/api/search" && searchFailure) return route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"Isolated search failure"}' });
+      if (url.pathname === "/api/public/calendar") return route.fulfill({ json: calendarFixture, headers: { "X-Calendar-Served-At": calendarNow } });
       return route.continue();
     });
     page = await context.newPage(); page.setDefaultTimeout(12_000);
@@ -132,6 +172,7 @@ async function main() {
       await series.getByRole("link", { name: "Recognizing reasoning drift", exact: true }).click();
       await page.waitForURL("**/blog/when-ai-reasoning-starts-to-drift");
       assert.equal(await series.locator('[aria-current="page"]').innerText(), "Recognizing reasoning drift");
+      await checkCalendar(page, origin, viewport);
       await page.goto(origin);
     }
     const missing = await page.goto(`${origin}/qa-page-that-does-not-exist-291837`);
@@ -141,7 +182,7 @@ async function main() {
     await page.waitForURL(`${origin}/`);
     assert.deepEqual(errors, []);
     assert.deepEqual(warnings.filter((message) => !/ERR_BLOCKED_BY_CLIENT|status of (503|404)/.test(message)), []);
-    console.log("[public-acceptance] PASS: desktop/mobile bilingual search, paper links and keyboard disclosure, BIO reading, Teaching terms, blog series, retry, More dismissal, 404 recovery, zero writes");
+    console.log("[public-acceptance] PASS: desktop/mobile bilingual search, paper links and keyboard disclosure, BIO reading, Teaching terms, blog series, calendar occurrences, retry, More dismissal, 404 recovery, zero writes");
   } catch (error) {
     console.error({ errors, warnings });
     console.error(server.getLogs());

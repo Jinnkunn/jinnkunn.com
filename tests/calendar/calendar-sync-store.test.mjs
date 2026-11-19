@@ -14,6 +14,7 @@ import {
   selectPublicCalendarRuntimeData,
 } from "@jinnkunn/calendar-core/public";
 import { readObservedPublicCalendarFromDb } from "../../lib/server/public-calendar-db.ts";
+import { assertPublicCalendarFeeds } from "../../scripts/_lib/verify-public-calendar.mjs";
 import {
   cleanupCalendarCollectorObservations,
   publishCalendarObservationsToLive,
@@ -103,7 +104,13 @@ test("a complete Docs snapshot supersedes only matching legacy occurrences, incl
 
   const mirrored = await publishCalendarObservationsToLive(staging, live);
   assert.equal(mirrored.ok, true);
-  assert.deepEqual((await project(live)).events, after.events);
+  const liveProjection = await project(live);
+  assert.deepEqual(liveProjection.events, after.events);
+  const revision = String(liveProjection.observationSnapshot.revision);
+  assert.deepEqual(assertPublicCalendarFeeds({
+    json: JSON.parse(JSON.stringify(liveProjection)), ics: buildPublicCalendarIcs(liveProjection),
+    jsonRevision: revision, icsRevision: revision,
+  }), { revision: Number(revision), events: 4, busy: 3 });
   staging.close();
   live.close();
 });

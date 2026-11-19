@@ -5,11 +5,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Log, LogLevel, Miniflare } from "miniflare";
+import { toContentDocumentPath } from "@jinnkunn/document-repository/path";
 import { PUBLICATION_BASELINE_PATH, publicationSearchSnapshot, publicationSnapshot } from "../../lib/shared/publication-snapshot.mjs";
 import { STATIC_POLICY_PATH } from "../../lib/shared/static-release.ts";
 import { activateVerifiedOverlay, prepareOverlayGeneration, switchOverlayPointer, validateOverlayCandidate } from "../_lib/versioned-overlay.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
 import { assertPackagedReleaseAssets } from "../content/publish-content.mjs";
+import { verifyPublicCalendarFeeds } from "../_lib/verify-public-calendar.mjs";
 
 const root = process.cwd();
 const origin = "https://staging.publication-fixture.test";
@@ -65,15 +67,17 @@ async function main() {
       outboundService: () => new Response("External network is disabled for local publication QA", { status: 502 }),
     });
     const db = await worker.getD1Database("SITE_ADMIN_DB");
-    for (const file of ["004_static_shell_overlays.sql", "010_static_shell_overlay_active.sql"]) {
+    for (const file of ["001_content_files.sql", "003_calendar_public.sql", "004_static_shell_overlays.sql",
+      "007_calendar_observations.sql", "010_static_shell_overlay_active.sql", "011_calendar_observation_revision.sql",
+      "012_calendar_projection_exclusions.sql"]) {
       // D1.exec executes a statement per line; preserve the migration's multi-line DDL.
       for (const sql of fs.readFileSync(path.join(root, "migrations", file), "utf8").replace(/^--.*$/gm, "").split(/;[ \t]*$/m).map((part) => part.trim()).filter(Boolean)) await db.prepare(sql).run();
     }
     const query = ({ sql, params = [] }) => db.prepare(sql).bind(...params).all();
     const auth = await createNextAuthSessionCookie({ env: bindings });
     assert.ok(auth.ok);
-    const request = (route, authenticated = true, headers = {}) => worker.dispatchFetch(`${origin}${route}`, {
-      redirect: "manual", headers: { ...(authenticated ? { cookie: auth.cookie } : {}), ...headers },
+    const request = (route, authenticated = true, headers = {}, method = "GET") => worker.dispatchFetch(`${origin}${route}`, {
+      method, redirect: "manual", headers: { ...(authenticated ? { cookie: auth.cookie } : {}), ...headers },
     });
     const anonymous = await request("/", false);
     assert.equal(anonymous.status, 302, `Anonymous staging request: ${(await anonymous.text()).slice(0, 480)}`);
@@ -81,6 +85,29 @@ async function main() {
     assert.equal((await request("/api/site-admin/status", false)).status, 401);
     assert.equal((await request("/__static/index.html")).status, 404);
     assert.equal((await request("/api/site-announcement", false)).status, 401);
+    const calendarDate = Date.now();
+    const futureAt = (days) => new Date(calendarDate + days * 86_400_000).toISOString();
+    const calendarFixture = JSON.stringify({
+      generatedAt: futureAt(0),
+      range: { startsAt: futureAt(0), endsAt: futureAt(10) },
+      events: [1, 8].map((days) => ({
+        id: "same-calendar-fixture-series", visibility: "busy", title: "Private fixture",
+        description: "Private fixture body", startsAt: futureAt(days),
+        endsAt: new Date(Date.parse(futureAt(days)) + 3_600_000).toISOString(),
+      })),
+    });
+    await db.prepare("INSERT INTO content_files (rel_path, body, sha, size, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(toContentDocumentPath("content/calendar-public.json"), calendarFixture, createHash("sha1").update(calendarFixture).digest("hex"),
+        Buffer.byteLength(calendarFixture), calendarDate).run();
+    await db.prepare("UPDATE calendar_observation_revision SET revision = 42, updated_at = ? WHERE id = 1").bind(futureAt(0)).run();
+    const calendar = await verifyPublicCalendarFeeds((path) => request(path), { retryDelays: [0] });
+    assert.deepEqual(calendar, { revision: 42, events: 2, busy: 2 });
+    for (const path of ["/api/public/calendar", "/api/public/calendar/calendar.ics"]) {
+      const head = await request(path, true, {}, "HEAD");
+      assert.equal(head.status, 200, "Calendar feed accepts HEAD for a version-only probe.");
+      assert.equal(head.headers.get("x-calendar-revision"), "42");
+      assert.equal(await head.text(), "");
+    }
     const start = Date.now() + 2_500, end = start + 2_000;
     const notice = { id: "fixture-notice", title: "Timed update", status: "published", bodyMdx: "Public only during the schedule.",
       startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString() };
@@ -120,7 +147,7 @@ async function main() {
     assert.equal(expired.refreshAt, null);
     assert.equal((await request("/blog")).status, 404, "A removed shell must not fall back to the bundled blog.");
     assert.notEqual((await request("/teaching/archive/2024-25-fall/csci3141")).status, 200, "The session must not unlock password-protected content.");
-    console.log("Local Worker QA passed: real middleware, versioned HTML/assets/search, rollback, and timed announcements.");
+    console.log("Local Worker QA passed: real middleware, versioned HTML/assets/search, calendar GET/HEAD, rollback, and timed announcements.");
   } finally {
     await worker?.dispose();
     fs.rmSync(tmp, { recursive: true, force: true });

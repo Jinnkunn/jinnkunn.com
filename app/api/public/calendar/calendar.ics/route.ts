@@ -2,14 +2,13 @@ import { NextResponse } from "next/server";
 
 import { getLatestPublicCalendarData } from "@/lib/server/public-calendar-data";
 import { buildPublicCalendarIcs } from "@jinnkunn/calendar-core/ics";
-import { PUBLIC_CALENDAR_CACHE_TAG } from "@jinnkunn/calendar-core/public";
+import { PUBLIC_CALENDAR_CACHE_TAG, PUBLIC_CALENDAR_REVISION_HEADER } from "@jinnkunn/calendar-core/public";
 
 // Public calendar feed in RFC 5545 form. The JSON sibling at
 // /api/public/calendar serves the same data for the workspace's
 // own /calendar page; this route exists so external subscribers
 // (Apple Calendar, Outlook, Google Calendar, GNOME Evolution …)
-// can `webcal://jinkunchen.com/calendar.ics` and keep an auto-
-// updating local copy.
+// can subscribe to this URL and keep an auto-updating local copy.
 //
 // Same five-minute revalidation + cache-tag as the JSON endpoint
 // so a workspace promote picks up both feeds in one purge. The
@@ -32,6 +31,7 @@ export async function GET() {
       "Content-Disposition": 'inline; filename="jinkunchen-calendar.ics"',
       "Cache-Control": "public, max-age=30, stale-while-revalidate=300",
       "Cache-Tag": PUBLIC_CALENDAR_CACHE_TAG,
+      ...(data.observationSnapshot && { [PUBLIC_CALENDAR_REVISION_HEADER]: String(data.observationSnapshot.revision) }),
     },
   });
 }

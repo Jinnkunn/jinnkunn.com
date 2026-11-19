@@ -63,3 +63,24 @@ any other collector's records.
 - Inventory inactive collectors read-only before cleanup. Count future
   deduplicated entities with exclusively inactive sources separately from
   raw observations. Inactivity alone does not authorize deleting a source.
+
+## Public Feed Verification
+
+- Docs shows the public page and ICS revisions beside the Staging and Live
+  receipts. It makes anonymous HEAD requests to the two canonical production
+  feed URLs. The public header comes from the response's projected observation
+  revision, not from the Live D1 receipt or the time the request ran.
+- Older or fallback responses without a revision are unverified. A lower
+  revision can wait for public cache convergence; it never enables another
+  upload or a Live retry. Only the authenticated D1 receipt controls retries.
+- Normal code releases run `npm run verify:calendar:staging` or
+  `npm run verify:calendar:prod` against the activated Worker before marking it
+  accepted. The checks only read; they compare unique occurrence keys, times,
+  public fields, Busy privacy, and JSON/ICS revisions without printing events.
+- Verify move, deletion, empty scope, and unrelated overlaps in isolated
+  databases. Ordinary staging sync still mirrors to Live, so never inject
+  synthetic events into the hosted staging API.
+- The public event ID still owns permalinks. A reused historical ID gets a
+  separate occurrence key from its public interval before time filtering.
+  Already unique UIDs and the subscription URL stay unchanged; no source
+  calendar identifiers, notes, or other private data are added.

@@ -83,6 +83,8 @@
     "verify:cf:staging": "node scripts/release/verify-cloudflare-deployment.mjs --env=staging",
     "verify:cf:prod": "node scripts/release/verify-cloudflare-deployment.mjs --env=production",
     "verify:cf:both": "node scripts/release/verify-cloudflare-deployment.mjs --env=both",
+    "verify:calendar:staging": "node scripts/qa/verify-public-calendar.mjs staging",
+    "verify:calendar:prod": "node scripts/qa/verify-public-calendar.mjs production",
     "verify:static-shell": "node scripts/release/verify-cloudflare-deployment.mjs --env=production",
     "verify:staging:authenticated": "node scripts/qa/staging-authenticated-qa.mjs",
     "verify:release:local": "node scripts/qa/local-publication-worker.mjs",

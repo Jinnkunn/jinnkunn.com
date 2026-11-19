@@ -21,8 +21,14 @@ concurrency:
 
 jobs:
   build:
-    # Keep this image supported by the locked Playwright version.
     runs-on: ubuntu-24.04
+    # Keep the image tag and digest aligned with playwright-core in package-lock.
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d
+      options: --init --ipc=host
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 40
     env:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET != '' && secrets.NEXTAUTH_SECRET || format('ci-nextauth-{0}-{1}', github.run_id, github.run_attempt) }}
@@ -99,14 +105,14 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Install Browsers for Regression
+      - name: Verify Preinstalled Browsers
         if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' || steps.changes.outputs.ui_quality == 'true'
-        env:
-          RUN_ADMIN_BROWSER: ${{ github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' }}
         run: |
-          browsers=(chromium)
-          if [ "$RUN_ADMIN_BROWSER" = "true" ]; then browsers+=(webkit); fi
-          npx --no-install playwright-core install --with-deps "${browsers[@]}"
+          node --input-type=module <<'NODE'
+          import { accessSync, constants } from "node:fs";
+          import { chromium, webkit } from "playwright-core";
+          for (const browser of [chromium, webkit]) accessSync(browser.executablePath(), constants.X_OK);
+          NODE
 
       # These isolated suites share the local Next middleware manifest and must
       # run serially. No staging/production mutations or credentials are needed.
