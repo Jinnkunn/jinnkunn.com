@@ -3,7 +3,7 @@ import { readStagingOverlayIdentity, readTargetWorkerDeployment } from "../conte
 
 const BUCKET = "staging-acceptance";
 const TTL_MS = 30 * 60 * 1000;
-const CHECKS = ["verify:cf:staging", "verify:staging:authenticated", "check:staging-visual"];
+const CHECKS = ["verify:cf:staging", "verify:staging:authenticated", "verify:calendar:staging", "check:staging-visual"];
 const SHA1 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 

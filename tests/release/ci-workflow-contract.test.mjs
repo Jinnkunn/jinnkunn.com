@@ -15,6 +15,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 
 const ROOT = process.cwd();
 
@@ -29,13 +30,20 @@ test("ci: isolated admin regressions run serially without mutating a remote envi
     assert.equal(stepGate(yaml, name), adminGate);
     assert.match(step, /timeout-minutes: \d+/);
   }
-  const installer = steps.get("Install Browsers for Regression").lines.join("\n");
-  assert.ok(installer.includes(`RUN_ADMIN_BROWSER: \${{ ${adminGate} }}`));
-  assert.match(installer, /browsers=\(chromium\)/);
-  assert.match(installer, /if \[ "\$RUN_ADMIN_BROWSER" = "true" \]; then browsers\+=\(webkit\); fi/);
-  assert.match(installer, /playwright-core install --with-deps "\$\{browsers\[@\]\}"/);
+  const { build } = parse(yaml).jobs;
+  const playwright = JSON.parse(read("package-lock.json")).packages["node_modules/playwright-core"].version;
+  const image = /^mcr\.microsoft\.com\/playwright:v([\d.]+)-noble@sha256:[a-f0-9]{64}$/.exec(build.container?.image);
+  assert.equal(image?.[1], playwright, "CI browser image and locked Playwright must match");
+  assert.equal(build.defaults?.run?.shell, "bash");
+  assert.deepEqual(build.steps.slice(0, 2).map(({ name, run }) => [name, run]), [
+    ["Checkout", undefined],
+    ["Trust This Checkout in the Container", 'git config --global --add safe.directory "$GITHUB_WORKSPACE"'],
+  ]);
+  const verification = steps.get("Verify Preinstalled Browsers").lines.join("\n");
+  assert.match(verification, /\[chromium, webkit\].+browser\.executablePath\(\)/);
+  assert.doesNotMatch(JSON.stringify(build.steps), /playwright-core install|apt-get/);
   assert.match(yaml, /PLAYWRIGHT_CHANNEL: chromium/);
-  assert.equal(stepGate(yaml, "Install Browsers for Regression"), `${adminGate} || steps.changes.outputs.ui_quality == 'true'`);
+  assert.equal(stepGate(yaml, "Verify Preinstalled Browsers"), `${adminGate} || steps.changes.outputs.ui_quality == 'true'`);
 });
 
 // The four steps the dead `event_name == 'push'` gate silently disabled.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import {
   PublicCalendarView,
@@ -30,6 +30,16 @@ const TAG_QUERY_KEY = "tag";
 const SCOPE_QUERY_KEY = "scope";
 const TIME_ZONE_QUERY_KEY = "tz";
 const TIME_ZONE_STORAGE_KEY = "public-calendar.timeZone.v1";
+const serverPreferences = {
+  view: "month" as PublicCalendarViewMode,
+  audience: "all" as PublicCalendarAudienceMode,
+  timeZone: DEFAULT_CALENDAR_TIME_ZONE,
+  selectedTags: [] as readonly string[],
+};
+
+const subscribeToHydration = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
 
 function readTagsFromLocation(): string[] {
   if (typeof window === "undefined") return [];
@@ -119,33 +129,29 @@ export function PublicCalendarClient({
 }: {
   initialData: PublicCalendarData;
 }) {
+  // Hydrate the static shell with its server defaults, then apply URL and
+  // device preferences without regenerating the HTML on the first render.
+  const hydrated = useSyncExternalStore(subscribeToHydration, clientSnapshot, serverSnapshot);
+  const preferences = useMemo(() => hydrated ? {
+    view: window.matchMedia("(max-width: 720px)").matches ? "agenda" as const : "month" as const,
+    audience: readAudienceFromLocation(),
+    timeZone: readTimeZoneFromLocation(),
+    selectedTags: readTagsFromLocation(),
+  } : serverPreferences, [hydrated]);
   const [data, setData] = useState<PublicCalendarData>(initialData);
-  const [view, setView] = useState<PublicCalendarViewMode>(() =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 720px)").matches
-      ? "agenda"
-      : "month",
-  );
+  const [viewChoice, setView] = useState<PublicCalendarViewMode | null>(null);
   const [currentDateIso, setCurrentDateIso] = useState<string | null>(null);
   const [anchorIso, setAnchorIso] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] =
     useState<SelectedCalendarEvent | null>(null);
   const [agendaDays, setAgendaDays] = useState<30 | 90>(30);
-  const [audience, setAudience] = useState<PublicCalendarAudienceMode>(() =>
-    readAudienceFromLocation(),
-  );
-  const [timeZone, setTimeZone] = useState<string>(() =>
-    readTimeZoneFromLocation(),
-  );
-  // Hydrate tag filter from URL. The lazy initializer reads location
-  // synchronously on first render so we don't need a pre-paint effect
-  // that would then cascade into another render cycle (which the
-  // existing react-hooks/no-set-state-in-effect lint forbids). The
-  // popstate listener still lives in an effect — it only writes new
-  // state when the user navigates back/forward, not on every render.
-  const [selectedTags, setSelectedTags] = useState<readonly string[]>(() =>
-    readTagsFromLocation(),
-  );
+  const [audienceChoice, setAudience] = useState<PublicCalendarAudienceMode | null>(null);
+  const [timeZoneChoice, setTimeZone] = useState<string | null>(null);
+  const [tagChoice, setSelectedTags] = useState<readonly string[] | null>(null);
+  const view = viewChoice ?? preferences.view;
+  const audience = audienceChoice ?? preferences.audience;
+  const timeZone = timeZoneChoice ?? preferences.timeZone;
+  const selectedTags = tagChoice ?? preferences.selectedTags;
   const expandedEventId = selectedEvent?.id ?? null;
   useEffect(() => {
     const onPopState = () => {

@@ -556,7 +556,7 @@ async function main() {
         ...(args.skipChecks ? [] : CHECKS.map(([name]) => name)),
         "build:cf", "wrangler versions upload", "prepare and verify the inactive overlay generation",
         "activate the prepared Worker", "verify served content and search",
-        ...(args.env === "staging" ? ["verify:staging:authenticated", "check:staging-visual"] : []),
+        ...(args.env === "staging" ? ["verify:staging:authenticated", "verify:calendar:staging", "check:staging-visual"] : ["verify:calendar:prod"]),
       ],
     });
     return;
@@ -739,6 +739,7 @@ async function main() {
       run("npm", ["run", verifyScript], {
         label: verifyScript, cwd: releaseRoot, env: { VERIFY_CF_EXPECT_PRODUCTION_VERSION: uploadedVersionId },
       });
+      run("npm", ["run", "verify:calendar:prod"], { label: "verify:calendar:prod", cwd: releaseRoot });
     }
     verifies.push(args.env);
   } catch (error) {

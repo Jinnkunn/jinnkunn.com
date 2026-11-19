@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import { buildPublicCalendarIcs } from "../../lib/shared/calendar-ics.ts";
+import { identifyPublicCalendarOccurrences } from "../../lib/shared/public-calendar.ts";
 
 // RFC 5545 contract tests for the public calendar feed. The generator
 // is hand-rolled (no `ical-generator` dep), so a single missing CRLF
@@ -162,6 +163,27 @@ test("ics: each VEVENT carries a stable globally-unique UID", () => {
   const closes = (ics.match(/\r\nEND:VEVENT\r\n/g) || []).length;
   assert.equal(opens, 2);
   assert.equal(closes, 2);
+});
+
+test("ics: reused IDs describe separate slots and keep their UIDs in a smaller window", () => {
+  const first = fullEvent({ id: "legacy", visibility: "busy", title: "Busy" });
+  const next = { ...first, startsAt: "2026-05-08T18:00:00.000Z", endsAt: "2026-05-08T19:30:00.000Z" };
+  const normal = fullEvent({ id: "permalink-stays" });
+  const events = [first, next, normal];
+  const uids = (rows) => [...buildPublicCalendarIcs({ ...baseData, events: rows })
+    .replace(/\r\n /g, "").matchAll(/^UID:(.+)\r$/gm)].map(([, uid]) => uid);
+  const [left, right, link] = uids(events);
+  assert.notEqual(left, right);
+  assert.equal(link, "permalink-stays@jinkunchen.com");
+  assert.deepEqual(uids([normal, next, first]), [link, right, left]);
+  assert.deepEqual(uids(identifyPublicCalendarOccurrences(events).slice(1, 2)), [right]);
+});
+
+test("ics: multibyte text is folded by octets without splitting a Unicode character", () => {
+  const title = "\u65e5\u5386\u{1F4C5}".repeat(40);
+  const ics = buildPublicCalendarIcs({ ...baseData, events: [fullEvent({ title })] });
+  assert.ok(ics.split("\r\n").every((line) => Buffer.byteLength(line, "utf8") <= 75));
+  assert.ok(ics.replace(/\r\n /g, "").includes(`SUMMARY:${title}\r\n`));
 });
 
 test("ics: empty event list still produces a valid VCALENDAR shell", () => {

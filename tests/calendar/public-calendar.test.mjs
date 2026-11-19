@@ -2,12 +2,61 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  filterStalePublicCalendarEvents,
   normalizePublicCalendarServedAt,
   normalizePublicCalendarData,
+  normalizePublicCalendarRuntimeData,
+  publicCalendarEventKey,
   publicCalendarJson,
   selectPublicCalendarHydrationData,
   selectPublicCalendarRuntimeData,
 } from "../../lib/shared/public-calendar.ts";
+
+function busySlot(id, day) {
+  return {
+    id, visibility: "busy",
+    startsAt: `2026-05-${day}T14:00:00Z`,
+    endsAt: `2026-05-${day}T15:00:00Z`,
+  };
+}
+
+test("public-calendar: legacy occurrence IDs survive decay, source changes and refresh", () => {
+  const sourceData = normalizePublicCalendarData({
+    generatedAt: "2026-05-28T00:00:00Z",
+    events: [busySlot("weekly", "15"), busySlot("weekly", "15"), busySlot("weekly", "22"), busySlot("unique", "23")],
+  });
+  const projected = selectPublicCalendarRuntimeData({ sourceData });
+  assert.deepEqual(projected.events.map(({ id }) => id), ["weekly", "weekly", "unique"]);
+  const keys = projected.events.map(publicCalendarEventKey);
+  assert.equal(new Set(keys).size, 3);
+  assert.equal(keys[2], "unique");
+  const decayed = filterStalePublicCalendarEvents(projected, { now: new Date("2026-06-16T00:00:00Z") });
+  const normalized = normalizePublicCalendarRuntimeData(JSON.parse(JSON.stringify(decayed)));
+  assert.deepEqual(normalized.events.map(publicCalendarEventKey), keys.slice(1));
+  assert.equal(normalizePublicCalendarData(decayed).events[0].occurrenceId, undefined, "runtime keys are not accepted on write");
+
+  const dbData = normalizePublicCalendarData({ ...sourceData, generatedAt: "2026-05-29T00:00:00Z", events: [sourceData.events[2]] });
+  const dbResult = selectPublicCalendarRuntimeData({ dbData, sourceData });
+  assert.deepEqual(dbResult.events.map(publicCalendarEventKey), [keys[1]]);
+
+  const hydrated = selectPublicCalendarHydrationData({ currentData: projected, refreshedData: dbResult });
+  assert.deepEqual(hydrated.events.map(publicCalendarEventKey), keys, "an unverified partial feed is not proof the other slots vanished");
+});
+
+test("public-calendar: a verified occurrence never removes another day that reuses the same legacy ID", () => {
+  const sourceData = normalizePublicCalendarData({ events: [busySlot("weekly", "15")] });
+  const observed = normalizePublicCalendarData({ events: [busySlot("weekly", "22")] });
+  const first = selectPublicCalendarRuntimeData({ sourceData, observedData: {
+    ...observed, observationSnapshot: { revision: 1, eventIds: ["weekly"] },
+  } });
+  assert.equal(first.events.length, 2, "same stem with no time overlap is not coverage");
+  assert.deepEqual(first.observationSnapshot.eventIds, [publicCalendarEventKey(first.events[1])]);
+  const after = selectPublicCalendarRuntimeData({ sourceData, observedData: {
+    ...observed, events: [], observationSnapshot: { revision: 2, eventIds: [] },
+  } });
+  const hydrated = selectPublicCalendarHydrationData({ currentData: first, refreshedData: after });
+  assert.deepEqual(hydrated.events.map(({ startsAt }) => startsAt), [sourceData.events[0].startsAt]);
+});
 
 test("public-calendar: busy events never expose supplied details", () => {
   const data = normalizePublicCalendarData({
