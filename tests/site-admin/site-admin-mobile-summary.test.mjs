@@ -67,6 +67,21 @@ test("mobile summary: recommends smart release when source is ahead", () => {
   assert.equal(summary.release.recommendedAction.label, "Smart Release");
 });
 
+test("mobile summary: an unknown code comparison is not evidence of a current Live snapshot", () => {
+  const livePublication = { workerVersionId: "worker-1", snapshotSha: "a".repeat(64), verifiedAt: null };
+  const input = status({ pendingDeploy: null });
+  const unresolved = buildSiteAdminMobileSummary({ status: { ...input, livePublication } });
+  assert.equal(unresolved.source.pendingDeploy, null);
+  assert.equal(unresolved.release.recommendedAction.kind, "refresh");
+  assert.equal(unresolved.release.headline, "Status unavailable");
+  const receipt = { ...livePublication, verifiedAt: "2026-11-19T13:00:00.000Z" };
+  const verified = buildSiteAdminMobileSummary({ status: { ...input, livePublication: receipt } });
+  assert.deepEqual(verified.livePublication, receipt);
+  assert.equal(verified.release.headline, "Live snapshot verified");
+  assert.equal(verified.release.detail, "Saved database drafts are reviewed separately.");
+  assert.equal(verified.source.pendingDeploy, null);
+});
+
 test("mobile summary: surfaces active release job before any new action", () => {
   const summary = buildSiteAdminMobileSummary({
     generatedAt: "2026-05-16T12:00:00.000Z",

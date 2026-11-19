@@ -733,7 +733,9 @@ async function main() {
           codeSha: git.sha, versionId: uploadedVersionId, artifactSha: contentSnapshotSha,
           publicationSha: codeOverlay.publicationSnapshotSha, overlaySha: codeOverlay.snapshotSha,
         },
-        force: true, runCheck: (check) => run("npm", ["run", check], { label: check }),
+        force: true, runCheck: (check) => run("npm", ["run", check], { label: check,
+          ...(check === "check:staging-visual" && { env: { SITE_ADMIN_VISUAL_RELEASE: `${git.sha}:${uploadedVersionId}` } }),
+        }),
       });
     } else {
       run("npm", ["run", verifyScript], {

@@ -162,21 +162,60 @@ function minuteIso(value: string): string {
   return new Date(Math.floor(ms / 60_000) * 60_000).toISOString();
 }
 
-function extractMeetingUrl(...values: Array<string | null | undefined>): string {
+function findMeetingUrl(...values: Array<string | null | undefined>): string {
   for (const value of values) {
-    if (!value) continue;
-    const match = value.match(/https?:\/\/[^\s)>\]]+/i);
-    if (!match) continue;
-    try {
-      const url = new URL(match[0]);
-      url.hash = "";
-      const host = url.hostname.replace(/^www\./, "").toLowerCase();
-      return `${host}${url.pathname.replace(/\/$/, "")}${url.search}`.toLowerCase();
-    } catch {
-      return match[0].toLowerCase();
-    }
+    const match = value?.match(/https?:\/\/[^\s)>\]]+/i);
+    if (match) return match[0];
   }
   return "";
+}
+
+function extractMeetingUrl(...values: Array<string | null | undefined>): string {
+  const token = findMeetingUrl(...values);
+  if (!token) return "";
+  try {
+    const url = new URL(token);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    return `${host}${url.pathname.replace(/\/$/, "")}${url.search}`.toLowerCase();
+  } catch {
+    return token.toLowerCase();
+  }
+}
+
+type IdentifiedCalendarObservationInput = CalendarObservationInput & { observationId?: string };
+
+// Prototype for Busy-only collectors. Keep v1 matching keys without sending the notes body.
+export function compactBusyObservationInput(input: IdentifiedCalendarObservationInput): IdentifiedCalendarObservationInput {
+  let url = findMeetingUrl(input.url) || (!findMeetingUrl(input.location) ? findMeetingUrl(input.notes) : "");
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      parsed.username = "";
+      parsed.password = "";
+      parsed.hash = "";
+      url = parsed.href;
+    } catch {
+      // Older collectors also compare malformed URL tokens, so keep that match.
+    }
+  }
+  return {
+    observationId: input.observationId,
+    sourceId: input.sourceId,
+    collectorId: input.collectorId,
+    sourceEventId: input.sourceEventId,
+    iCalUid: input.iCalUid,
+    recurrenceInstanceId: input.recurrenceInstanceId,
+    calendarId: input.calendarId,
+    title: input.title,
+    location: input.location,
+    url: url || undefined,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    isAllDay: input.isAllDay,
+    isRecurring: input.isRecurring,
+    timezone: input.timezone,
+    updatedAt: input.updatedAt,
+  };
 }
 
 function canonicalObservationId(input: {

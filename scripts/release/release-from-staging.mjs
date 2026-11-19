@@ -348,7 +348,9 @@ async function main() {
     force: args.forceVerify,
     skipAuthenticated: args.skipAuthenticated,
     skipVisual: args.skipVisual,
-    runCheck: (check) => run("npm", ["run", check], { label: check }),
+    runCheck: (check) => run("npm", ["run", check], { label: check,
+      ...(check === "check:staging-visual" && { env: { SITE_ADMIN_VISUAL_RELEASE: `${git.sha}:${staging.versionId}` } }),
+    }),
   });
   console.log(`[release-from-staging] staging ${acceptance.cached ? "cached" : "fresh"} checks: ${acceptance.checks.join(", ")}; version=${acceptance.identity.versionId} publication=${acceptance.identity.publicationSha}`);
 

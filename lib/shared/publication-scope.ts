@@ -1,15 +1,25 @@
+import { isDeepStrictEqual } from "node:util";
 import matter from "gray-matter";
 import { parseJsxAttrs } from "../components/parse.ts";
 import { isPublicationSource, publicationSnapshot, type PublicationSnapshot } from "./publication-snapshot.ts";
+import { COLLECTION_ENTRY_ID, ENTRY_SCOPED_COLLECTIONS, prepareEntryPublication, type EntryScopedCollection } from "./publication-entry-scope.ts";
 
 export type PublicationScopeOption = { id: string; label: string };
 export const ALL_PUBLICATION_SCOPE = "all";
 const NEWS = "components/news.mdx";
-const ENTRY_ID = /^[a-z0-9][a-z0-9._:-]{0,95}$/i;
+const ENTRY_LABELS = { teaching: "Teaching", works: "Works", publications: "Publications" };
+const EDITORIAL_METADATA = new Set(["title", "description", "date", "updated", "tags", "cover", "ogImage"]);
+
+function collectionScope(scope: string) {
+  const colon = scope.indexOf(":");
+  const kind = scope.slice(0, colon) as EntryScopedCollection;
+  return colon > 0 && ENTRY_SCOPED_COLLECTIONS.includes(kind) ? { kind, id: scope.slice(colon + 1) } : null;
+}
 
 export function validPublicationScope(value: unknown): value is string {
   return typeof value === "string" && value.length <= 300 && (value === ALL_PUBLICATION_SCOPE ||
-    (value.startsWith("news:") && ENTRY_ID.test(value.slice(5))) ||
+    (value.startsWith("news:") && COLLECTION_ENTRY_ID.test(value.slice(5))) ||
+    COLLECTION_ENTRY_ID.test(collectionScope(value)?.id ?? "") ||
     (value.startsWith("document:") && isPublicationSource(value.slice(9))));
 }
 
@@ -26,7 +36,7 @@ function readNewsRows(source: string) {
     return { id: attrs.entryId || `news-${index + 1}`, explicit: Boolean(attrs.entryId), date: attrs.date || "",
       text: match[2].trim(), raw: match[0], start, end: start + match[0].length };
   });
-  if (rows.some((row) => !ENTRY_ID.test(row.id)) || new Set(rows.map((row) => row.id)).size !== rows.length) {
+  if (rows.some((row) => !COLLECTION_ENTRY_ID.test(row.id)) || new Set(rows.map((row) => row.id)).size !== rows.length) {
     scopeError("News entries do not have unique identities.");
   }
   return rows;
@@ -72,9 +82,10 @@ function documentEditAllowed(path: string, before: string, after: string) {
   if (path === "home.json" || path === "now.json" || path === "filesystem/announcements.json") return true;
   if (path.startsWith("components/") && path !== NEWS) return true;
   if (!/^(posts|pages)\/.+\.mdx$/.test(path)) return false;
-  const header = (value: string) => value.slice(0, value.length - matter(value, {}).content.length).trimEnd();
-  // Slug, visibility, hierarchy, and other frontmatter updates use group review.
-  return header(before) === header(after);
+  // Visibility, hierarchy, and unrecognized metadata stay in group review.
+  const structuralFields = (value: string) => Object.fromEntries(Object.entries(matter(value, {}).data)
+    .filter(([key]) => !EDITORIAL_METADATA.has(key)));
+  return isDeepStrictEqual(structuralFields(before), structuralFields(after));
 }
 
 function dependsOnUnpublishedDocument(source: string, saved: PublicationSnapshot, live: PublicationSnapshot) {
@@ -91,9 +102,10 @@ function dependsOnUnpublishedDocument(source: string, saved: PublicationSnapshot
   });
 }
 
-function scopedChange(saved: PublicationSnapshot, live: PublicationSnapshot, scope: string) {
+function scopedChange(saved: PublicationSnapshot, live: PublicationSnapshot, scope: string, entries?: ReturnType<typeof prepareEntryPublication>) {
   const isNews = scope.startsWith("news:");
-  const path = isNews ? NEWS : scope.slice(9);
+  const collection = collectionScope(scope);
+  const path = isNews ? NEWS : collection ? `components/${collection.kind}.mdx` : scope.slice(9);
   const before = live.sources[path], after = saved.sources[path];
   if (before === undefined || after === undefined || before === after) scopeError("This change requires group review or no longer exists.");
   let updated: string;
@@ -102,6 +114,12 @@ function scopedChange(saved: PublicationSnapshot, live: PublicationSnapshot, sco
     const id = scope.slice(5);
     updated = replaceNewsEntry(before, after, id);
     reviewedText = readNewsRows(after).find((row) => row.id === id)!.text;
+  } else if (collection) {
+    try {
+      ({ updated, reviewedText } = (entries ?? prepareEntryPublication(collection.kind, before, after)).select(collection.id));
+    } catch (error) {
+      scopeError(error instanceof Error ? error.message : "The selected entry could not be isolated.");
+    }
   } else {
     if (!documentEditAllowed(path, before, after)) scopeError("This change affects site structure.");
     updated = reviewedText = after;
@@ -119,8 +137,8 @@ export function publicationCandidate(saved: PublicationSnapshot, live: Publicati
 
 export function publicationScopeOptions(saved: PublicationSnapshot, live: PublicationSnapshot): PublicationScopeOption[] {
   const scopes: PublicationScopeOption[] = [];
-  function offer(id: string, label: string) {
-    try { scopedChange(saved, live, id); scopes.push({ id, label }); }
+  function offer(id: string, label: string, entries?: ReturnType<typeof prepareEntryPublication>) {
+    try { scopedChange(saved, live, id, entries); scopes.push({ id, label }); }
     catch { /* Coupled or unreadable changes stay in all-changes review. */ }
   }
   for (const [path, source] of Object.entries(saved.sources)) {
@@ -136,6 +154,11 @@ export function publicationScopeOptions(saved: PublicationSnapshot, live: Public
         const title = path.endsWith(".mdx") && !source.trimStart().startsWith("{") ? matter(source, {}).data.title : "";
         offer(`document:${path}`, typeof title === "string" && title.trim() ? title : path);
       } catch { /* An invalid draft remains in group review. */ }
+      const kind = ENTRY_SCOPED_COLLECTIONS.find((name) => path === `components/${name}.mdx`);
+      if (kind) try {
+        const entries = prepareEntryPublication(kind, live.sources[path], source);
+        for (const row of entries.entries) offer(`${kind}:${row.id}`, `${ENTRY_LABELS[kind]}: ${row.label || "Untitled entry"}`, entries);
+      } catch { /* Custom and legacy collections remain available for group review. */ }
     }
   }
   return scopes;

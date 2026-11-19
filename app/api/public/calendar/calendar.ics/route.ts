@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getLatestPublicCalendarData } from "@/lib/server/public-calendar-data";
 import { buildPublicCalendarIcs } from "@jinnkunn/calendar-core/ics";
-import { PUBLIC_CALENDAR_CACHE_TAG, PUBLIC_CALENDAR_REVISION_HEADER } from "@jinnkunn/calendar-core/public";
+import { PUBLIC_CALENDAR_CACHE_TAG, publicCalendarRevisionHeaders } from "@jinnkunn/calendar-core/public";
 
 // Public calendar feed in RFC 5545 form. The JSON sibling at
 // /api/public/calendar serves the same data for the workspace's
@@ -31,7 +31,7 @@ export async function GET() {
       "Content-Disposition": 'inline; filename="jinkunchen-calendar.ics"',
       "Cache-Control": "public, max-age=30, stale-while-revalidate=300",
       "Cache-Tag": PUBLIC_CALENDAR_CACHE_TAG,
-      ...(data.observationSnapshot && { [PUBLIC_CALENDAR_REVISION_HEADER]: String(data.observationSnapshot.revision) }),
+      ...publicCalendarRevisionHeaders(data),
     },
   });
 }

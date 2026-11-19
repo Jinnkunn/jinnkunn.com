@@ -6,6 +6,7 @@ import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs"
 import { ensureNextBuild, findAvailablePort, startNextServer, waitForHttp } from "../_lib/local-next.mjs";
 import { launchBrowser } from "../_lib/playwright.mjs";
 import { publicationSnapshot, publicationReview } from "../../lib/shared/publication-snapshot.mjs";
+import { publicationCandidate, publicationScopeOptions } from "../../lib/shared/publication-scope.ts";
 import { contentInventory } from "../../lib/shared/content-inventory.ts";
 import { publicationValidation } from "../../lib/shared/publication-validation.ts";
 import { describePublicationChange } from "../../lib/shared/publication-review-details.ts";
@@ -90,8 +91,11 @@ async function main() {
         return json({ path: "content/posts/old.mdx", history: [{ commitSha: "earlier-commit", commitShort: "earlier", committedAt: "2026-10-24T12:00:00Z", authorName: "QA", message: "Earlier draft" }], ...(url.searchParams.has("commitSha") ? { version: { content: historySource, sha: "earlier-source", commitSha: "earlier-commit" } } : {}) });
       }
       if (url.pathname === "/api/site-admin/publication-review") {
-        const current = publicationSnapshot(sources()), review = publicationReview(current, baseline);
-        return json({ ...review, validation: publicationValidation(current.sources), inventory: contentInventory(current.sources, modified), changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
+        const saved = publicationSnapshot(sources()), scope = url.searchParams.get("scope") || "all";
+        const current = publicationCandidate(saved, baseline, scope), review = publicationReview(current, baseline);
+        return json({ ...review, scope, availableScopes: publicationScopeOptions(saved, baseline),
+          validation: publicationValidation(current.sources), inventory: contentInventory(saved.sources, modified),
+          changes: review.changes.map((change) => ({ ...change, details: describePublicationChange(change, current, baseline) })) });
       }
       if (url.pathname === "/api/site-admin/announcements") {
         if (req.method() === "POST") { const body = req.postDataJSON(); writes.push(body); assert.equal(body.action, "upsert"); notice = body.announcement; noticeVersion++; }
@@ -209,9 +213,9 @@ async function main() {
     await page.goto(`${origin}/site-admin?area=content&view=posts`);
     const task = () => page.getByRole("combobox", { name: "Content task filter", exact: true });
     log("Task lists: pending, hidden, issues, modified time and retained page hierarchy");
-    await task().selectOption("pending");
     await page.getByRole("button", { name: /Pending post.*Pending publication/ }).waitFor();
-    assert.equal(await page.getByRole("button", { name: /Older saved post/ }).count(), 0);
+    await task().selectOption("pending");
+    await eventually(async () => assert.equal(await page.getByRole("button", { name: /Older saved post/ }).count(), 0), "Pending filter hides the Live post");
     await task().selectOption("recent");
     assert.equal(await page.getByRole("button", { name: /Older saved post/ }).count(), 0, "A recent publication date is not a recent save");
     await task().selectOption("all");
@@ -262,8 +266,9 @@ async function main() {
     await eventually(async () => assert.equal(matter(docs.get("posts/pending.mdx"), {}).data.title, ""), "Blank title is saved as an incomplete draft");
     await page.getByRole("button", { name: "Publish updates", exact: true }).first().click();
     const reviewDialog = page.getByRole("dialog", { name: "Review publication", exact: true });
+    assert.equal(await reviewDialog.getByLabel("Changes to publish", { exact: true }).inputValue(), "document:posts/pending.mdx");
     await reviewDialog.getByRole("heading", { name: "Needs attention before publishing" }).waitFor();
-    assert.equal(await reviewDialog.getByRole("button", { name: "Publish all changes", exact: true }).isDisabled(), true);
+    assert.equal(await reviewDialog.getByRole("button", { name: "Publish selection", exact: true }).isDisabled(), true);
     await page.screenshot({ path: "/tmp/four-items-publication-validation-desktop.png" });
     await reviewDialog.getByRole("button", { name: /posts\/pending\.mdx · title: Add a title/ }).click();
     await eventually(async () => assert.equal(await titleInput.evaluate((el) => el === document.activeElement), true), "Publication issue returns to the exact field");

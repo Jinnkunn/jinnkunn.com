@@ -29,6 +29,7 @@ import { compactId, normalizeRoutePath } from "@/lib/shared/route-utils";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSyncMeta } from "@/lib/sync-meta";
 import { readErrorLogSummary } from "@/lib/server/error-log";
+import { readSiteAdminLivePublication } from "./site-admin-live-publication";
 
 export type SiteAdminStatusResponsePayload = Omit<SiteAdminStatusPayload, "ok">;
 const REPRODUCIBLE_BUILD_EPOCH_MAX_MS = Date.UTC(2019, 0, 1);
@@ -608,7 +609,9 @@ export async function buildSiteAdminStatusPayload(): Promise<SiteAdminStatusResp
     };
   }
 
+  const livePublication = await readSiteAdminLivePublication();
   return {
+    ...(livePublication ? { livePublication } : {}),
     env: {
       nodeEnv: process.env.NODE_ENV || "",
       runtimeProvider: pickRuntimeProvider(),

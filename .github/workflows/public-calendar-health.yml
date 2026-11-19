@@ -1,0 +1,28 @@
+name: Public Calendar Health
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-calendar-health
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || vars.PUBLIC_CALENDAR_HEALTH_ENABLED == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check public feed agreement and age
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/qa/check-public-calendar-health.mjs

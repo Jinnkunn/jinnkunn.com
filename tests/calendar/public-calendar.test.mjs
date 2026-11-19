@@ -7,6 +7,8 @@ import {
   normalizePublicCalendarData,
   normalizePublicCalendarRuntimeData,
   publicCalendarEventKey,
+  publicCalendarFreshness,
+  publicCalendarRevisionHeaders,
   publicCalendarJson,
   selectPublicCalendarHydrationData,
   selectPublicCalendarRuntimeData,
@@ -19,6 +21,21 @@ function busySlot(id, day) {
     endsAt: `2026-05-${day}T15:00:00Z`,
   };
 }
+
+test("public-calendar: only a Live receipt determines freshness and it is not writable", () => {
+  const verifiedAt = "2026-11-19T10:00:00.000Z";
+  const raw = { generatedAt: verifiedAt, events: [], observationSnapshot: { revision: 42, eventIds: [], verifiedAt } };
+  const known = normalizePublicCalendarRuntimeData(raw);
+  assert.equal(known.observationSnapshot.verifiedAt, verifiedAt);
+  assert.equal(normalizePublicCalendarData(raw).observationSnapshot, undefined);
+  assert.equal(publicCalendarRevisionHeaders(known)["X-Calendar-Verified-At"], verifiedAt);
+  assert.equal(publicCalendarFreshness(undefined, Date.parse(verifiedAt)), "unverified");
+  assert.equal(publicCalendarFreshness(verifiedAt, Date.parse("2026-11-19T09:50:00Z")), "unverified");
+  assert.equal(publicCalendarFreshness(verifiedAt, Date.parse("2026-11-19T16:00:00Z")), "current");
+  assert.equal(publicCalendarFreshness(verifiedAt, Date.parse("2026-11-19T16:00:01Z")), "stale");
+  const missingReceipt = normalizePublicCalendarRuntimeData({ ...raw, observationSnapshot: { revision: 42, eventIds: [] } });
+  assert.equal(selectPublicCalendarHydrationData({ currentData: known, refreshedData: missingReceipt }), known);
+});
 
 test("public-calendar: legacy occurrence IDs survive decay, source changes and refresh", () => {
   const sourceData = normalizePublicCalendarData({

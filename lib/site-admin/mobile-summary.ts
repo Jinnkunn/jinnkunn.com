@@ -69,6 +69,7 @@ export type SiteAdminMobileSummary = {
     pendingDeploy: boolean | null;
     deployableVersionReady: boolean | null;
   };
+  livePublication?: SiteAdminStatusPayload["livePublication"];
 };
 
 export type BuildSiteAdminMobileSummaryInput = {
@@ -162,12 +163,15 @@ function releaseState(input: {
     };
   }
 
+  const liveVerified = source.storeKind === "db" && Boolean(status.livePublication?.verifiedAt);
+  const unconfirmed = source.pendingDeploy === null && !liveVerified;
   return {
-    headline: "Up to date",
-    detail: "No mobile release action is needed.",
+    headline: unconfirmed ? "Status unavailable" : liveVerified ? "Live snapshot verified" : "Up to date",
+    detail: unconfirmed ? (source.pendingDeployReason || "There is no matching verification receipt for the live snapshot.")
+      : liveVerified ? "Saved database drafts are reviewed separately." : "No mobile release action is needed.",
     recommendedAction: {
-      kind: "noop",
-      label: "Current",
+      kind: unconfirmed ? "refresh" : "noop",
+      label: unconfirmed ? "Refresh" : "Current",
       destructive: false,
     },
     runningJob: null,
@@ -191,6 +195,7 @@ export function buildSiteAdminMobileSummary(
   const runners = input.runners ?? [];
 
   return {
+    ...(status?.livePublication ? { livePublication: status.livePublication } : {}),
     generatedAt,
     site: {
       name: status?.content?.siteName || "jinkunchen.com",

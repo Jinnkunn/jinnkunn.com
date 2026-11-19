@@ -5,6 +5,7 @@ import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs"
 import { ensureNextBuild, findAvailablePort, startNextServer, waitForHttp } from "../_lib/local-next.mjs";
 import { launchBrowser } from "../_lib/playwright.mjs";
 import { publicationSnapshot, publicationReview } from "../../lib/shared/publication-snapshot.mjs";
+import { publicationCandidate, publicationScopeOptions } from "../../lib/shared/publication-scope.ts";
 import { describePublicationChange } from "../../lib/shared/publication-review-details.ts";
 import { saveCurrentNowData } from "../../lib/site-admin/now-commands.ts";
 
@@ -92,9 +93,12 @@ async function main() {
         return json(name === "home" ? { sourceVersion: payload().sourceVersion } : name === "announcements" ? { ok: true, data: payload() } : payload());
       }
       if (url.pathname === "/api/site-admin/publication-review") {
-        const current = publicationSnapshot(sources());
+        const saved = publicationSnapshot(sources());
+        const scope = url.searchParams.get("scope") || "all";
+        const current = publicationCandidate(saved, baseline, scope);
         const review = publicationReview(current, baseline);
-        return json({ ...review, changes: review.changes.map((change) => ({ ...change,
+        return json({ ...review, scope, availableScopes: publicationScopeOptions(saved, baseline),
+          changes: review.changes.map((change) => ({ ...change,
           title: ({ "home.json": "Home", "now.json": "Now", "filesystem/announcements.json": "Announcements" })[change.path] || change.title,
           details: describePublicationChange(change, current, baseline),
         })) });
@@ -206,10 +210,11 @@ async function main() {
     await open("announcements");
     await page.getByRole("button", { name: "Review publication", exact: true }).click();
     const review = page.getByRole("dialog", { name: "Review publication", exact: true });
+    assert.equal(await review.getByLabel("Changes to publish", { exact: true }).inputValue(), "document:filesystem/announcements.json");
     await review.getByText("Advanced source comparison", { exact: true }).first().waitFor();
     await eventually(async () => {
       assert.ok((await review.innerText()).includes("Affects:"));
-      assert.equal(await review.getByRole("button", { name: "Publish all changes", exact: true }).isEnabled(), true);
+      assert.equal(await review.getByRole("button", { name: "Publish selection", exact: true }).isEnabled(), true);
     }, "Publication review finished loading");
     assert.equal(await review.locator("pre:visible").count(), 0, "Code is hidden by default");
     await page.screenshot({ path: "/tmp/priority-publication-review-desktop.png" });

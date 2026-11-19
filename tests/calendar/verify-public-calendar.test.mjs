@@ -61,3 +61,21 @@ test("public feed verification waits for cached revisions using only the two rea
   assert.deepEqual(result, { revision: 42, events: 3, busy: 2 });
   assert.deepEqual(paths, ["/api/public/calendar", "/api/public/calendar/calendar.ics", "/api/public/calendar", "/api/public/calendar/calendar.ics"]);
 });
+
+test("the patrol requires an identical Live verification timestamp in JSON and ICS", async () => {
+  const feed = fixture();
+  const verifiedAt = "2026-11-19T14:00:00.000Z";
+  assert.throws(() => assertPublicCalendarFeeds({ ...feed, requireVerifiedAt: true }), /common verification time/);
+  feed.json.observationSnapshot.verifiedAt = verifiedAt;
+  assert.throws(() => assertPublicCalendarFeeds(feed), /does not describe the JSON body/);
+  let icsReads = 0;
+  const result = await verifyPublicCalendarFeeds((path) => path.endsWith(".ics")
+    ? new Response(feed.ics, { headers: {
+      "Content-Type": "text/calendar", "X-Calendar-Revision": "42",
+      "X-Calendar-Verified-At": ++icsReads === 1 ? "2026-11-19T13:00:00.000Z" : verifiedAt,
+    } })
+    : Response.json(feed.json, { headers: { "X-Calendar-Revision": "42", "X-Calendar-Verified-At": verifiedAt } }),
+  { retryDelays: [0, 0], requireVerifiedAt: true });
+  assert.deepEqual(result, { revision: 42, events: 3, busy: 2, verifiedAt });
+  assert.equal(icsReads, 2);
+});

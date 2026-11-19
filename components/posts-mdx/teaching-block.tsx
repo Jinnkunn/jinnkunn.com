@@ -14,7 +14,7 @@ interface TeachingBlockProps {
   limit?: number;
 }
 
-function TermList({ term, entries }: { term: string; entries: TeachingComponentEntry[] }) {
+function TermList({ term, entries, latest = false }: { term: string; entries: TeachingComponentEntry[]; latest?: boolean }) {
   const sharedPeriod = entries.every((entry) => entry.period === entries[0].period) ? entries[0].period : "";
   return (
     <div className="teaching-term">
@@ -23,7 +23,7 @@ function TermList({ term, entries }: { term: string; entries: TeachingComponentE
       <ul className="notion-bulleted-list teaching-list">
         {entries.map((entry, index) => (
           <TeachingEntry key={entry.entryId || `${entry.courseCode}-${index}`} {...entry}
-            period={sharedPeriod ? "" : entry.period} showTerm={false} />
+            period={sharedPeriod ? "" : entry.period} showTerm={false} linkCourseName={latest} />
         ))}
       </ul>
     </div>
@@ -61,9 +61,9 @@ export async function TeachingBlock({
   const [[term, latest], ...archive] = [...groups].sort(([a], [b]) => rankTeachingTerm(b) - rankTeachingTerm(a));
   return (
     <div className="teaching-terms">
-      <section aria-label="Latest term">
+      <section id="latest-term" aria-label="Latest term">
         <h2>Latest term</h2>
-        <TermList term={term} entries={latest} />
+        <TermList term={term} entries={latest} latest />
       </section>
       {archive.length ? <section aria-label="Past terms">
         <h2>Past terms</h2>

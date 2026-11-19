@@ -28,6 +28,10 @@
   margin-block-start: 16px;
 }
 
+#latest-term {
+  scroll-margin-top: 5rem;
+}
+
 .teaching-term h3 {
   margin-block: 0 4px;
   font-size: 1rem;

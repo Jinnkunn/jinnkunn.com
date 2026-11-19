@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  compactBusyObservationInput,
   mergeCalendarObservations,
+  normalizeCalendarObservation,
   normalizeCalendarObservationSyncPayload,
 } from "../../lib/shared/calendar-core.ts";
 
@@ -127,4 +129,29 @@ test("calendar-core: merge follows extended overlaps but not touching endpoints"
   const entities = mergeCalendarObservations(payload.observations);
   assert.deepEqual(entities.map(({ sourceRefs }) => sourceRefs.length), [3, 1]);
   assert.equal(entities[0].endsAt, "2026-05-17T15:30:00.000Z");
+});
+
+test("Busy-only input prototype drops note text without losing identity or mixed-client dedupe", () => {
+  const raw = {
+    sourceId: "legacy", calendarId: "selected", calendarTitle: "Private calendar display name",
+    title: "Research meeting", notes: "Private memo https://user:password@meet.example.test/room?key=one#entry",
+    startsAt: "2026-05-17T16:00:00Z", endsAt: "2026-05-17T17:00:00Z",
+  };
+  const legacy = normalizeCalendarObservation(raw, "fixture");
+  const compact = compactBusyObservationInput(raw);
+  assert.doesNotMatch(JSON.stringify(compact), /Private memo|Private calendar display name|user:password|#entry/);
+  const reduced = normalizeCalendarObservation(compact, "fixture");
+  for (const field of ["observationId", "identityKey", "dedupeKey", "meetingUrl", "startsAt", "endsAt"]) {
+    assert.equal(reduced[field], legacy[field]);
+  }
+  const second = { ...raw, sourceId: "docs", sourceEventId: "next", notes: "Notes with https://other.test", location: compact.url };
+  const mixedInput = compactBusyObservationInput(second);
+  assert.equal(mixedInput.url, undefined, "do not repeat a URL already in the location");
+  const merged = (input) => mergeCalendarObservations([legacy, normalizeCalendarObservation(input, "fixture")])
+    .map(({ id, dedupeKey, startsAt, endsAt, confidence, sourceRefs }) =>
+      ({ id, dedupeKey, startsAt, endsAt, confidence, sourceRefs }));
+  const mixed = merged(mixedInput);
+  assert.deepEqual(mixed, merged(second));
+  assert.equal(mixed.length, 1);
+  assert.equal(mixed[0].sourceRefs.length, 2);
 });

@@ -175,6 +175,11 @@ export type SiteAdminStatusPayload = {
       contentBranch: string | null;
     };
   };
+  livePublication?: {
+    workerVersionId: string;
+    snapshotSha: string | null;
+    verifiedAt: string | null;
+  };
   preflight?: {
     generatedFiles: {
       ok: boolean;
