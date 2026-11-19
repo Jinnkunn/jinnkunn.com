@@ -99,9 +99,14 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Install Chromium for Browser Regression
+      - name: Install Browsers for Regression
         if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' || steps.changes.outputs.ui_quality == 'true'
-        run: npx --no-install playwright-core install --with-deps chromium
+        env:
+          RUN_ADMIN_BROWSER: ${{ github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true' }}
+        run: |
+          browsers=(chromium)
+          if [ "$RUN_ADMIN_BROWSER" = "true" ]; then browsers+=(webkit); fi
+          npx --no-install playwright-core install --with-deps "${browsers[@]}"
 
       # These isolated suites share the local Next middleware manifest and must
       # run serially. No staging/production mutations or credentials are needed.
@@ -119,10 +124,6 @@ jobs:
         if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
         timeout-minutes: 6
         run: npm run smoke:site-admin:followup
-
-      - name: Install WebKit for Mobile Admin Regression
-        if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
-        run: npx --no-install playwright-core install --with-deps webkit
 
       - name: Admin Mobile WebKit Regression
         if: github.event_name != 'pull_request' || steps.changes.outputs.admin_quality == 'true'
@@ -209,6 +210,7 @@ jobs:
             /tmp/next-four-*.png
             /tmp/four-items-*.png
             /tmp/public-acceptance-*.png
+            /tmp/site-admin-webkit-*.png
           if-no-files-found: ignore
 
       - name: Upload A11y Artifacts

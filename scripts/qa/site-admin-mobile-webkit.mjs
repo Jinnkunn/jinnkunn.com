@@ -52,6 +52,7 @@ async function main() {
     page.on("dialog", (dialog) => void dialog.accept());
     await page.goto(`${origin}/site-admin`);
     assert.match(await page.title(), /Site Admin/);
+    await page.locator('main[data-workspace-ready="true"]').waitFor();
     await page.getByRole("heading", { name: "Content", level: 1, exact: true }).waitFor();
     const button = (name) => page.getByRole("button", { name, exact: typeof name === "string" });
     const editor = () => page.getByRole("dialog", { name: /^Edit / });
@@ -102,7 +103,15 @@ async function main() {
     await button(/^Mobile fixture post/).tap();
     const title = page.getByLabel("Title", { exact: true });
     const changedTitle = "Mobile recovered title";
-    await title.fill(changedTitle);
+    // On WebKit, fill can reset a just-opened controlled input before React records it.
+    await title.tap();
+    await title.selectText();
+    await title.pressSequentially(changedTitle);
+    const saveDraft = button("Save draft").filter({ visible: true }).first();
+    await eventually(async () => {
+      assert.equal(await title.inputValue(), changedTitle);
+      assert.ok(await saveDraft.isEnabled());
+    }, "the edited title is registered as unsaved before Back");
     await page.evaluate(() => history.back());
     const confirm = page.getByRole("dialog", { name: "Unsaved changes", exact: true });
     await confirm.getByRole("button", { name: "Stay here", exact: true }).tap();
@@ -115,7 +124,7 @@ async function main() {
     await button("Restore local draft").tap();
     assert.equal(await title.inputValue(), changedTitle);
     fixture.failures.delete(path);
-    await button("Save draft").filter({ visible: true }).first().tap();
+    await saveDraft.tap();
     await eventually(() => assert.match(fixture.saved.get(path), /Mobile recovered title/), "restored post is saved without a publish");
     assert.equal(fixture.jobs.length, 0);
     await button("Back to posts").tap();
