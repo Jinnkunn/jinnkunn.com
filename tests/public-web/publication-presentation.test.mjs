@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { additionalPublicationVenues, venueSummaryText } from "../../components/publications/labels.ts";
+import { publicationListMetadata, venueSummaryText } from "../../components/publications/labels.ts";
 import { publicationLinks } from "../../lib/shared/publication-links.ts";
 import { parsePublicationsEntries } from "../../lib/components/parse.ts";
 
@@ -15,7 +15,10 @@ test("publication presentation: removes resource-only additional venues without 
     { type: "source", text: "", url: "https://example.com/supplement" },
   ];
   const before = structuredClone(venues);
-  assert.deepEqual(additionalPublicationVenues(venues), []);
+  assert.deepEqual(publicationListMetadata({ venues }), {
+    typeLabels: ["Journal"],
+    venueLines: ["SoftwareX, vol 28, 101952. Elsevier"],
+  });
   assert.deepEqual(venues, before);
 });
 
@@ -26,18 +29,39 @@ test("publication presentation: preserves meaningful additional venue descriptio
     { type: "arXiv.org", text: "Available at: https://arxiv.org/abs/2409.00356" },
     { type: "workshop", text: "Extended workshop version" },
   ];
-  assert.deepEqual(additionalPublicationVenues(venues), [
-    { type: "journal", text: "Pattern Recognition. Lecture Notes in Computer Science, vol 15303. Springer, Cham" },
-    { type: "workshop", text: "Extended workshop version" },
-  ]);
+  assert.deepEqual(publicationListMetadata({ venues }), {
+    typeLabels: ["Conference", "Journal", "Workshop"],
+    venueLines: [
+      "27th International Conference on Pattern Recognition (ICPR)",
+      "Pattern Recognition. Lecture Notes in Computer Science, vol 15303. Springer, Cham",
+      "Extended workshop version",
+    ],
+  });
 });
 
-test("publication presentation: empty or single-venue entries have no extra details", () => {
-  assert.deepEqual(additionalPublicationVenues([]), []);
-  assert.deepEqual(additionalPublicationVenues([{ type: "conference", text: "AAAI-26" }]), []);
+test("publication presentation: one Preprint type without a redundant repository venue", () => {
+  assert.deepEqual(publicationListMetadata({
+    labels: ["arXiv.org", "Preprint", " Research note ", "RESEARCH NOTE", " "],
+    venues: [{ type: "arXiv", text: "arXiv preprint. Available at: https://arxiv.org/abs/2510.13982" }],
+  }), { typeLabels: ["Preprint", "Research note"], venueLines: [] });
+  assert.deepEqual(publicationListMetadata({
+    labels: ["arxiv"],
+    venues: [{ type: "preprint", text: "Institutional working paper series" }],
+  }), { typeLabels: ["Preprint"], venueLines: ["Institutional working paper series"] });
 });
 
-test("publication presentation: summary never falls back to displaying a raw resource URL", () => {
+test("publication presentation: empty and legacy venue fields do not create duplicate metadata", () => {
+  assert.deepEqual(publicationListMetadata({}), { typeLabels: [], venueLines: [] });
+  assert.deepEqual(publicationListMetadata({ labels: ["conference"], venue: "AAAI-26" }), {
+    typeLabels: ["Conference"], venueLines: ["AAAI-26"],
+  });
+  assert.deepEqual(publicationListMetadata({
+    venues: [{ type: "journal", text: "SoftwareX" }, { type: "journal", text: "SoftwareX." }],
+    venue: "SoftwareX",
+  }), { typeLabels: ["Journal"], venueLines: ["SoftwareX"] });
+});
+
+test("publication search keeps the arXiv synonym without displaying raw URLs", () => {
   assert.equal(venueSummaryText({ type: "journal", text: "https://doi.org/10.1000/example" }), "");
   assert.equal(venueSummaryText({ type: "arXiv.org", text: "Available at: https://arxiv.org/abs/2407.08082" }), "arXiv preprint");
   assert.equal(venueSummaryText({ type: "journal", text: "SoftwareX. doi: 10.1000/example" }), "SoftwareX");
@@ -72,20 +96,28 @@ test("publication resources: accepts optional venue fields and entries without l
   assert.deepEqual(publicationLinks({ venues: [{}, { text: "Test Conference 2026" }] }), []);
 });
 
-test("publication presentation: CAB-KWS retains its journal description for the summary, with no repeated URLs", async () => {
+test("publication presentation: real preprint and published entries keep their resource links and meaningful venues", async () => {
   const source = await readFile(new URL("../../content/components/publications.mdx", import.meta.url), "utf8");
   const entries = parsePublicationsEntries(source);
   const maritime = entries.find((entry) => entry.title.includes("AISDB"));
   const cab = entries.find((entry) => entry.title.startsWith("CAB-KWS"));
+  const preprint = entries.find((entry) => entry.title.startsWith("Static Sandboxes"));
   assert.ok(maritime);
   assert.ok(cab);
-  assert.deepEqual(additionalPublicationVenues(maritime.venues), []);
-  assert.equal(publicationLinks(maritime).filter((link) => link.label === "arXiv").length, 1);
-  const details = additionalPublicationVenues(cab.venues);
-  assert.equal(details.length, 1);
-  assert.equal(details[0].type, "journal");
-  assert.match(details[0].text, /Lecture Notes in Computer Science/);
-  assert.doesNotMatch(details[0].text, /https?:|\b(?:doi|dio):|Available at/i);
+  assert.ok(preprint);
+  assert.deepEqual(publicationListMetadata(preprint), { typeLabels: ["Preprint"], venueLines: [] });
+  assert.deepEqual(publicationLinks(preprint), [{ href: "https://arxiv.org/abs/2510.13982", label: "arXiv" }]);
+  assert.deepEqual(publicationListMetadata(maritime), {
+    typeLabels: ["Journal"],
+    venueLines: ["SoftwareX, vol 28, 101952. Elsevier"],
+  });
+  assert.deepEqual(publicationLinks(maritime).map(({ label }) => label), ["DOI", "arXiv"]);
+  const { typeLabels, venueLines } = publicationListMetadata(cab);
+  assert.deepEqual(typeLabels, ["Conference", "Journal"]);
+  assert.equal(venueLines.length, 2);
+  assert.match(venueLines[1], /Lecture Notes in Computer Science/);
+  assert.doesNotMatch(venueLines.join(" "), /https?:|\b(?:doi|dio):|Available at/i);
+  assert.deepEqual(publicationLinks(cab).map(({ label }) => label), ["DOI", "arXiv"]);
 });
 
 test("publication presentation: both rendering paths keep venue metadata in the summary and authors alone in expanded content", async () => {
@@ -94,25 +126,25 @@ test("publication presentation: both rendering paths keep venue metadata in the 
   const source = await readFile(new URL("../../components/publications/publication-list.tsx", import.meta.url), "utf8");
   const [summary, expanded] = source.split('<div className="notion-toggle__content"');
   assert.ok(expanded);
-  assert.match(summary, /additionalVenues\.map/);
+  assert.match(summary, /venueLines\.map/);
   assert.match(summary, /pub-venue-line highlighted-color color-gray/);
-  assert.ok(summary.indexOf("additionalVenues.map") < summary.indexOf("<PublicationResourceLinks"));
+  assert.ok(summary.indexOf("venueLines.map") < summary.indexOf("<PublicationResourceLinks"));
   assert.match(summary, /const hasAuthors = authors\.length > 0/);
   assert.match(summary, /aria-label=\{`Authors of \$\{title\}`\}/);
   assert.match(expanded, /<AuthorsLine/);
-  assert.doesNotMatch(expanded, /additionalVenues|VenueLine|PublicationTag|PublicationResourceLinks|pub-tag-colon|<br/);
+  assert.doesNotMatch(expanded, /venueLines|pub-type-tag|PublicationResourceLinks|<br/);
 });
 
 test("publication presentation: the shared row puts the venue below labels and highlights", async () => {
   const source = await readFile(new URL("../../components/publications/publication-list.tsx", import.meta.url), "utf8");
-  assert.match(source, /const hasMetadata = labels\.length > 0 \|\| highlights\.length > 0;/);
+  assert.match(source, /const hasMetadata = typeLabels\.length > 0 \|\| highlights\.length > 0;/);
   const metadataStart = source.indexOf("{hasMetadata &&");
-  const venueStart = source.indexOf("{primaryVenue ?", metadataStart);
+  const venueStart = source.indexOf("{venueLines.map", metadataStart);
   assert.ok(metadataStart >= 0 && venueStart > metadataStart);
   const metadata = source.slice(metadataStart, venueStart);
   assert.match(metadata, /pub-meta-line ds-meta-row/);
   assert.match(metadata, /PublicationHighlightBadge/);
-  assert.doesNotMatch(metadata, /primaryVenue|pub-venue-line/);
-  assert.match(source.slice(venueStart), /className="pub-venue-line highlighted-color color-gray">\{primaryVenue\}<\/span>/);
-  assert.ok(venueStart < source.indexOf("additionalVenues.map"));
+  assert.match(metadata, /className="pub-type-tag" variant="outline"/);
+  assert.doesNotMatch(metadata, /pub-venue-line|highlighted-background|<code/);
+  assert.ok(venueStart < source.indexOf("<PublicationResourceLinks"));
 });

@@ -1,9 +1,8 @@
-import type {
-  PublicationAuthor,
-} from "@/lib/seo/publications-items";
+import { Badge } from "@/components/ui/badge";
+import type { PublicationAuthor } from "@/lib/seo/publications-items";
 import { publicationAnchorId, type IdentifiedPublication } from "@/lib/shared/publication-identity";
 
-import { additionalPublicationVenues, classifyLabel, venueSummaryText, type LabelKind } from "./labels";
+import { publicationListMetadata } from "./labels";
 import { PublicationHighlightBadge } from "./publication-highlight-badge";
 import { PublicationResourceLinks } from "./publication-resource-links";
 
@@ -22,32 +21,6 @@ function groupsByYear(entries: IdentifiedPublication[]) {
   }
   return Array.from(map.entries()).sort(
     (a, b) => orderYearKey(b[0]) - orderYearKey(a[0]),
-  );
-}
-
-function tagTone(kind: LabelKind): {
-  color: string;
-  background: string;
-} {
-  if (kind === "conference") return { color: "color-red", background: "bg-red" };
-  if (kind === "journal") return { color: "color-orange", background: "bg-orange" };
-  if (kind === "arxiv") return { color: "color-purple", background: "bg-purple" };
-  if (kind === "workshop") return { color: "color-blue", background: "bg-blue" };
-  return { color: "color-gray", background: "bg-gray" };
-}
-
-function PublicationTag({ label }: { label: string }) {
-  const tone = tagTone(classifyLabel(label));
-  return (
-    <em>
-      <span className={`highlighted-color ${tone.color}`}>
-        <span className={`highlighted-background ${tone.background}`}>
-          <code className="code">
-            <strong>{label}</strong>
-          </code>
-        </span>
-      </span>
-    </em>
   );
 }
 
@@ -83,12 +56,9 @@ function AuthorsLine({ authors }: { authors: PublicationAuthor[] }) {
 export function PublicationRow({ entry }: { entry: IdentifiedPublication }) {
   const authors =
     entry.authorsRich ?? (entry.authors ?? []).map((name) => ({ name, isSelf: false }));
-  const venues = entry.venues ?? [];
-  const additionalVenues = additionalPublicationVenues(venues);
-  const labels = entry.labels ?? [];
+  const { typeLabels, venueLines } = publicationListMetadata(entry);
   const highlights = entry.highlights ?? [];
-  const primaryVenue = venues.length > 0 ? venueSummaryText(venues[0]) : "";
-  const hasMetadata = labels.length > 0 || highlights.length > 0;
+  const hasMetadata = typeLabels.length > 0 || highlights.length > 0;
   const title = entry.title || "Untitled publication";
   const anchor = publicationAnchorId(entry.entryId);
   const authorsId = `${anchor}-authors`;
@@ -109,30 +79,24 @@ export function PublicationRow({ entry }: { entry: IdentifiedPublication }) {
             <a className="pub-permalink" href={`#${anchor}`} aria-label={`Link to ${title}`} title="Link to this publication">#</a>
           </span>
           {hasMetadata && (
-            <>
-              <br />
-              <span className="pub-meta-line ds-meta-row">
-                {labels.map((label) => (
-                  <span key={label} className="pub-tag-prefix">
-                    <PublicationTag label={label} />{" "}
-                  </span>
-                ))}
-                {highlights.length > 0 && (
-                  <span className="pub-highlight-list ds-meta-list">
-                    {highlights.map((highlight) => (
-                      <PublicationHighlightBadge key={highlight} highlight={highlight} />
-                    ))}
-                  </span>
-                )}
-              </span>
-            </>
+            <span className="pub-meta-line ds-meta-row">
+              {typeLabels.map((label) => (
+                <Badge key={label} className="pub-type-tag" variant="outline" size="sm">
+                  {label}
+                </Badge>
+              ))}
+              {highlights.length > 0 && (
+                <span className="pub-highlight-list ds-meta-list">
+                  {highlights.map((highlight) => (
+                    <PublicationHighlightBadge key={highlight} highlight={highlight} />
+                  ))}
+                </span>
+              )}
+            </span>
           )}
-          {primaryVenue ? (
-            <span className="pub-venue-line highlighted-color color-gray">{primaryVenue}</span>
-          ) : null}
-          {additionalVenues.map((venue, index) => (
-            <span key={`${venue.type}-${index}`} className="pub-venue-line highlighted-color color-gray">
-              {venue.text}
+          {venueLines.map((text) => (
+            <span key={text} className="pub-venue-line highlighted-color color-gray">
+              {text}
             </span>
           ))}
           <PublicationResourceLinks entry={entry} />

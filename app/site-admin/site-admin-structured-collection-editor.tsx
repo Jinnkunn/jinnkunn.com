@@ -5,6 +5,8 @@ import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { SiteAdminMarkdownEditor } from "./site-admin-markdown-editor";
+import { SiteAdminEditorPublicationControl } from "./site-admin-publication-status";
+import type { EditorPublicationAction } from "./site-admin-editor-publication";
 import { CollectionListField, CollectionTermField } from "./site-admin-collection-fields";
 import {
   formatMonthRangePeriod,
@@ -41,12 +43,13 @@ type StructuredCollectionEditorProps = {
   onUndo: () => void;
   onRedo: () => void;
   onCheckpoint: () => void;
-  status: string;
-  statusDetail: string;
+  draftStatus: string;
   onSave: () => void;
   saveDisabled: boolean;
-  onPublish: (entryId: string) => void;
-  publishDisabled: boolean;
+  showSave: boolean;
+  publicationActionForEntry: (entryId: string) => EditorPublicationAction | null;
+  onReviewPublication: (scope: string) => void;
+  reviewDisabled: boolean;
   issueCount: number;
   onReviewIssues: () => void;
   onReviewPreviousIssue: () => void;
@@ -92,8 +95,8 @@ type StructuredCollectionEntryProps = {
 };
 
 type CollectionPanel = Pick<StructuredCollectionEditorProps,
-  "visibleEntryIds" | "onExpandedEntryIdsChange" | "onCheckpoint" | "status" |
-  "statusDetail" | "onSave" | "saveDisabled" | "onPublish" | "publishDisabled"> & {
+  "visibleEntryIds" | "onExpandedEntryIdsChange" | "onCheckpoint" | "draftStatus" |
+  "onSave" | "saveDisabled" | "showSave" | "publicationActionForEntry" | "onReviewPublication" | "reviewDisabled"> & {
     host: HTMLElement | null;
     activeId: string;
     compact: boolean;
@@ -134,12 +137,13 @@ export function StructuredCollectionEditor({
   onUndo,
   onRedo,
   onCheckpoint,
-  status,
-  statusDetail,
+  draftStatus,
   onSave,
   saveDisabled,
-  onPublish,
-  publishDisabled,
+  showSave,
+  publicationActionForEntry,
+  onReviewPublication,
+  reviewDisabled,
   issueCount,
   onReviewIssues,
   onReviewPreviousIssue,
@@ -165,7 +169,7 @@ export function StructuredCollectionEditor({
   }, [activeId, compact]);
   const panel: CollectionPanel = {
     host, activeId, compact, visibleEntryIds, onExpandedEntryIdsChange, onCheckpoint,
-    status, statusDetail, onSave, saveDisabled, onPublish, publishDisabled,
+    draftStatus, onSave, saveDisabled, showSave, publicationActionForEntry, onReviewPublication, reviewDisabled,
   };
   const handleEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
@@ -336,6 +340,9 @@ export function StructuredCollectionEntry({
 }: StructuredCollectionEntryProps) {
   const panel = useContext(CollectionPanelContext);
   expanded = expanded && panel?.activeId === id;
+  const publication = expanded ? panel?.publicationActionForEntry(id) : null;
+  const publicationDetail = publication?.kind === "review" ? publication.detail : undefined;
+  const footerStatus = publicationDetail || (panel?.compact ? panel.draftStatus : "");
   const wasExpandedRef = useRef(false);
   const drawerId = `${componentEntryDomId(id)}-drawer`;
 
@@ -499,17 +506,19 @@ export function StructuredCollectionEntry({
                 </details>
               </div>
               <footer className={styles.collectionEntryDrawerFooter}>
-                <Button onClick={onDelete} variant="subtle" tone="danger" size="sm">
+                {footerStatus ? <small className={styles.collectionPanelStatus} role="status">{footerStatus}</small> : null}
+                <Button onClick={onDelete} className={styles.collectionDeleteEntry} variant="subtle" tone="danger" size="sm">
                   Delete
                 </Button>
-                <div className={styles.collectionPanelStatus} role="status"><strong>{panel.status}</strong><small>{panel.statusDetail}</small></div>
-                {panel.compact ? <>
+                {panel.compact && panel.showSave ? (
                   <Button onClick={panel.onSave} disabled={panel.saveDisabled} variant="ghost" size="sm">Save draft</Button>
-                  <Button onClick={() => panel.onPublish(id)} disabled={panel.publishDisabled} tone="accent" size="sm">Publish updates</Button>
-                </> : <>
-                  <Button onClick={() => panel.onPublish(id)} disabled={panel.publishDisabled} variant="subtle" size="sm">Review entry</Button>
+                ) : null}
+                {publication ? (
+                  <SiteAdminEditorPublicationControl action={publication} disabled={panel.reviewDisabled} onReview={panel.onReviewPublication} />
+                ) : null}
+                {!panel.compact ? (
                   <Button onClick={onToggle} variant="subtle" size="sm">Done</Button>
-                </>}
+                ) : null}
               </footer>
             </aside>
           </>, panel.compact ? document.body : panel.host

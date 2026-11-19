@@ -303,8 +303,8 @@ test("public-web-style-guardrails: data-page entry components keep legacy Notion
   );
   assertIncludes(
     publicationsEntry,
-    'className="pub-tag-prefix"',
-    "PublicationsEntry tag prefix",
+    'className="pub-type-tag" variant="outline"',
+    "PublicationsEntry uses neutral type badges",
   );
   assertIncludes(
     publicationsEntry,
@@ -552,8 +552,8 @@ test("public-web-style-guardrails: public calendar toolbar uses shared control p
   );
   assertIncludes(
     calendarView,
-    "public-calendar__subscribe ds-control-button ds-control-button--accent",
-    "Calendar subscribe DS control",
+    'className="public-calendar__subscribe ds-control-button"',
+    "Calendar subscribe uses the quiet DS control",
   );
   assertIncludes(
     calendarView,

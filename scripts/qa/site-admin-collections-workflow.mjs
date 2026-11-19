@@ -109,10 +109,11 @@ async function main() {
     };
     const panel = () => page.getByRole("region", { name: /^Edit / });
     const saveButton = () => page.getByRole("button", { name: "Save draft", exact: true }).filter({ visible: true }).first();
-    const publish = async (trigger = "Publish updates") => {
+    const publish = async (trigger = "Review entry", expectedScope) => {
       await page.getByRole("button", { name: trigger, exact: true }).filter({ visible: true }).click();
       const review = page.getByRole("dialog", { name: "Review publication" });
       await review.waitFor();
+      if (expectedScope !== undefined) assert.equal(await review.getByLabel("Changes to publish", { exact: true }).inputValue(), expectedScope);
       await review.getByLabel("Changes to publish", { exact: true }).selectOption("all");
       assert.match(await review.innerText(), /saved changes from all sessions/);
       assert.match(await review.innerText(), /Staging/);
@@ -125,7 +126,9 @@ async function main() {
       await eventually(() => check(fixture.entries(name)), `${name} saved`);
       await eventually(async () => {
         assert.equal(await page.getByRole("button", { name: "Saving draft", exact: true }).count(), 0);
-        assert.equal(await saveButton().isDisabled(), true);
+        for (const button of await page.getByRole("button", { name: "Save draft", exact: true }).all()) {
+          assert.ok(!(await button.isVisible()) || await button.isDisabled());
+        }
       }, `${name} save reconciled`);
     };
 
@@ -223,6 +226,12 @@ async function main() {
     await panel().getByLabel("Course name", { exact: true }).fill("Winter fixture");
     await saved("teaching", (rows) => assert.ok(rows.some((row) => row.courseCode === "CSCI2000" && row.term === "2026/27 Winter Term")));
     await panel().getByRole("button", { name: "Close entry editor" }).click();
+    await entry("CSCI1000").click();
+    const liveTeaching = panel().getByRole("link", { name: "View live", exact: true });
+    assert.equal(await liveTeaching.getAttribute("href"), "/teaching");
+    assert.equal(await page.getByRole("button", { name: /^Review (entry|collection|changes|all changes)$/ }).count(), 0, "A pending course does not give a different, Live course a publish button");
+    await page.screenshot({ path: "/tmp/admin-live-entry.png", animations: "disabled" });
+    await panel().getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Add entry to 2026/27 Winter Term" }).click();
     assert.equal(await panel().getByLabel("Season", { exact: true }).inputValue(), "Winter");
     await panel().getByLabel("Course code", { exact: true }).fill("CSCI2001");
@@ -285,6 +294,16 @@ async function main() {
     await panel().getByLabel("Ongoing", { exact: true }).uncheck();
     await panel().getByLabel("Period end month").fill("2026-02");
     await saved("works", (rows) => assert.equal(rows.find((row) => row.role === "Intern").period.replace(/\u2013/g, "-"), "Nov 2025 - Feb 2026"));
+    const reviewCollection = panel().getByRole("button", { name: "Review collection", exact: true });
+    await reviewCollection.waitFor();
+    assert.equal(await page.getByRole("button", { name: "Review collection", exact: true }).count(), 1);
+    await panel().getByText("This entry cannot be published separately.", { exact: true }).waitFor();
+    await page.screenshot({ path: "/tmp/admin-collection-review-action.png", animations: "disabled" });
+    await reviewCollection.click();
+    const workReview = page.getByRole("dialog", { name: "Review publication" });
+    assert.equal(await workReview.getByLabel("Changes to publish").inputValue(), "document:components/works.mdx");
+    await workReview.getByRole("button", { name: "Cancel", exact: true }).click();
+    await eventually(async () => assert.equal(await reviewCollection.evaluate((button) => button === document.activeElement), true), "Cancel restores focus to the collection review button");
     await panel().getByText("Entry actions", { exact: true }).click();
     await panel().getByRole("button", { name: "Duplicate", exact: true }).click();
     assert.equal(await page.locator("article[data-invalid]").count(), 3);
@@ -363,13 +382,13 @@ async function main() {
     await page.getByRole("button", { name: "Keep my edits", exact: true }).click();
     await saved("news", (rows) => assert.ok(rows.some((row) => row.body.includes("Conflict-preserved news update."))));
     assert.equal(fixture.jobs.length, 0, "Conflict resolution only saves a draft");
-    await page.getByRole("button", { name: "Publish updates", exact: true }).click();
+    await page.getByRole("button", { name: "Review entry", exact: true }).click();
     await page.getByRole("dialog", { name: "Review publication" }).getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(fixture.jobs.length, 0, "Canceling publication does not queue a release");
     log("Publication review: another session's saved changes are included");
     const remoteOriginal = fixture.saved.get("works");
     fixture.changeRemotely("works", remoteOriginal.replace("Recent body.", "Other session's work update."));
-    await page.getByRole("button", { name: "Publish updates", exact: true }).click();
+    await page.getByRole("button", { name: "Review entry", exact: true }).click();
     const siteReview = page.getByRole("dialog", { name: "Review publication" });
     await siteReview.getByLabel("Changes to publish", { exact: true }).selectOption("all");
     const worksReviewHeading = siteReview.getByRole("heading", { name: /^Works · changed$/ });
@@ -393,9 +412,14 @@ async function main() {
     await page.getByText("Publish failed: Fixture publish failed", { exact: true }).waitFor({ timeout: 15_000 });
     const publicationStatus = page.getByRole("region", { name: "Publication status" });
     await publicationStatus.getByText("Live verification failed", { exact: true }).waitFor();
-    assert.match(await publicationStatus.innerText(), /Saved draft .*Live snapshot/s);
+    assert.doesNotMatch(await publicationStatus.innerText(), /Saved draft .*Live snapshot/s, "Versions are not repeated in publication feedback");
+    await panel().getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Inspector", exact: true }).click();
+    await page.getByText("Saved version", { exact: true }).waitFor();
+    await page.getByText("Live snapshot", { exact: true }).waitFor();
+    await page.locator("[data-inspector-close]").click();
     assert.equal(fixture.published.get("news").includes("Conflict-preserved"), false);
-    await publish("Review and retry");
+    await publish("Review all changes again", "all");
     await eventually(() => assert.equal(fixture.jobs.length, 2), "retry queues another publish");
     if (await entry("Conflict-preserved").getAttribute("aria-expanded") !== "true") await entry("Conflict-preserved").click();
     await body().click();
@@ -454,7 +478,11 @@ async function main() {
     await dialog.locator('[contenteditable="true"][aria-label="Body"]').click();
     await dialog.locator('[contenteditable="true"][aria-label="Body"]').fill("Mobile verified draft.");
     await saved("news", (rows) => assert.ok(rows.some((row) => row.body.includes("Mobile verified draft."))));
-    await dialog.getByRole("button", { name: "Publish updates", exact: true }).click();
+    const mobileReviewTrigger = dialog.getByRole("button", { name: "Review entry", exact: true });
+    await mobileReviewTrigger.waitFor();
+    assert.equal(await page.getByRole("button", { name: /^Review (entry|collection|changes|all changes)$/ }).count(), 1, "Only the active drawer offers a publication action");
+    await page.screenshot({ path: "/tmp/admin-review-action-mobile.png", animations: "disabled" });
+    await mobileReviewTrigger.click();
     const mobileReview = page.getByRole("dialog", { name: "Review publication", exact: true });
     const reviewBox = await mobileReview.boundingBox();
     assert.ok(reviewBox && reviewBox.x >= 0 && reviewBox.x + reviewBox.width <= 391 && reviewBox.y >= 0 && reviewBox.y + reviewBox.height <= 845, "Mobile publication dialog fits the viewport");

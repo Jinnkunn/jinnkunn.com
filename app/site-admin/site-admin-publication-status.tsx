@@ -1,21 +1,33 @@
 import type { SiteAdminReleaseJobLike, SiteAdminReleaseProgress } from "@/lib/site-admin/release-progress";
 import { Button } from "@/components/ui/button";
 import type { ReleaseJobOutcome } from "./site-admin-console-model";
+import type { EditorPublicationAction } from "./site-admin-editor-publication";
 import styles from "./site-admin-dashboard.module.css";
 
 export type PublicationAttempt = {
   origin: string;
   job: SiteAdminReleaseJobLike;
+  scope: string;
   outcome?: Exclude<ReleaseJobOutcome, { state: "active" }>;
   wakePending?: boolean;
 };
+
+export function SiteAdminEditorPublicationControl({ action, disabled, onReview }: {
+  action: EditorPublicationAction;
+  disabled: boolean;
+  onReview: (scope: string) => void;
+}) {
+  return action.kind === "live"
+    ? <Button href={action.href} external variant="subtle" size="sm">View live</Button>
+    : <Button onClick={() => onReview(action.scope)} tone="accent" size="sm" disabled={disabled}>{action.label}</Button>;
+}
 
 export function SiteAdminPublicationStatus({ draftVersion, liveVersion, attempt, progress, onReview, onActivity }: {
   draftVersion?: string;
   liveVersion?: string;
   attempt?: PublicationAttempt | null;
   progress?: SiteAdminReleaseProgress | null;
-  onReview: () => void;
+  onReview?: () => void;
   onActivity: () => void;
 }) {
   if (!draftVersion && !liveVersion && !attempt) return null;
@@ -46,7 +58,7 @@ export function SiteAdminPublicationStatus({ draftVersion, liveVersion, attempt,
             {awaitingRunner ? <span>Wait for the runner to reconnect. Do not submit again.</span> : null}
             {failure ? <span>Your saved drafts were not discarded.</span> : null}
           </div>
-          {failure ? <Button onClick={onReview} variant="subtle" size="sm">Review and retry</Button> : null}
+          {failure && onReview ? <Button onClick={onReview} variant="subtle" size="sm">Review and retry</Button> : null}
           {!verified ? <Button onClick={onActivity} variant="ghost" size="sm">Release activity</Button> : null}
         </div>
       ) : null}

@@ -10,7 +10,9 @@ import type { CollectionGroupEdit } from "./site-admin-collection-group-dialog";
 type Props = {
   draft: CollectionDraft;
   actions: ReturnType<typeof createCollectionActions>;
-  collectionEditorActions: Pick<ComponentProps<typeof StructuredCollectionEditor>, "canUndo" | "canRedo" | "onUndo" | "onRedo" | "onCheckpoint" | "status" | "statusDetail" | "onSave" | "saveDisabled" | "onPublish" | "publishDisabled">;
+  collectionEditorActions: Pick<ComponentProps<typeof StructuredCollectionEditor>,
+    "canUndo" | "canRedo" | "onUndo" | "onRedo" | "onCheckpoint" | "draftStatus" |
+    "onSave" | "saveDisabled" | "showSave" | "publicationActionForEntry" | "onReviewPublication" | "reviewDisabled">;
   componentSearch: string; setComponentSearch: (value: string) => void;
   componentGrouping: ComponentGrouping; setComponentGrouping: (value: ComponentGrouping) => void;
   componentExpandedIds: string[]; setComponentExpandedIds: (ids: string[]) => void;

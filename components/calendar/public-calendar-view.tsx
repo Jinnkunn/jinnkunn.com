@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type CSSProperties, type MouseEvent } from "react";
+import { useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 
 import {
   eventMatchesAnyTag,
@@ -10,6 +10,7 @@ import {
   CALENDAR_TIME_ZONE_OPTIONS,
   DEFAULT_CALENDAR_TIME_ZONE,
   calendarTimeZoneLabel,
+  calendarTimeZoneShortLabel,
   formatInTimeZone,
 } from "@jinnkunn/calendar-core/timezone";
 import {
@@ -30,7 +31,6 @@ import {
   parseDayKey,
   PUBLIC_CALENDAR_AUDIENCE_LABELS,
   shiftAnchor,
-  startOfCalendarDay,
   startOfWeek,
   type PublicCalendarAudienceMode,
   type DecoratedPublicCalendarEvent,
@@ -162,6 +162,7 @@ export function isBottomSheetPlacement(
 
 export function PublicCalendarView({
   data,
+  loadingEvents = false,
   view = "agenda",
   anchorIso,
   currentDateIso,
@@ -169,6 +170,7 @@ export function PublicCalendarView({
   audience = "all",
   onViewChange,
   onAnchorChange,
+  onToday,
   onAgendaDaysChange,
   onAudienceChange,
   onDaySelect,
@@ -182,6 +184,7 @@ export function PublicCalendarView({
   tagSummary: tagSummaryProp,
 }: {
   data: PublicCalendarData;
+  loadingEvents?: boolean;
   view?: PublicCalendarViewMode;
   anchorIso?: string;
   currentDateIso?: string | null;
@@ -189,6 +192,7 @@ export function PublicCalendarView({
   audience?: PublicCalendarAudienceMode;
   onViewChange?: (view: PublicCalendarViewMode) => void;
   onAnchorChange?: (date: Date) => void;
+  onToday?: () => void;
   onAgendaDaysChange?: (days: 30 | 90) => void;
   onAudienceChange?: (audience: PublicCalendarAudienceMode) => void;
   onDaySelect?: (date: Date) => void;
@@ -209,6 +213,9 @@ export function PublicCalendarView({
    * every internal view re-render (anchor change, view switch, etc.). */
   tagSummary?: ReadonlyArray<{ tag: string; count: number }>;
 }) {
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsId = useId();
+  const optionsTrigger = useRef<HTMLButtonElement>(null);
   const currentDate = useMemo(
     () =>
       Number.isFinite(Date.parse(currentDateIso ?? ""))
@@ -270,14 +277,8 @@ export function PublicCalendarView({
   const dayIndex = useMemo(() => buildDayIndex(decoratedEvents), [decoratedEvents]);
 
   const agendaGroups = useMemo(
-    () =>
-      buildAgendaGroups(
-        decoratedEvents,
-        agendaDays,
-        currentDate ?? anchor,
-        timeZone,
-      ),
-    [decoratedEvents, agendaDays, currentDate, anchor, timeZone],
+    () => buildAgendaGroups(decoratedEvents, agendaDays, anchor, timeZone),
+    [decoratedEvents, agendaDays, anchor, timeZone],
   );
 
   const timeZoneLabel = calendarTimeZoneLabel(timeZone);
@@ -287,106 +288,51 @@ export function PublicCalendarView({
     [decoratedEvents, expandedEventId],
   );
 
-  if (data.events.length === 0) {
-    return (
-      <div className="public-calendar public-calendar--empty notion-text notion-text__content">
-        <p>No public calendar events are currently listed.</p>
-      </div>
-    );
-  }
+  const optionsActive = audience !== "all" || selectedTagSet.size > 0 ||
+    (view === "agenda" && agendaDays !== 30);
 
   return (
     <div className="public-calendar">
-      <div className="public-calendar__toolbar ds-control-toolbar">
-        <div className="public-calendar__nav ds-control-group">
-          <button
-            type="button"
-            className="public-calendar__nav-button ds-control-button ds-control-button--icon"
-            onClick={() =>
-              onAnchorChange?.(shiftAnchor(anchor, view, -1, timeZone))
-            }
-            aria-label="Previous calendar range"
-          >
-            <svg
-              className="public-calendar__nav-icon"
-              viewBox="0 0 16 16"
-              width="14"
-              height="14"
-              aria-hidden="true"
-              focusable="false"
+      <div
+        className="public-calendar__toolbar ds-control-toolbar"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || !optionsOpen || !optionsTrigger.current?.getClientRects().length) return;
+          event.preventDefault();
+          setOptionsOpen(false);
+          optionsTrigger.current.focus();
+        }}
+      >
+        <div className="public-calendar__nav">
+          <div className="public-calendar__range">
+            <strong className="public-calendar__range-title" aria-live="polite">
+              {formatToolbarTitle(view, anchor, timeZone, agendaDays)}
+            </strong>
+            <span className="public-calendar__zone-hint" title={`Times shown in ${timeZoneLabel}`}>
+              {calendarTimeZoneShortLabel(timeZone)}
+            </span>
+          </div>
+          <div className="public-calendar__date-controls ds-control-group" role="group" aria-label="Calendar date navigation">
+            <button
+              type="button"
+              className="ds-control-button ds-control-button--icon"
+              onClick={() => onAnchorChange?.(shiftAnchor(anchor, view, -1, timeZone, agendaDays))}
+              aria-label="Previous calendar range"
             >
-              <path
-                d="M10 3.5 L5.5 8 L10 12.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="public-calendar__today-button ds-control-button"
-            onClick={() =>
-              onAnchorChange?.(
-                startOfCalendarDay(currentDate ?? new Date(), timeZone),
-              )
-            }
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            className="public-calendar__nav-button ds-control-button ds-control-button--icon"
-            onClick={() =>
-              onAnchorChange?.(shiftAnchor(anchor, view, 1, timeZone))
-            }
-            aria-label="Next calendar range"
-          >
-            <svg
-              className="public-calendar__nav-icon"
-              viewBox="0 0 16 16"
-              width="14"
-              height="14"
-              aria-hidden="true"
-              focusable="false"
+              <CalendarRangeArrow direction="previous" />
+            </button>
+            <button type="button" className="public-calendar__today-button ds-control-button" onClick={onToday}>
+              Today
+            </button>
+            <button
+              type="button"
+              className="ds-control-button ds-control-button--icon"
+              onClick={() => onAnchorChange?.(shiftAnchor(anchor, view, 1, timeZone, agendaDays))}
+              aria-label="Next calendar range"
             >
-              <path
-                d="M6 3.5 L10.5 8 L6 12.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-          <strong className="public-calendar__range-title">
-            {formatToolbarTitle(view, anchor, timeZone)}
-          </strong>
+              <CalendarRangeArrow direction="next" />
+            </button>
+          </div>
         </div>
-        <label
-          className="public-calendar__time-zone-select ds-select-pill"
-          title={`Times shown in ${timeZoneLabel}`}
-        >
-          <span className="public-calendar__time-zone-label ds-select-pill__label">Time zone</span>
-          <span className="public-calendar__time-zone-value ds-select-pill__value">
-            {timeZoneLabel}
-          </span>
-          <select
-            value={timeZone}
-            aria-label="Time zone"
-            title={timeZoneLabel}
-            onChange={(event) => onTimeZoneChange?.(event.currentTarget.value)}
-          >
-            {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
         <div
           className="public-calendar__view-switch public-calendar__view-switch--views ds-control-group"
           // `aria-label` is ignored on a role-less <div>; `role="group"`
@@ -409,134 +355,126 @@ export function PublicCalendarView({
             </button>
           ))}
         </div>
-        {view === "agenda" ? (
+        <button
+          ref={optionsTrigger}
+          type="button"
+          className="public-calendar__options-trigger ds-control-button ds-control-button--icon"
+          aria-label="Calendar options"
+          aria-describedby={optionsActive ? `${optionsId}-active` : undefined}
+          title="Calendar options"
+          aria-expanded={optionsOpen}
+          aria-controls={optionsId}
+          data-filtered={optionsActive}
+          data-active={optionsOpen}
+          onClick={() => setOptionsOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true" focusable="false">
+            <path d="M4 7h4m4 0h8M4 17h8m4 0h4M8 4v6m8 4v6" />
+          </svg>
+        </button>
+        {optionsActive ? <span id={`${optionsId}-active`} hidden>Custom range or filters active</span> : null}
+        <div id={optionsId} className="public-calendar__options" data-expanded={optionsOpen}>
+          <label className="public-calendar__time-zone-select ds-select-pill" title={`Times shown in ${timeZoneLabel}`}>
+            <span className="ds-select-pill__label">Time zone</span>
+            <span className="ds-select-pill__value">{timeZoneLabel}</span>
+            <select
+              value={timeZone}
+              aria-label="Time zone"
+              title={timeZoneLabel}
+              onChange={(event) => onTimeZoneChange?.(event.currentTarget.value)}
+            >
+              {CALENDAR_TIME_ZONE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          {view === "agenda" ? (
+            <div
+              className="public-calendar__view-switch public-calendar__view-switch--agenda ds-control-group"
+              role="group"
+              aria-label="Agenda range"
+            >
+              {([30, 90] as const).map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className="public-calendar__view-button ds-control-button"
+                  data-active={agendaDays === days}
+                  aria-pressed={agendaDays === days}
+                  onClick={() => onAgendaDaysChange?.(days)}
+                >
+                  {days} days
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div
-            className="public-calendar__view-switch public-calendar__view-switch--agenda ds-control-group"
+            className="public-calendar__view-switch public-calendar__view-switch--audience ds-control-group"
             role="group"
-            aria-label="Agenda range"
+            aria-label="Calendar scope"
           >
-            {([30, 90] as const).map((days) => (
+            {PUBLIC_CALENDAR_AUDIENCE_LABELS.map((item) => (
               <button
-                key={days}
+                key={item.value}
                 type="button"
                 className="public-calendar__view-button ds-control-button"
-                data-active={agendaDays === days ? "true" : "false"}
-                aria-pressed={agendaDays === days}
-                onClick={() => onAgendaDaysChange?.(days)}
+                data-active={audience === item.value}
+                aria-pressed={audience === item.value}
+                onClick={() => onAudienceChange?.(item.value)}
               >
-                {days} days
+                {item.label}
               </button>
             ))}
           </div>
-        ) : null}
-        <div
-          className="public-calendar__view-switch public-calendar__view-switch--audience ds-control-group"
-          role="group"
-          aria-label="Calendar scope"
-        >
-          {PUBLIC_CALENDAR_AUDIENCE_LABELS.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className="public-calendar__view-button ds-control-button"
-              data-active={audience === item.value ? "true" : "false"}
-              aria-pressed={audience === item.value}
-              onClick={() => onAudienceChange?.(item.value)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <a
-          // `webcal://` is the iCal subscription scheme; macOS / iOS /
-          // most desktop clients pop the "subscribe to calendar" dialog
-          // when they see it. Plain HTTPS would render the ICS as text
-          // in a browser tab; the title attribute spells out the
-          // fallback for users on platforms that don't recognise the
-          // scheme. The href is hand-crafted (not URL.toString()) so
-          // the protocol stays `webcal:` rather than getting URL-coerced
-          // to `https://` by Next.js's link wrappers.
-          className="public-calendar__subscribe ds-control-button ds-control-button--accent"
-          href="webcal://jinkunchen.com/api/public/calendar/calendar.ics"
-          title="Subscribe with Apple Calendar / Outlook / Google Calendar — your calendar app keeps it auto-updating."
-        >
-          <svg
-            viewBox="0 0 16 16"
-            width="13"
-            height="13"
-            aria-hidden="true"
-            focusable="false"
+          <a
+            className="public-calendar__subscribe ds-control-button"
+            href="webcal://jinkunchen.com/api/public/calendar/calendar.ics"
+            title="Subscribe with your calendar app"
           >
-            <path
-              d="M3 5h10M3 9h7M3 13h4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-            />
-            <path
-              d="M11.5 11.25v3.5M9.75 13h3.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-            />
-          </svg>
-          <span>Subscribe</span>
-        </a>
-      </div>
-      {tagSummary.length > 0 ? (
-        <div
-          className="public-calendar__tag-bar"
-          role="group"
-          aria-label="Filter by tag"
-        >
-          {tagSummary.map(({ tag, count }) => {
-            const isActive = selectedTagSet.has(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                className="public-calendar__tag-chip"
-                data-active={isActive ? "true" : "false"}
-                onClick={() => {
-                  if (!onSelectedTagsChange) return;
-                  // Toggle: clicking an active chip removes it from
-                  // the selection; clicking an inactive chip adds it.
-                  // The route owns the array, so we hand back the
-                  // new shape rather than mutating in place.
-                  const next = new Set(selectedTagSet);
-                  if (isActive) next.delete(tag);
-                  else next.add(tag);
-                  onSelectedTagsChange(Array.from(next).sort());
-                }}
-                aria-pressed={isActive}
-                title={
-                  isActive
-                    ? `Remove #${tag} filter`
-                    : `Show only events tagged #${tag}`
-                }
-              >
-                <span>#{tag}</span>
-                <span className="public-calendar__tag-count" aria-hidden="true">
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-          {selectedTagSet.size > 0 ? (
-            <button
-              type="button"
-              className="public-calendar__tag-clear"
-              onClick={() => onSelectedTagsChange?.([])}
-              title="Clear tag filter"
-            >
-              Clear
-            </button>
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true" focusable="false">
+              <path d="M3 5h10M3 9h7M3 13h4M11.5 11.25v3.5M9.75 13h3.5" />
+            </svg>
+            <span>Subscribe</span>
+          </a>
+          {tagSummary.length > 0 ? (
+            <div className="public-calendar__tag-bar" role="group" aria-label="Filter by tag">
+              {tagSummary.map(({ tag, count }) => {
+                const isActive = selectedTagSet.has(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    className="public-calendar__tag-chip"
+                    data-active={isActive}
+                    onClick={() => {
+                      const next = new Set(selectedTagSet);
+                      if (isActive) next.delete(tag);
+                      else next.add(tag);
+                      onSelectedTagsChange?.(Array.from(next).sort());
+                    }}
+                    aria-pressed={isActive}
+                    title={isActive ? `Remove #${tag} filter` : `Show only events tagged #${tag}`}
+                  >
+                    <span>#{tag}</span>
+                    <span className="public-calendar__tag-count" aria-hidden="true">{count}</span>
+                  </button>
+                );
+              })}
+              {selectedTagSet.size > 0 ? (
+                <button type="button" className="public-calendar__tag-clear" onClick={() => onSelectedTagsChange?.([])} title="Clear tag filter">
+                  Clear
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
+      </div>
+      {data.events.length === 0 ? (
+        <p className="public-calendar__empty-day" role="status">
+          {loadingEvents ? "Loading events..." : "No public calendar events are currently listed."}
+        </p>
       ) : null}
-      {view === "month" ? (
+      {data.events.length > 0 && view === "month" ? (
         <MonthCalendar
           dayIndex={dayIndex}
           anchor={anchor}
@@ -547,7 +485,7 @@ export function PublicCalendarView({
           onEventToggle={onEventToggle}
         />
       ) : null}
-      {view === "week" ? (
+      {data.events.length > 0 && view === "week" ? (
         <WeekCalendar
           dayIndex={dayIndex}
           anchor={anchor}
@@ -556,7 +494,7 @@ export function PublicCalendarView({
           onEventToggle={onEventToggle}
         />
       ) : null}
-      {view === "day" ? (
+      {data.events.length > 0 && view === "day" ? (
         <DayCalendar
           dayIndex={dayIndex}
           anchor={anchor}
@@ -565,7 +503,7 @@ export function PublicCalendarView({
           onEventToggle={onEventToggle}
         />
       ) : null}
-      {view === "agenda" ? (
+      {data.events.length > 0 && view === "agenda" ? (
         <AgendaCalendar
           groups={agendaGroups}
           timeZone={timeZone}
@@ -582,6 +520,14 @@ export function PublicCalendarView({
         />
       ) : null}
     </div>
+  );
+}
+
+function CalendarRangeArrow({ direction }: { direction: "previous" | "next" }) {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d={direction === "previous" ? "M10 3.5 L5.5 8 L10 12.5" : "M6 3.5 L10.5 8 L6 12.5"} />
+    </svg>
   );
 }
 

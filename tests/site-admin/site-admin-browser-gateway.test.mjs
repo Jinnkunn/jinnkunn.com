@@ -255,7 +255,7 @@ test("site-admin browser console treats data pages as managed collections", () =
   assert.ok(collectionEditor.includes("Next entry"));
   assert.ok(collectionEditor.includes("Apply source"));
   assert.ok(collectionEditor.includes("Save draft"));
-  assert.ok(collectionEditor.includes("Publish updates"));
+  assert.ok(collectionEditor.includes("publicationActionForEntry"));
   assert.ok(collectionEditor.includes("Group entries"));
   assert.ok(collectionEditor.includes("StructuredCollectionEntry"));
   assert.ok(collectionEditor.includes("StructuredCollectionEntryForm"));
