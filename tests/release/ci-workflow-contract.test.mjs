@@ -35,6 +35,10 @@ test("ci: isolated admin regressions run serially without mutating a remote envi
   const image = /^mcr\.microsoft\.com\/playwright:v([\d.]+)-noble@sha256:[a-f0-9]{64}$/.exec(build.container?.image);
   assert.equal(image?.[1], playwright, "CI browser image and locked Playwright must match");
   assert.equal(build.defaults?.run?.shell, "bash");
+  assert.deepEqual(build.steps.slice(0, 2).map(({ name, run }) => [name, run]), [
+    ["Checkout", undefined],
+    ["Trust This Checkout in the Container", 'git config --global --add safe.directory "$GITHUB_WORKSPACE"'],
+  ]);
   const verification = steps.get("Verify Preinstalled Browsers").lines.join("\n");
   assert.match(verification, /\[chromium, webkit\].+browser\.executablePath\(\)/);
   assert.doesNotMatch(JSON.stringify(build.steps), /playwright-core install|apt-get/);

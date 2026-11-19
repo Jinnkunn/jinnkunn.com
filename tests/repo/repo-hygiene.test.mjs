@@ -61,6 +61,7 @@ test("repo-hygiene: ignore rules come from .gitignore, not a local exclude file"
       cwd: ROOT,
       encoding: "utf8",
     });
+    assert.ok(res.status === 0 || res.status === 1, res.stderr || String(res.error ?? "git check-ignore failed"));
     const source = String(res.stdout || "").split(":")[0];
     if (source !== ".gitignore") notCoveredByGitignore.push(`${target} -> ${source || "(not ignored)"}`);
   }
@@ -78,6 +79,7 @@ test("repo-hygiene: personal material is not tracked", (t) => {
     cwd: ROOT,
     encoding: "utf8",
   });
+  assert.equal(res.status, 0, res.stderr || String(res.error ?? "git ls-files failed"));
   assert.equal(String(res.stdout || "").trim(), "");
 });
 

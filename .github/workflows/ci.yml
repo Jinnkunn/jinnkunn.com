@@ -37,6 +37,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Checkout registers this path in its temporary HOME, not the container's.
+      - name: Trust This Checkout in the Container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
