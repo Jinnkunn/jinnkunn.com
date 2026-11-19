@@ -109,8 +109,8 @@ async function main() {
     };
     const panel = () => page.getByRole("region", { name: /^Edit / });
     const saveButton = () => page.getByRole("button", { name: "Save draft", exact: true }).filter({ visible: true }).first();
-    const publish = async () => {
-      await page.getByRole("button", { name: "Publish updates", exact: true }).filter({ visible: true }).click();
+    const publish = async (trigger = "Publish updates") => {
+      await page.getByRole("button", { name: trigger, exact: true }).filter({ visible: true }).click();
       const review = page.getByRole("dialog", { name: "Review publication" });
       await review.waitFor();
       assert.match(await review.innerText(), /saved changes from all sessions/);
@@ -387,10 +387,13 @@ async function main() {
     await eventually(() => assert.equal(fixture.jobs.length, 1), "confirmed publication queues publish");
 
     log("Publish: failure stays pending; retry succeeds and updates only captured snapshot");
-    fixture.completeRelease("failed");
+    fixture.completeRelease("failed", "verify");
     await page.getByText("Publish failed: Fixture publish failed", { exact: true }).waitFor({ timeout: 15_000 });
+    const publicationStatus = page.getByRole("region", { name: "Publication status" });
+    await publicationStatus.getByText("Live verification failed", { exact: true }).waitFor();
+    assert.match(await publicationStatus.innerText(), /Saved draft .*Live snapshot/s);
     assert.equal(fixture.published.get("news").includes("Conflict-preserved"), false);
-    await publish();
+    await publish("Review and retry");
     await eventually(() => assert.equal(fixture.jobs.length, 2), "retry queues another publish");
     if (await entry("Conflict-preserved").getAttribute("aria-expanded") !== "true") await entry("Conflict-preserved").click();
     await body().click();

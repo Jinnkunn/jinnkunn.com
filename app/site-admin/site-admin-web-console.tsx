@@ -83,6 +83,7 @@ import { SiteAdminPublicationReviewDialog } from "./site-admin-publication-revie
 import { documentFieldProblems, documentDraftProblems } from "@/lib/shared/document-fields";
 import { SiteAdminAnnouncementsPanel } from "./site-admin-announcements-panel";
 import { SiteAdminPublishingProgress } from "./site-admin-publishing-progress";
+import { SiteAdminPublicationStatus, type PublicationAttempt } from "./site-admin-publication-status";
 import { SiteAdminSettingsPanel } from "./site-admin-settings-panel";
 import { SiteAdminVersionHistory } from "./site-admin-version-history";
 import styles from "./site-admin-dashboard.module.css";
@@ -654,6 +655,7 @@ export function SiteAdminWebConsole({
     null,
   );
   const [releaseJobsError, setReleaseJobsError] = useState("");
+  const [publicationAttempt, setPublicationAttempt] = useState<PublicationAttempt | null>(null);
   const shellRef = useRef<HTMLElement>(null);
   const chromeRef = useRef<HTMLElement>(null);
   const collectionViewsRef = useRef(new Map<string, { search: string; grouping: ComponentGrouping; scroll: number; expanded: string[] }>());
@@ -692,7 +694,8 @@ export function SiteAdminWebConsole({
     refreshSummary: refreshSummaryOnly,
     onActivity: () => setSummaryError(""),
     onError: setSummaryError,
-    onFinished: (outcome, coveredRevision) => {
+    onFinished: (outcome, coveredRevision, jobId) => {
+      setPublicationAttempt((attempt) => attempt?.job.id === jobId ? { ...attempt, outcome } : attempt);
       if (outcome.state === "succeeded") {
         const remaining = Math.max(0, savedContentRevisionRef.current - coveredRevision);
         setError("");
@@ -778,6 +781,9 @@ export function SiteAdminWebConsole({
   }, [inspectorOpen]);
 
   const selectedContentKey = selected ? `${selected.kind}:${selected.id}` : "";
+  const publicationOrigin = area === "content" ? `content:${selectedContentKey}` : area;
+  const originatingAttempt = publicationAttempt?.origin === publicationOrigin ? publicationAttempt : null;
+  const singletonDraftVersion = area === "home" ? home?.sourceVersion.fileSha : area === "now" ? now?.sourceVersion.fileSha : undefined;
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -853,6 +859,15 @@ export function SiteAdminWebConsole({
         now: Number.isFinite(releaseProgressNow) ? releaseProgressNow : 0,
       })
     : release?.progress ?? null;
+  const originatingJob = originatingAttempt && !originatingAttempt.outcome
+    ? activeReleaseJobs.find((job) => job.id === originatingAttempt.job.id) ?? originatingAttempt.job
+    : null;
+  const originatingProgress = originatingJob ? buildSiteAdminReleaseProgress({
+    job: originatingJob,
+    jobs: activeReleaseJobs.length ? activeReleaseJobs : [originatingJob],
+    runners: activeReleaseRunners,
+    now: Number.isFinite(releaseProgressNow) ? releaseProgressNow : originatingJob.updatedAt,
+  }) : null;
   const areaTitle =
     area === "media"
       ? "Media"
@@ -917,12 +932,22 @@ export function SiteAdminWebConsole({
   const publishBlocked =
     releaseSaving ||
     releaseIsRunning;
+  const selectedPublicationPath = selected ? versionPathFor(selected.kind, selected.id).slice("content/".length) : "";
+  const verifiedReview = !publicationReviewLoading && !publicationReviewError ? publicationReview : null;
+  const selectedPending = verifiedReview?.changes.some(({ path, oldPath, details }) =>
+    path === selectedPublicationPath || oldPath === selectedPublicationPath || Boolean(selected?.href && details?.routes?.includes(selected.href)),
+  );
+  const documentLiveSync = selected && area === "content" ? liveSyncStatus({
+    releaseActionKind: verifiedReview && !selectedPending ? "noop" : undefined,
+    pendingSaves: selectedPending ? 1 : 0,
+    releaseRunning: Boolean(originatingProgress),
+  }) : liveSync;
   const documentStatus = editorialStatus({
     saving,
     blocked: componentSaveBlocked || documentSaveIssues.length > 0,
     dirty: selectedDirty,
-    runnerOffline: releaseRunnerOffline,
-    liveSync,
+    runnerOffline: area === "content" ? originatingProgress?.stage === "queued" && originatingProgress.runnerState === "offline" : releaseRunnerOffline,
+    liveSync: documentLiveSync,
   });
   const liveStatusLabel = selectedDirty
     ? "Save before publishing"
@@ -941,15 +966,16 @@ export function SiteAdminWebConsole({
     ? localAutosaveAt
       ? `Recovery copy saved ${formatWhen(localAutosaveAt)}`
       : "Autosave pending"
-    : releaseIsRunning && releaseProgress
-      ? releaseProgress.detail
-    : liveSync.state === "pending"
+    : originatingProgress
+      ? originatingProgress.detail
+    : documentLiveSync.state === "pending"
       ? contentSavedAt
         ? `Draft saved ${formatWhen(contentSavedAt)} · not yet live`
         : "Saved content is not yet live"
       : contentSavedAt
         ? `Saved ${formatWhen(contentSavedAt)}`
-        : liveSync.state === "live" ? "Saved content matches the public site" : "Publish status unavailable";
+        : documentLiveSync.state === "live" ? (selectedIsStructured && contentForm.draft ? "This draft is hidden from the public site" : "Saved content matches the public site")
+          : publicationReviewLoading ? "Checking the live snapshot" : "Publish status unavailable";
   const selectedVisibility = visibilityLabel(contentForm.draft);
   async function refreshAll() {
     setLoading(true);
@@ -1715,15 +1741,9 @@ export function SiteAdminWebConsole({
       if (!payload.job?.id) {
         throw new Error("The release API did not return a job to track.");
       }
+      setPublicationAttempt({ origin: publicationOrigin, job: payload.job, wakePending: Boolean(payload.wake?.configured && !payload.wake.ok) });
       watchRelease(payload.job.id, coveredRevision);
       const jobId = ` Job ${payload.job.id}.`;
-      if (payload.wake?.configured && !payload.wake.ok) {
-        setWarning(
-          `Content was queued, but the release runner did not wake: ${
-            payload.wake.error || `HTTP ${payload.wake.status}`
-          }. The job will remain queued and retry when the runner reconnects.`,
-        );
-      }
       return action === "publish-content-production"
         ? ` Reviewed changes queued for Production.${jobId}`
         : ` Reviewed changes queued for Staging.${jobId}`;
@@ -2607,6 +2627,10 @@ export function SiteAdminWebConsole({
       {notice ? <StatusNotice tone="success">{notice}</StatusNotice> : null}
       {warning ? <StatusNotice tone="warning">{warning}</StatusNotice> : null}
       {error ? <StatusNotice tone="danger">{error}</StatusNotice> : null}
+      {(area !== "content" || !selected) && (originatingAttempt || singletonDraftVersion) ? (
+        <SiteAdminPublicationStatus draftVersion={singletonDraftVersion} liveVersion={verifiedReview?.baselineSha} attempt={originatingAttempt}
+          progress={originatingProgress} onReview={() => setPublishReviewOpen(true)} onActivity={() => changeArea("release")} />
+      ) : null}
 
       {area === "content" ? (
         <section
@@ -2692,7 +2716,7 @@ export function SiteAdminWebConsole({
                       size="sm"
                       disabled={collectionEditorActions.publishDisabled}
                     >
-                      {releaseIsRunning ? "Publishing" : "Publish updates"}
+                      {originatingProgress ? "Publishing" : "Publish updates"}
                     </Button>
                   </div>
                 </div>
@@ -2744,7 +2768,7 @@ export function SiteAdminWebConsole({
                         Restore local draft
                       </Button>
                     ) : null}
-                    {releaseIsRunning ? (
+                    {originatingProgress ? (
                       <Button
                         onClick={() => changeArea("release")}
                         variant="subtle"
@@ -2754,11 +2778,14 @@ export function SiteAdminWebConsole({
                       </Button>
                     ) : null}
                   </div>
-                  {releaseIsRunning && releaseProgress ? (
-                    <SiteAdminPublishingProgress progress={releaseProgress} />
+                  {originatingProgress ? (
+                    <SiteAdminPublishingProgress progress={originatingProgress} />
                   ) : null}
                 </div>
               </div>
+                <SiteAdminPublicationStatus draftVersion={selected.version} liveVersion={verifiedReview?.baselineSha}
+                  attempt={originatingAttempt} progress={originatingProgress} onReview={() => setPublishReviewOpen(true)}
+                  onActivity={() => changeArea("release")} />
                 {documentIssues.length ? <section className={styles.validationSummary} aria-label="Fields needing attention">
                   <strong>{documentIssues.length} {documentIssues.length === 1 ? "field needs" : "fields need"} attention before publication</strong>
                   {!documentSaveIssues.length ? <p>Incomplete drafts can still be saved.</p> : null}
@@ -2961,8 +2988,8 @@ export function SiteAdminWebConsole({
                     ) : null}
                   </div>
                   <p className={styles.editorHint}>{editorStatusHint}</p>
-                  {releaseIsRunning && releaseProgress ? (
-                    <SiteAdminPublishingProgress progress={releaseProgress} compact />
+                  {originatingProgress ? (
+                    <SiteAdminPublishingProgress progress={originatingProgress} compact />
                   ) : null}
                 </section>
 

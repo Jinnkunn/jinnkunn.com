@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   filterStalePublicCalendarEvents,
+  isExcludedLegacyCalendarEvent,
   normalizePublicCalendarData,
   selectPublicCalendarRuntimeData,
   type PublicCalendarData,
@@ -78,7 +79,11 @@ export async function getPublicCalendarEventById(
   id: string,
 ): Promise<PublicCalendarEvent | null> {
   const fromDb = await readPublicCalendarEventFromDb(id);
-  if (fromDb) return fromDb;
+  if (fromDb) {
+    if (fromDb.visibility !== "busy") return fromDb;
+    const observed = await readObservedPublicCalendarFromDb();
+    if (!observed?.legacyExclusions?.some((exclusion) => isExcludedLegacyCalendarEvent(fromDb, exclusion))) return fromDb;
+  }
   // D1 missing or no row — fall back to the file-backed archive scan.
   // Costs O(N) but only fires on dev / preview / fresh-install paths,
   // where N is small enough that the difference is invisible.

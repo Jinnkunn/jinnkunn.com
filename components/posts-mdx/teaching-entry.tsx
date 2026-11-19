@@ -18,6 +18,8 @@ interface TeachingEntryProps {
    * `target="_blank"` affordance. */
   courseUrl?: string;
   instructor?: string;
+  /** Grouped TeachingBlock entries put their shared term above the list. */
+  showTerm?: boolean;
 }
 
 /** One row on the teaching page. Lives as a self-closing
@@ -36,6 +38,7 @@ export function TeachingEntry({
   courseName = "",
   courseUrl,
   instructor,
+  showTerm = true,
 }: TeachingEntryProps): ReactElement {
   const courseLabel =
     courseUrl ? (
@@ -57,12 +60,8 @@ export function TeachingEntry({
 
   return (
     <li className="notion-list-item notion-semantic-string teaching-item">
-      <strong>
-        <u>{term}</u>
-      </strong>
-      <br />
-      <span className="highlighted-color color-gray">{period}</span>
-      <br />
+      {showTerm && term ? <><strong><u>{term}</u></strong><br /></> : null}
+      {period ? <><span className="highlighted-color color-gray">{period}</span><br /></> : null}
       <strong>{role}</strong>
       <span className="highlighted-color color-gray"> for </span>
       {courseLabel}

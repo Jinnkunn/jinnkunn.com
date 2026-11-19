@@ -1,12 +1,4 @@
-export const TEACHING_SEASONS = ["Fall", "Winter", "Summer"] as const;
-
-export function parseTeachingTerm(term: string) {
-  const match = term.match(/^(\d{4}\/\d{2})(?:\s+(Fall|Winter|Summer)(?:\s+Term)?)?$/i);
-  return match ? {
-    year: match[1],
-    season: TEACHING_SEASONS.find((season) => season.toLowerCase() === (match[2] || "").toLowerCase()) || "",
-  } : null;
-}
+export { TEACHING_SEASONS, parseTeachingTerm } from "../../lib/shared/teaching-term.ts";
 
 export function formatTeachingTerm(year: string, season: string) {
   if (!year) return "";

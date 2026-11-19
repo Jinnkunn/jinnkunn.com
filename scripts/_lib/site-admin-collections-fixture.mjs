@@ -5,17 +5,21 @@ import { describePublicationChange } from "../../lib/shared/publication-review-d
 import { contentInventory } from "../../lib/shared/content-inventory.ts";
 import { publicationValidation } from "../../lib/shared/publication-validation.ts";
 import { publicationCandidate, publicationScopeOptions } from "../../lib/shared/publication-scope.ts";
+import matter from "gray-matter";
 
 const INITIAL_SOURCES = {
-  news: '---\ntitle: News\n---\n<NewsEntry entryId="news-one" date="2026-10-01">\nInitial news body.\n</NewsEntry>\n',
+  news: '---\ntitle: News\n---\n\n<NewsEntry entryId="news-one" date="2026-10-01">\n\nInitial news body.\n\n</NewsEntry>\n',
   teaching: '---\ntitle: Teaching\n---\n<TeachingEntry entryId="teaching-one" term="2026/27 Fall Term" period="Sep 2026 - Dec 2026" role="Instructor" courseCode="CSCI1000" courseName="Fixture course" />\n',
   works: '---\ntitle: Works\n---\n<WorksEntry entryId="recent-one" category="recent" role="Intern" affiliation="QA Labs" period="Nov 2025 - Now">\nRecent body.\n</WorksEntry>\n<WorksEntry entryId="past-one" category="passed" role="Analyst" affiliation="QA Labs" period="Jan 2024 - Dec 2024">\nPast body.\n</WorksEntry>\n',
   publications: `---\ntitle: Publications\n---\n<PublicationsEntry data='${JSON.stringify({ entryId: "pub-one", title: "Fixture paper", year: "2026", labels: ["conference"], authorsRich: [{ name: "Chen, Jinkun", isSelf: true, url: "https://example.test/author" }] })}' />\n`,
 };
+const POST_SLUG = "mobile-fixture";
+const POST_PATH = `posts/${POST_SLUG}.mdx`;
 
 // This transport never forwards admin requests. Saves and releases live only in memory.
-export function createCollectionsFixture() {
+export function createCollectionsFixture({ includePost = false } = {}) {
   const saved = new Map(Object.entries(INITIAL_SOURCES));
+  if (includePost) saved.set(POST_PATH, '---\ntitle: Mobile fixture post\ndate: "2026-10-01"\ndraft: false\n---\n\nInitial mobile post body.\n');
   const published = new Map(saved);
   const versions = new Map([...saved.keys()].map((name) => [name, 1]));
   const failures = new Map();
@@ -23,7 +27,8 @@ export function createCollectionsFixture() {
   const unexpected = [];
   const jobs = [];
   let releaseSnapshot = null;
-  const snapshot = (from) => publicationSnapshot(Object.fromEntries([...from].map(([name, body]) => [`components/${name}.mdx`, body])));
+  let runnerOnline = true;
+  const snapshot = (from) => publicationSnapshot(Object.fromEntries([...from].map(([name, body]) => [name === POST_PATH ? name : `components/${name}.mdx`, body])));
   const entries = (name) => parseCollectionDraft(name, saved.get(name)).value.items;
   const summaries = () => Object.fromEntries(SITE_COMPONENT_DEFINITIONS.map((def) => [def.name, {
     count: entries(def.name).length, entryLabel: def.entryLabel, rows: [],
@@ -35,12 +40,12 @@ export function createCollectionsFixture() {
     site: { name: "Isolated Collections QA", environment: "staging", runtime: "fixture" },
     now: { text: "", context: "", location: "", updatedAt: "", historyCount: 0 },
     calendar: { eventCount: 0, generatedAt: "", rangeStartsAt: "", rangeEndsAt: "" },
-    content: { posts: 0, pages: 0 },
+    content: { posts: includePost ? 1 : 0, pages: 0 },
     source: { storeKind: "d1", branch: "main", codeSha: "fixture", contentSha: "fixture", pendingDeploy: pending(), deployableVersionReady: true },
     release: {
       headline: activeJob() ? "Publishing" : pending() ? "Release needed" : "Up to date",
       detail: "Isolated test transport", runningJob: activeJob(), latestJob: jobs[0] || null,
-      runners: [{ id: "fixture-runner", status: "idle", lastSeenAt: new Date().toISOString() }],
+      runners: runnerOnline ? [{ agentId: "fixture-runner", status: "idle", lastSeenAt: Date.now() }] : [],
       recommendedAction: { kind: activeJob() ? "watch-release" : pending() ? "smart-release" : "noop", label: "Publish", destructive: false },
     },
   });
@@ -49,14 +54,20 @@ export function createCollectionsFixture() {
     return { name, title: definition.label, href: definition.primaryRoute, definition,
       source: saved.get(name), version: `fixture-${versions.get(name)}`, summary: summaries()[name] };
   }
-  function completeRelease(status = "succeeded") {
+  function postDetail() {
+    const source = saved.get(POST_PATH);
+    const { data, content } = matter(source);
+    return { slug: POST_SLUG, title: data.title, href: `/blog/${POST_SLUG}`, dateIso: data.date, draft: data.draft,
+      source, body: content.trim(), frontmatter: data, frontmatterKeys: Object.keys(data), version: `fixture-${versions.get(POST_PATH)}` };
+  }
+  function completeRelease(status = "succeeded", failurePhase) {
     const job = activeJob();
     if (!job) throw new Error("No fixture release is active");
-    Object.assign(job, { status, finishedAt: new Date().toISOString(), error: status === "failed" ? "Fixture publish failed" : "" });
+    Object.assign(job, { status, finishedAt: Date.now(), error: status === "failed" ? "Fixture publish failed" : "" });
     if (status === "succeeded") {
-      for (const [path, source] of Object.entries(releaseSnapshot.sources)) published.set(path.slice(11, -4), source);
+      for (const [path, source] of Object.entries(releaseSnapshot.sources)) published.set(path === POST_PATH ? path : path.slice(11, -4), source);
       job.result = { verifiedPublicationSha: releaseSnapshot.sha };
-    }
+    } else if (failurePhase) job.result = { failurePhase };
   }
   async function handle(route) {
     const req = route.request(), url = new URL(req.url()), path = url.pathname;
@@ -74,7 +85,8 @@ export function createCollectionsFixture() {
       if (path === "/api/site-admin/mobile/summary") return json({ summary: summary() });
       if (path === "/api/site-admin/home") return json({ data: { title: "Home", bodyMdx: "Fixture home" }, sourceVersion: { fileSha: "fixture" } });
       if (path === "/api/site-admin/now") return json({ data: { current: { text: "", context: "", location: "", updatedAt: "" }, updates: [] }, sourceVersion: { fileSha: "fixture" } });
-      if (path === "/api/site-admin/posts") return json({ count: 0, posts: [] });
+      if (path === "/api/site-admin/posts") return json({ count: includePost ? 1 : 0, posts: includePost ? [postDetail()] : [] });
+      if (includePost && path === `/api/site-admin/posts/${POST_SLUG}`) return json(postDetail());
       if (path === "/api/site-admin/pages") return json({ count: 0, pages: [] });
       if (path === "/api/site-admin/pages/tree") return json({ slugs: [], sourceVersion: { fileSha: "fixture" } });
       if (path === "/api/site-admin/versions") return json({ path: url.searchParams.get("path"), sourceVersion: { fileSha: "fixture" }, history: [] });
@@ -84,6 +96,14 @@ export function createCollectionsFixture() {
       if (path === "/api/site-admin/release-jobs") return json({ jobs, runners: { agents: summary().release.runners, queuedCount: jobs.filter((job) => job.status === "queued").length, runningCount: jobs.filter((job) => job.status === "running").length } });
     }
     if (req.method() === "PATCH") {
+      if (includePost && path === `/api/site-admin/posts/${POST_SLUG}`) {
+        const body = req.postDataJSON();
+        writes.push({ name: POST_PATH, ...body });
+        if (failures.has(POST_PATH)) return json({ error: "Fixture save unavailable" }, failures.get(POST_PATH));
+        if (body.version !== postDetail().version) return json({ error: "Fixture version conflict" }, 409);
+        saved.set(POST_PATH, body.source); versions.set(POST_PATH, versions.get(POST_PATH) + 1);
+        return json({ ok: true, version: postDetail().version });
+      }
       const name = path.match(/^\/api\/site-admin\/components\/([^/]+)$/)?.[1];
       if (saved.has(name)) {
         const body = req.postDataJSON();
@@ -106,13 +126,17 @@ export function createCollectionsFixture() {
       if (validation.blockers.length) return json({ error: "Saved drafts need attention before publication.", code: "PUBLICATION_VALIDATION_FAILED", issues: validation.blockers }, 422);
       if (reviewed !== undefined && reviewed !== current.sha) return json({ error: "Saved content changed after this review. Review the latest changes before publishing." }, 409);
       releaseSnapshot = current;
-      const job = { id: `fixture-job-${jobs.length + 1}`, status: "running", action: "publish-content-staging", script: "publish:content:staging", phase: "verify", createdAt: new Date().toISOString(), startedAt: new Date().toISOString() };
+      const now = Date.now();
+      const job = { id: `fixture-job-${jobs.length + 1}`, target: "staging", status: runnerOnline ? "running" : "queued",
+        action: "publish-content-staging", script: "publish:content:staging", phase: runnerOnline ? "verify" : "queued",
+        createdAt: now, updatedAt: now, startedAt: runnerOnline ? now : null, finishedAt: null };
       jobs.unshift(job);
-      return json({ job, wake: { configured: true, ok: true } });
+      return json({ job, wake: { configured: true, ok: runnerOnline, ...(runnerOnline ? {} : { error: "Fixture runner offline" }) } });
     }
     unexpected.push(`${req.method()} ${path}`);
     return json({ error: "Unconfigured fixture request; network forwarding is forbidden" }, 503);
   }
   return { handle, saved, published, writes, unexpected, jobs, failures, entries, completeRelease,
+    setRunnerOnline(value) { runnerOnline = value; },
     changeRemotely(name, source) { saved.set(name, source); versions.set(name, versions.get(name) + 1); } };
 }

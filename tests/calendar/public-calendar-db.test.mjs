@@ -25,7 +25,7 @@ async function makeCalendarDb() {
 
 async function makeCalendarObservationDb() {
   const client = createClient({ url: ":memory:" });
-  for (const migration of ["003_calendar_public.sql", "007_calendar_observations.sql", "011_calendar_observation_revision.sql"]) {
+  for (const migration of ["003_calendar_public.sql", "007_calendar_observations.sql", "011_calendar_observation_revision.sql", "012_calendar_projection_exclusions.sql"]) {
     const schema = await readFile(
       path.join(process.cwd(), "migrations", migration),
       "utf8",

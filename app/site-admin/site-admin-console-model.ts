@@ -72,7 +72,22 @@ export type LiveSyncState = "live" | "pending" | "publishing" | "unknown";
 export type ReleaseJobOutcome =
   | { state: "active"; message: "" }
   | { state: "succeeded"; message: ""; verifiedPublicationSha?: string }
-  | { state: "failed" | "canceled"; message: string };
+  | { state: "failed" | "canceled"; message: string; failurePhase?: string };
+
+const PUBLICATION_FAILURE_PHASES: Record<string, string> = {
+  starting: "Runner startup",
+  sync: "Runner sync",
+  "prepare-content": "Content snapshot",
+  snapshot: "Content snapshot",
+  build: "Page build",
+  building: "Page build",
+  export: "Page packaging",
+  packaging: "Page packaging",
+  upload: "Upload",
+  uploading: "Upload",
+  verify: "Live verification",
+  verifying: "Live verification",
+};
 
 /**
  * A release that left the active queue still has to be surfaced to the
@@ -90,11 +105,15 @@ export function releaseJobOutcome(job: {
     return { state: "succeeded", message: "", ...(typeof sha === "string" && /^[a-f0-9]{64}$/.test(sha) ? { verifiedPublicationSha: sha } : {}) };
   }
   if (status === "failed" || status === "canceled") {
+    const rawPhase = job.result?.failurePhase;
+    const failurePhase = status === "failed" && typeof rawPhase === "string" && Object.hasOwn(PUBLICATION_FAILURE_PHASES, rawPhase)
+      ? PUBLICATION_FAILURE_PHASES[rawPhase] : undefined;
     return {
       state: status,
       message:
         String(job.error || "").trim() ||
         (status === "canceled" ? "Publish was canceled." : "Publish failed."),
+      ...(failurePhase ? { failurePhase } : {}),
     };
   }
   return { state: "active", message: "" };

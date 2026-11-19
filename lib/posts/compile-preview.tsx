@@ -13,6 +13,7 @@ import rehypeKatex from "rehype-katex";
 import type { MDXComponents } from "mdx/types";
 import { collectPostHeadings, type PostHeading } from "./outline.ts";
 import { staticMdxExpression } from "../site-admin/mdx-static-expressions.ts";
+import { compactTeachingArchiveLinks } from "./teaching-archive.ts";
 
 type PreviewNode = { type?: string; name?: string; attributes?: { type?: string; name?: string }[]; children?: PreviewNode[] };
 function validateElements(node: PreviewNode) {
@@ -36,9 +37,10 @@ function aliasComponents(node: PreviewNode, aliases: Map<string, string>) {
   node.children?.forEach((child) => aliasComponents(child, aliases));
 }
 
-export async function compilePreviewMdx(source: string): Promise<{ Content: (props: { components?: MDXComponents }) => ReactElement; headings: PostHeading[] }> {
+export async function compilePreviewMdx(source: string, { teachingPage = false } = {}): Promise<{ Content: (props: { components?: MDXComponents }) => ReactElement; headings: PostHeading[] }> {
   const parser = createProcessor({ remarkPlugins: [[remarkFrontmatter, ["yaml"]], remarkGfm, remarkMath] });
   const mdast = parser.parse(source);
+  if (teachingPage) compactTeachingArchiveLinks(mdast);
   mdast.children = mdast.children.filter((node) => node.type !== "yaml");
   validateElements(mdast as PreviewNode);
   // JSX names resolve only through the supplied component registry. The

@@ -33,6 +33,7 @@ async function makeCalendarSyncDb() {
     "007_calendar_observations.sql",
     "008_calendar_collector_cleanup.sql",
     "011_calendar_observation_revision.sql",
+    "012_calendar_projection_exclusions.sql",
   ]) {
     const schema = await readFile(
       path.join(process.cwd(), "migrations", migration),
@@ -42,6 +43,91 @@ async function makeCalendarSyncDb() {
   }
   return client;
 }
+
+test("a complete Docs snapshot supersedes only matching legacy occurrences, including the public fallback", async () => {
+  const staging = await makeCalendarSyncDb();
+  const live = await makeCalendarSyncDb();
+  const range = { startsAt: "2026-11-18T00:00:00Z", endsAt: "2026-11-20T00:00:00Z" };
+  const source = (id, externalSourceId = "same-account") => ({ id, provider: "apple", title: "Fixture", externalSourceId });
+  const legacySource = source("workspace");
+  const otherSource = source("different-account", "other-account");
+  const currentSource = source("docs");
+  const event = (calendarId, iCalUid, start, end, sourceId = legacySource.id) => ({
+    sourceId, calendarId, iCalUid, title: `Private ${iCalUid}`, startsAt: `2026-11-18T${start}:00Z`, endsAt: `2026-11-18T${end}:00Z`,
+  });
+  const shifted = event("selected", "recurring", "10:00", "11:00");
+  const cancelled = event("empty", "cancelled", "12:00", "13:00");
+  const overlap = event("not-selected", "other", "10:30", "11:00");
+  const separateAccount = event("empty", "account-event", "14:00", "15:00", otherSource.id);
+  const replacement = event("selected", "recurring", "16:00", "17:00", currentSource.id);
+  const legacy = {
+    collector: { id: "tauri-macos:old", kind: "tauri-macos" },
+    sources: [legacySource, otherSource], range, observedAt: "2026-11-17T20:00:00Z",
+    observations: [shifted, cancelled, overlap, separateAccount],
+  };
+  const docs = {
+    collector: { id: "electron-macos:new", kind: "tauri-macos" }, range,
+    sources: [{ ...currentSource, syncScope: { completeCalendarIds: ["selected", "empty"] } }],
+    syncMode: "snapshot", observedAt: "2026-11-17T21:00:00Z", observations: [replacement],
+  };
+  const fallback = normalizePublicCalendarData({
+    generatedAt: legacy.observedAt, range,
+    events: [shifted, cancelled].map((item) => ({ ...item, id: item.iCalUid, visibility: "busy" })).concat({
+      id: "curated", title: "Public event", startsAt: "2026-11-18T18:00:00Z", endsAt: "2026-11-18T19:00:00Z", visibility: "full",
+    }),
+  });
+  const project = async (db) => selectPublicCalendarRuntimeData({ sourceData: fallback, observedData: await readObservedPublicCalendarFromDb(db) });
+  assert.equal((await writeCalendarObservationSync(legacy, staging)).ok, true);
+  const before = await project(staging);
+  assert.ok(before.events.some(({ startsAt }) => startsAt.includes("T10:00")));
+  assert.equal((await cleanupCalendarCollectorObservations({ collectorId: legacy.collector.id, range: {
+    startsAt: cancelled.startsAt, endsAt: cancelled.endsAt,
+  } }, staging)).ok, true);
+
+  assert.equal((await writeCalendarObservationSync(docs, staging)).ok, true);
+  const after = await project(staging);
+  assert.deepEqual(after.events.map(({ startsAt }) => startsAt.slice(11, 16)), ["10:30", "14:00", "16:00", "18:00"]);
+  assert.doesNotMatch(buildPublicCalendarIcs(after), /DTSTART:20261118T(?:1000|1200)00Z/);
+  assert.doesNotMatch(JSON.stringify(after), /Private |completeCalendarIds|legacyExclusions/);
+  const hydrated = selectPublicCalendarHydrationData({ currentData: before, refreshedData: normalizePublicCalendarRuntimeData(after) });
+  assert.deepEqual(hydrated.events, after.events);
+
+  const replay = { ...legacy, observedAt: "2026-11-17T22:00:00Z" };
+  assert.equal((await writeCalendarObservationSync(replay, staging)).ok, true);
+  assert.deepEqual((await project(staging)).events, after.events);
+  const retired = await staging.execute("SELECT COUNT(*) AS count FROM calendar_event_observations WHERE deleted_at IS NULL");
+  assert.equal(retired.rows[0].count, 5, "legacy observations are retained; only the published view changes");
+  const narrowed = await writeCalendarObservationSync({ ...docs, observedAt: "2026-11-17T23:00:00Z", range: { ...range, startsAt: "2026-11-18T15:00:00Z" } }, staging);
+  assert.equal(narrowed.ok, true);
+  assert.deepEqual((await project(staging)).events, after.events, "rolling the window does not revive already superseded copies");
+
+  const mirrored = await publishCalendarObservationsToLive(staging, live);
+  assert.equal(mirrored.ok, true);
+  assert.deepEqual((await project(live)).events, after.events);
+  staging.close();
+  live.close();
+});
+
+test("a Docs snapshot cannot infer that an omitted calendar was read or overwrite a newer complete snapshot", async () => {
+  const client = await makeCalendarSyncDb();
+  const range = { startsAt: "2026-11-18T00:00:00Z", endsAt: "2026-11-19T00:00:00Z" };
+  const snapshot = {
+    collector: { id: "electron-macos:sample", kind: "tauri-macos" }, range,
+    sources: [{ id: "docs", provider: "apple", title: "Fixture", externalSourceId: "source", syncScope: { completeCalendarIds: ["one", "two"] } }],
+    syncMode: "snapshot", observedAt: "2026-11-17T15:00:00Z",
+    observations: [{ sourceId: "docs", calendarId: "two", iCalUid: "held", startsAt: "2026-11-18T16:00:00Z", endsAt: "2026-11-18T17:00:00Z" }],
+  };
+  assert.equal((await writeCalendarObservationSync(snapshot, client)).ok, true);
+  const second = { ...snapshot, observedAt: "2026-11-17T16:00:00Z", observations: [],
+    sources: [{ ...snapshot.sources[0], syncScope: { completeCalendarIds: ["one"] } }] };
+  assert.throws(() => normalizeCalendarObservationSyncPayload({ ...second, observations: snapshot.observations }), /Invalid complete calendar snapshot/);
+  assert.throws(() => normalizeCalendarObservationSyncPayload({ ...second, collector: { id: "ios:phone", kind: "ios" } }), /Invalid complete calendar snapshot/);
+  assert.throws(() => normalizeCalendarObservationSyncPayload({ ...second, observations: [{ ...snapshot.observations[0], endsAt: "invalid" }] }), /Invalid complete calendar snapshot/);
+  assert.equal((await writeCalendarObservationSync(second, client)).ok, true);
+  assert.equal((await readObservedPublicCalendarFromDb(client)).events.length, 1);
+  assert.equal((await writeCalendarObservationSync(snapshot, client)).ok, false);
+  client.close();
+});
 
 test("calendar-sync-store: collector cleanup index migration is applied", async () => {
   const client = await makeCalendarSyncDb();

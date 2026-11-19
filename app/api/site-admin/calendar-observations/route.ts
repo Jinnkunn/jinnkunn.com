@@ -99,7 +99,11 @@ async function publishLiveAfterObservationMutation(
 function parseObservationSyncCommand(
   raw: Record<string, unknown>,
 ): ParseResult<ReturnType<typeof normalizeCalendarObservationSyncPayload>> {
-  return { ok: true, value: normalizeCalendarObservationSyncPayload(raw) };
+  try {
+    return { ok: true, value: normalizeCalendarObservationSyncPayload(raw) };
+  } catch {
+    return { ok: false, error: "Invalid complete calendar snapshot.", status: 400 };
+  }
 }
 
 export async function GET(req: NextRequest) {

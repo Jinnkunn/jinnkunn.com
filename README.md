@@ -4,7 +4,19 @@
 npm run dev
 ```
 
-## Vercel CLI Upload Scope
+## Operating the Site
+
+The active deployment is Cloudflare Workers. Choose the path that matches the change:
+
+| Change | Entry point | What becomes public |
+| --- | --- | --- |
+| Code, styles, routes, or Worker behavior | `npm run release:staging`, then the guarded manual production promotion | Accepted code with the destination's last published content |
+| Posts, pages, collections, settings, or announcements | Save a draft, then review and publish in Site Admin. CLI: `npm run publish:content:staging` or `npm run publish:content:prod` | Only the reviewed content in the target environment; no Worker deploy |
+| Selected macOS calendars | Docs Settings → Website Calendar | Verified Busy projection; the client writes to staging and the calendar service mirrors to Live |
+
+Use [Production Promotion](docs/runbooks/production-promotion.md) for the production dry run, SHA confirmation, and rollback. Use [Content Draft/Live](docs/runbooks/content-draft-live.md) for content recovery and [Calendar Observation Sync](docs/runbooks/calendar-observation-sync.md) for calendar receipts and Live-only retries. A saved draft or a queued job is not confirmation that the frontend changed.
+
+## Legacy Vercel Upload Scope
 
 Local `vercel deploy` / `vercel --prod` now uses `.vercelignore` to exclude local caches and debug artifacts (for example `.next`, `node_modules`, `output`, `.playwright-cli`, `tests`) to reduce upload size and speed up deploys.
 
@@ -141,25 +153,9 @@ curl -X POST "https://<your-site-domain>/api/deploy" \
 
 `/site-admin` 页面里的 Deploy 按钮已使用服务端安全调用，无需手工签名。
 
-## Cloudflare (Workers-first)
+## Cloudflare Configuration
 
-Cloudflare cutover baseline commands:
-
-```bash
-npm run build:cf
-npm run deploy:cf:staging
-npm run deploy:cf:prod
-```
-
-Wrangler baseline config is in `wrangler.toml` with `staging` and `production` env sections.
-
-`deploy:cf:*` now loads `.env` internally and overrides stale shell values to avoid token drift.
-If running `wrangler` directly, prefer:
-
-```bash
-set -a; source .env; set +a
-npx wrangler deploy --env production
-```
+`wrangler.toml` defines the `staging` and `production` environments. `npm run build:cf` builds a Worker locally without activating it. `deploy:cf:*` only activates an already-uploaded matching version; it is not the normal release path. Do not run an unannotated `wrangler deploy` for a normal release.
 
 ## Workspace App (Tauri)
 

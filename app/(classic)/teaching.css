@@ -17,3 +17,23 @@
 .teaching-footer-links {
   margin-top: 0;
 }
+
+.teaching-terms {
+  display: grid;
+  gap: 24px;
+  margin-block: 20px;
+}
+
+.teaching-term + .teaching-term {
+  margin-block-start: 16px;
+}
+
+.teaching-term h3 {
+  margin-block: 0 4px;
+  font-size: 1rem;
+}
+
+.teaching-term-period {
+  margin-block: 0 4px;
+  color: var(--ds-text-muted);
+}

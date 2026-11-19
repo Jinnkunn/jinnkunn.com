@@ -12,14 +12,15 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import type { MDXComponents } from "mdx/types";
 import { collectPostHeadings, type PostHeading } from "./outline";
 import { isPagePreview } from "./preview-context";
+import { compactTeachingArchiveLinks } from "./teaching-archive";
 
 // Runtime MDX compile. We evaluate MDX during server render so Site Admin edits
 // stored in D1 can land without a full site rebuild.
-export async function compilePostMdx(source: string): Promise<{
+export async function compilePostMdx(source: string, { teachingPage = false } = {}): Promise<{
   Content: (props: { components?: MDXComponents }) => ReactElement;
   headings: PostHeading[];
 }> {
-  if (isPagePreview()) return (await import("./compile-preview")).compilePreviewMdx(source);
+  if (isPagePreview()) return (await import("./compile-preview")).compilePreviewMdx(source, { teachingPage });
   let headings: PostHeading[] = [];
   const options: EvaluateOptions = {
     ...runtime,
@@ -29,7 +30,7 @@ export async function compilePostMdx(source: string): Promise<{
     // whose last pre-`---` line is plain text (no tags list, no blank
     // line) is interpreted as a setext H2 — we were leaking the whole
     // frontmatter into the rendered HTML.
-    remarkPlugins: [[remarkFrontmatter, ["yaml"]], remarkGfm, remarkMath],
+    remarkPlugins: [[remarkFrontmatter, ["yaml"]], remarkGfm, remarkMath, ...(teachingPage ? [() => compactTeachingArchiveLinks] : [])],
     rehypePlugins: [
       rehypeSlug,
       () => (tree) => { headings = collectPostHeadings(tree); },
