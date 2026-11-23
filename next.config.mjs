@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import bundleAnalyzer from "@next/bundle-analyzer";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 
+import { BASELINE_SECURITY_HEADERS } from "./lib/shared/security-headers.mjs";
+
 // Gate the analyzer behind `ANALYZE=1 npm run build` so a normal build
 // stays fast and without HTML-report side effects. The analyzer emits
 // `.next/analyze/*.html` which CI artifacts can pick up.
@@ -103,19 +105,12 @@ const nextConfig = {
     // Baseline hardening applied to every response. Kept deliberately small:
     // a full CSP is enforced separately for /site-admin below, because the
     // public pages inline KaTeX/Prism styling that a strict policy would break.
-    const baselineSecurityHeaders = [
-      { key: "X-Content-Type-Options", value: "nosniff" },
-      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-      {
-        key: "Strict-Transport-Security",
-        value: "max-age=31536000; includeSubDomains; preload",
-      },
-      { key: "X-Frame-Options", value: "SAMEORIGIN" },
-      {
-        key: "Permissions-Policy",
-        value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
-      },
-    ];
+    // Only OpenNext responses reach this block; the Cloudflare `_headers` file
+    // and cloudflare/worker-entry.mjs apply the same shared list elsewhere.
+    const baselineSecurityHeaders = BASELINE_SECURITY_HEADERS.map(([key, value]) => ({
+      key,
+      value,
+    }));
     return [
       {
         source: "/:path*",

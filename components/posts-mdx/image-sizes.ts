@@ -40,6 +40,85 @@ const IMAGE_INTRINSIC_SIZE: Record<string, IntrinsicImageSize> = {
  * priority and must never be lazy-loaded. */
 export const LCP_IMAGE_FILENAME = "17140d70fdf5805f8936f05797866cba.png";
 
+// ---------------------------------------------------------------------------
+// Responsive variants.
+//
+// The originals on cdn.jinkunchen.com are full-resolution PNGs: the home
+// portrait is 2433x3165 / 1.75 MB for a 220px box. Cloudflare Image
+// Transformations are enabled on the zone, so a resized AVIF/WebP of any CDN
+// image is just a `/cdn-cgi/image/<options>/<path>` URL away (the 512px AVIF of
+// the portrait is ~20 KB). `format=auto` negotiates AVIF/WebP/PNG from the
+// request's Accept header, and the result is cached at the edge.
+//
+// Only `srcset`/`sizes` change: `src` stays the original (it is what crawlers
+// and the lightbox see), and the intrinsic width/height attributes keep
+// driving layout, so no box moves.
+
+const MEDIA_ORIGIN = "https://cdn.jinkunchen.com";
+const TRANSFORMABLE_PATH = /\.(?:png|jpe?g|webp)$/i;
+const VARIANT_WIDTHS = [256, 384, 512, 640, 768, 1024, 1280, 1536, 1920];
+const VARIANT_QUALITY = 85;
+
+/** Match the phone and mid-range gutters in notion.css and page-overrides.css.
+ * Above 900px, the 900px cap minus the two 96px gutters leaves 708px. */
+export const POST_COLUMN_IMAGE_SIZES =
+  "(max-width: 546px) calc(100vw - 48px), (max-width: 900px) calc(100vw - 96px), 708px";
+
+/** Images laid out in a smaller box than the post column. `sizes` has to match
+ * the real box: smaller and the browser picks a blurry variant, larger and it
+ * over-fetches. */
+const IMAGE_DISPLAY_SIZES: Record<string, string> = {
+  // home.css: `.home-layout--variant-classicIntro` portrait, max-width 220px.
+  "17140d70fdf5805f8936f05797866cba.png": "220px",
+  // bio.css: `.bio-intro__portrait` is 240px, 180px at <=760px, 148px at <=440px.
+  "17140d70fdf580b0a156c957d279453c.png": "(max-width: 440px) 148px, (max-width: 760px) 180px, 240px",
+};
+
+/** URL of a `width`-pixel-wide, format-negotiated variant of a CDN image, or
+ * null when `src` is not a plain raster on the media CDN. */
+export function cdnImageVariantUrl(src: string, width: number): string | null {
+  let url: URL;
+  try {
+    url = new URL(src);
+  } catch {
+    return null;
+  }
+  if (url.origin !== MEDIA_ORIGIN || url.search || url.hash) return null;
+  if (url.pathname.startsWith("/cdn-cgi/") || !TRANSFORMABLE_PATH.test(url.pathname)) return null;
+  const w = Math.floor(width);
+  if (!(w > 0)) return null;
+  return `${MEDIA_ORIGIN}/cdn-cgi/image/width=${w},quality=${VARIANT_QUALITY},format=auto,onerror=redirect${url.pathname}`;
+}
+
+export type ResponsiveImageAttributes = {
+  srcSet: string;
+  sizes: string;
+  "data-cdn-image": "";
+  "data-lightbox-src": string;
+};
+
+/** `srcSet`/`sizes` for a CDN image of known intrinsic width, or null for
+ * anything else (which then renders exactly as before). Variants never exceed
+ * the original's width. */
+export function responsiveCdnImage(
+  src: string,
+  intrinsicWidth: number | null | undefined,
+  sizes?: string,
+): ResponsiveImageAttributes | null {
+  if (!intrinsicWidth || intrinsicWidth <= 0) return null;
+  if (!cdnImageVariantUrl(src, intrinsicWidth)) return null;
+  const largest = Math.min(intrinsicWidth, VARIANT_WIDTHS[VARIANT_WIDTHS.length - 1]);
+  const widths = [...new Set([...VARIANT_WIDTHS.filter((w) => w < largest), largest])];
+  return {
+    srcSet: widths.map((w) => `${cdnImageVariantUrl(src, w)} ${w}w`).join(", "),
+    sizes: sizes ?? IMAGE_DISPLAY_SIZES[imageFilename(src)] ?? POST_COLUMN_IMAGE_SIZES,
+    "data-cdn-image": "",
+    // The lightbox reads `currentSrc` otherwise, which is now the column-sized
+    // variant; zooming keeps showing the full-resolution original.
+    "data-lightbox-src": src,
+  };
+}
+
 /** Last path segment of an image URL, query string dropped. */
 export function imageFilename(src: string): string {
   return src.split("/").pop()?.split("?")[0] ?? "";

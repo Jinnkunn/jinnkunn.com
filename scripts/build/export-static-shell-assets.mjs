@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { pickStaticProtectedRule } from "../../cloudflare/static-shell-protection.mjs";
+import { BASELINE_SECURITY_HEADERS } from "../../lib/shared/security-headers.mjs";
 
 const cwd = process.cwd();
 const appHtmlRoot = path.join(cwd, ".next", "server", "app");
@@ -19,22 +20,31 @@ const headersPath = path.join(assetsRoot, "_headers");
 // came back `max-age=0, must-revalidate` in production despite being
 // content-hashed and immutable. `_headers` is the only mechanism the asset
 // server honours, so emit it at build time.
+//
+// Every rule that matches a path contributes its headers, so the baseline set
+// lives only in `/*`: repeating `X-Content-Type-Options` in the specific rules
+// sent it twice on every `/_next/static` and `/assets` response.
+const STATIC_CACHE = "public, max-age=604800, stale-while-revalidate=86400";
 const ASSET_HEADERS = `/_next/static/*
   Cache-Control: public, max-age=31536000, immutable
-  X-Content-Type-Options: nosniff
 
 /assets/*
-  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
-  X-Content-Type-Options: nosniff
+  Cache-Control: ${STATIC_CACHE}
 
 /fonts/*
-  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
-  X-Content-Type-Options: nosniff
+  Cache-Control: ${STATIC_CACHE}
+
+/favicon.ico
+  Cache-Control: ${STATIC_CACHE}
+
+/apple-touch-icon.png
+  Cache-Control: ${STATIC_CACHE}
+
+/apple-touch-icon-precomposed.png
+  Cache-Control: ${STATIC_CACHE}
 
 /*
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+${BASELINE_SECURITY_HEADERS.map(([name, value]) => `  ${name}: ${value}`).join("\n")}
 `;
 
 function walkHtmlFiles(rootDir) {
