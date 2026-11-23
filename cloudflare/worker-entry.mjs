@@ -9,6 +9,7 @@ import {
 } from "./static-shell-protection.mjs";
 import { handleMobileSummaryRequest } from "./mobile-summary-direct.mjs";
 import { workerOverlayKey, STATIC_POLICY_PATH } from "../lib/shared/static-release.ts";
+import { withBaselineSecurityHeaders } from "../lib/shared/security-headers.mjs";
 import {
   isInternalStaticAssetPath,
   isRscRequest,
@@ -313,53 +314,70 @@ async function tryServeNextStaticAsset(request, env) {
   return bundled;
 }
 
+/**
+ * Requests the Worker answers itself, without the OpenNext runtime: internal
+ * key-space 404s, the direct mobile summary API, `/_next/static` assets, and
+ * public pages served from the prerendered static shell or a D1 overlay.
+ * Returns `null` to hand the request to OpenNext.
+ */
+async function respondAtEdge(request, env) {
+  if (new URL(request.url).pathname.startsWith("/__admin/")) return new Response("Not found", { status: 404 });
+  const method = String(request.method || "GET").toUpperCase();
+  const url = new URL(request.url);
+  const overlayKey = workerOverlayKey(env);
+  // Reject direct hits on the internal shell key space before anything else.
+  // `[assets] run_worker_first = ["/__static/*"]` in wrangler.toml routes these
+  // here instead of letting the asset server answer them.
+  if (isInternalStaticAssetPath(url.pathname)) {
+    return new Response("Not Found", {
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+  const authorization = String(request.headers.get("authorization") || "").trim();
+  if (
+    normalizePathname(url.pathname) === "/api/site-admin/mobile/summary" &&
+    /^Bearer\s+\S+/i.test(authorization)
+  ) {
+    return handleMobileSummaryRequest(request, env);
+  }
+  if (
+    (method === "GET" || method === "HEAD") &&
+    normalizePathname(url.pathname).startsWith("/_next/static/")
+  ) {
+    const staticAsset = await tryServeNextStaticAsset(request, env);
+    if (staticAsset) return staticAsset;
+  }
+  // When `STAGING_GATE=1`, skip the static-asset shortcut so every
+  // anonymous request flows through OpenNext and hits the Next.js
+  // middleware. Authenticated public-page requests may still use the
+  // static shell to avoid the Worker Free runtime hot path.
+  const gateEnabled = String(env?.STAGING_GATE || "") === "1";
+  if (method === "GET" || method === "HEAD") {
+    try {
+      if (!gateEnabled || (await isStagingStaticShellAuthorized(request, env))) {
+        const staticRes = overlayKey
+          ? await tryServeVersionedShell(request, env, overlayKey, normalizePathname(url.pathname))
+          : await tryServeStaticShell(request, env);
+        if (staticRes) return staticRes;
+      }
+    } catch {
+      if (overlayKey) return new Response("Publication temporarily unavailable", { status: 503, headers: { "cache-control": "no-store" } });
+      // Fall through to OpenNext runtime.
+    }
+  }
+  return null;
+}
+
 const worker = {
   async fetch(request, env, ctx) {
-    if (new URL(request.url).pathname.startsWith("/__admin/")) return new Response("Not found", { status: 404 });
-    const method = String(request.method || "GET").toUpperCase();
-    const url = new URL(request.url);
-    const overlayKey = workerOverlayKey(env);
-    // Reject direct hits on the internal shell key space before anything else.
-    // `[assets] run_worker_first = ["/__static/*"]` in wrangler.toml routes these
-    // here instead of letting the asset server answer them.
-    if (isInternalStaticAssetPath(url.pathname)) {
-      return new Response("Not Found", {
-        status: 404,
-        headers: { "content-type": "text/plain; charset=utf-8" },
-      });
-    }
-    const authorization = String(request.headers.get("authorization") || "").trim();
-    if (
-      normalizePathname(url.pathname) === "/api/site-admin/mobile/summary" &&
-      /^Bearer\s+\S+/i.test(authorization)
-    ) {
-      return handleMobileSummaryRequest(request, env);
-    }
-    if (
-      (method === "GET" || method === "HEAD") &&
-      normalizePathname(url.pathname).startsWith("/_next/static/")
-    ) {
-      const staticAsset = await tryServeNextStaticAsset(request, env);
-      if (staticAsset) return staticAsset;
-    }
-    // When `STAGING_GATE=1`, skip the static-asset shortcut so every
-    // anonymous request flows through OpenNext and hits the Next.js
-    // middleware. Authenticated public-page requests may still use the
-    // static shell to avoid the Worker Free runtime hot path.
-    const gateEnabled = String(env?.STAGING_GATE || "") === "1";
-    if (method === "GET" || method === "HEAD") {
-      try {
-        if (!gateEnabled || (await isStagingStaticShellAuthorized(request, env))) {
-          const staticRes = overlayKey
-            ? await tryServeVersionedShell(request, env, overlayKey, normalizePathname(url.pathname))
-            : await tryServeStaticShell(request, env);
-          if (staticRes) return staticRes;
-        }
-      } catch {
-        if (overlayKey) return new Response("Publication temporarily unavailable", { status: 503, headers: { "cache-control": "no-store" } });
-        // Fall through to OpenNext runtime.
-      }
-    }
+    const edgeResponse = await respondAtEdge(request, env);
+    // Responses built here never pass through next.config.mjs `headers()`, and
+    // overlay HTML does not come from the asset server's `_headers` either, so
+    // production public pages shipped with no HSTS/nosniff/Referrer-Policy/
+    // X-Frame-Options/Permissions-Policy. Every edge response leaves through
+    // this one exit, which adds whichever baseline headers are missing.
+    if (edgeResponse) return withBaselineSecurityHeaders(edgeResponse);
     return openNextWorker.fetch(request, env, ctx);
   },
 };

@@ -13,7 +13,12 @@ import { FeaturedPagesBlock } from "./featured-pages-block";
 import { Figure } from "./figure";
 import { FileLink } from "./file-link";
 import { HeroBlock } from "./hero-block";
-import { imageFilename, intrinsicImageSize, LCP_IMAGE_FILENAME } from "./image-sizes";
+import {
+  imageFilename,
+  intrinsicImageSize,
+  LCP_IMAGE_FILENAME,
+  responsiveCdnImage,
+} from "./image-sizes";
 import { LinkListBlock } from "./link-list-block";
 import { NewsBlock } from "./news-block";
 import { NewsEntry } from "./news-entry";
@@ -223,12 +228,16 @@ function MdxImage({ src, alt, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
   // in posts-mdx.css means they only ever act as an aspect ratio, never as a
   // used width. Authored props win, so MDX can still override any of this.
   const intrinsic = intrinsicImageSize(filename);
+  // Known CDN images also get a srcset of resized AVIF/WebP variants, so the
+  // browser fetches one sized for its box instead of the full-size original.
+  const responsive = props.srcSet == null ? responsiveCdnImage(source, intrinsic?.width) : null;
   return (
     // eslint-disable-next-line @next/next/no-img-element -- Native MDX images should keep their authored shape.
     <img
       src={src}
       alt={alt ?? ""}
       {...(intrinsic ? { width: intrinsic.width, height: intrinsic.height } : {})}
+      {...(responsive ?? {})}
       decoding="async"
       {...(filename === LCP_IMAGE_FILENAME ? { fetchPriority: "high" as const } : {})}
       {...props}

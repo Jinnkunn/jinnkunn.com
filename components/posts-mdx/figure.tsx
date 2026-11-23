@@ -1,6 +1,6 @@
 // Image with optional caption. Mirrors the Notion image markup so existing
 // lightbox + sizing CSS (in notion-blocks.css) keeps working.
-import { imageFilename, intrinsicImageSize } from "./image-sizes";
+import { imageFilename, intrinsicImageSize, responsiveCdnImage } from "./image-sizes";
 
 export function Figure({
   src,
@@ -29,6 +29,10 @@ export function Figure({
   const known = intrinsicImageSize(imageFilename(src));
   const w = intrinsicWidth ?? known?.width;
   const h = intrinsicHeight ?? known?.height;
+  // Resized AVIF/WebP variants for CDN images; a full-width figure can span
+  // the viewport, anything else stays within the post column.
+  const responsive =
+    w && h ? responsiveCdnImage(src, w, width === "full-width" ? "100vw" : undefined) : null;
 
   return (
     <figure className={`notion-image align-${align} ${width} mdx-figure`}>
@@ -37,6 +41,7 @@ export function Figure({
         src={src}
         alt={alt}
         {...(w && h ? { width: w, height: h } : {})}
+        {...(responsive ?? {})}
         loading="lazy"
         decoding="async"
       />

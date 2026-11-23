@@ -13,6 +13,7 @@ import {
   revealHashTarget,
   scrollToElementTop,
 } from "@/lib/client/notion/anchors";
+import { initCdnImageFallback } from "@/lib/client/notion/cdn-image-fallback";
 import {
   decodeHashToId,
   initToggles,
@@ -36,6 +37,7 @@ export default function NotionBlockBehavior() {
   useEffect(() => {
     const root = document.getElementById("main-content") ?? document;
     initToggles(root);
+    const cleanupImageFallback = initCdnImageFallback(root);
 
     let cancelled = false;
     let cleanupEmbeds = () => {};
@@ -226,6 +228,7 @@ export default function NotionBlockBehavior() {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("hashchange", onHashChange);
+      cleanupImageFallback();
       cleanupTocSpy();
       cleanupEmbeds();
       lightbox.cleanup();

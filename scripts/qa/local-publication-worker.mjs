@@ -7,6 +7,7 @@ import path from "node:path";
 import { Log, LogLevel, Miniflare } from "miniflare";
 import { toContentDocumentPath } from "@jinnkunn/document-repository/path";
 import { PUBLICATION_BASELINE_PATH, publicationSearchSnapshot, publicationSnapshot } from "../../lib/shared/publication-snapshot.mjs";
+import { BASELINE_SECURITY_HEADERS } from "../../lib/shared/security-headers.mjs";
 import { STATIC_POLICY_PATH } from "../../lib/shared/static-release.ts";
 import { activateVerifiedOverlay, prepareOverlayGeneration, switchOverlayPointer, validateOverlayCandidate } from "../_lib/versioned-overlay.mjs";
 import { createNextAuthSessionCookie } from "../_lib/site-admin-auth-cookie.mjs";
@@ -120,6 +121,11 @@ async function main() {
       assert.equal(home.status, 200);
       assert.equal(home.headers.get("x-static-overlay"), "1");
       assert.equal(home.headers.get("x-publication-snapshot"), expected.baseline.sha);
+      // Overlay HTML is built by the Worker itself, so its only source of
+      // baseline hardening is worker-entry's single edge exit.
+      for (const [name, value] of BASELINE_SECURITY_HEADERS) {
+        assert.equal(home.headers.get(name), value, `overlay HTML ${name}`);
+      }
       assert.equal(await home.text(), expected.rows[0].body);
       const asset = await request(expected.assetPath);
       assert.equal(asset.status, 200);
